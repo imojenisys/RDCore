@@ -70,7 +70,31 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
 
     private bool _isInsideProcedure = false;
     private bool _isAfterArgsList = false;
-    private bool IsDeclarationPassExpression => !_isInsideProcedure || !_isAfterArgsList;
+    // `booleanExpression` is only ever an `If`/`ElseIf` condition (MS-VBAL §5.4.2.8) — narrow enough
+    // to opt back into expression capture inside a procedure body without the general statement-body
+    // pass this flag is waiting on (see EnterArgList's remarks).
+    private int _isCapturingConditionExpression = 0;
+    // `While`/`Do`'s condition (top form) is a bare `expression` with no wrapper rule like
+    // `booleanExpression` to hook — capture stays enabled from the construct's own Enter until the
+    // very next `block` starts, which can only ever be that construct's own body (a condition can't
+    // itself contain a block-bearing construct). EnterBlock only ever decrements what one of these
+    // constructs incremented; a procedure body's own `block` never touches this counter.
+    private int _isCapturingLoopHeaderExpression = 0;
+    private bool IsDeclarationPassExpression => !_isInsideProcedure || !_isAfterArgsList
+        || _isCapturingConditionExpression > 0 || _isCapturingLoopHeaderExpression > 0;
+
+    public override void EnterBooleanExpression([NotNull] VBAParser.BooleanExpressionContext context)
+        => _isCapturingConditionExpression++;
+    public override void ExitBooleanExpression([NotNull] VBAParser.BooleanExpressionContext context)
+        => _isCapturingConditionExpression--;
+
+    public override void EnterBlock([NotNull] VBAParser.BlockContext context)
+    {
+        if (_isCapturingLoopHeaderExpression > 0)
+        {
+            _isCapturingLoopHeaderExpression--;
+        }
+    }
 
     private void OnModuleOptionDirective(SourceLocation location, ModuleOptions value) 
         => CurrentBuilder.AddChild(new ModuleOptionDirectiveNode(GetCurrentNodeId(), location, value));
@@ -201,9 +225,10 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
     // every other declaration listener: the AST has to round-trip, and a `ReDim` outside a
     // procedure body is a downstream compile error ("Only comments may appear after End Sub…"), not
     // a syntax error and not a reason to drop the node. (Today the grammar can't recover a stray
-    // statement between members, so the context is only reached inside a procedure body — nested
-    // arbitrarily deep in blocks, which this pass flattens onto the member. The symbol pass reads a
-    // procedure member's children, so a node parked anywhere else yields no symbol.)
+    // statement between members, so the context is only reached inside a procedure body. Nested
+    // inside If/ElseIf/Else/While/Do/For/ForEach/Select Case it parents to that branch's own Body —
+    // SymbolBuilder.BuildLocals walks the whole body, not just the member's immediate children, to
+    // still find it.)
     public override void EnterRedimVariableDeclaration([NotNull] VBAParser.RedimVariableDeclarationContext context)
         => OnEnterParent();
     public override void ExitRedimVariableDeclaration([NotNull] VBAParser.RedimVariableDeclarationContext context)
@@ -211,6 +236,173 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         // recovery can leave Parent.Parent not pointing at the redimStmt that carries `Preserve`.
         var isPreserve = (context.Parent?.Parent as VBAParser.RedimStmtContext)?.PRESERVE() is not null;
         OnExitParent(builder => builder.BuildRedimDeclaration(context, isPreserve));
+    }
+
+    // `If`/`ElseIf`/`Else` (MS-VBAL §5.4.2.8) — each branch's own scope collects its condition (when
+    // it has one) followed by whatever the branch body captures today (declarations only; the general
+    // statement-body pass is still to come). A branch missing its condition (recovery) builds nothing,
+    // matching ExitAsTypeClause's "don't build a broken node" precedent.
+    public override void EnterIfStmt([NotNull] VBAParser.IfStmtContext context)
+        => OnEnterParent();
+    public override void ExitIfStmt([NotNull] VBAParser.IfStmtContext context)
+        => OnExitParentIfBuilt(builder => builder.BuildIfBlock(context));
+
+    public override void EnterElseIfBlock([NotNull] VBAParser.ElseIfBlockContext context)
+        => OnEnterParent();
+    public override void ExitElseIfBlock([NotNull] VBAParser.ElseIfBlockContext context)
+        => OnExitParentIfBuilt(builder => builder.BuildElseIfBlock(context));
+
+    public override void EnterElseBlock([NotNull] VBAParser.ElseBlockContext context)
+        => OnEnterParent();
+    public override void ExitElseBlock([NotNull] VBAParser.ElseBlockContext context)
+        => OnExitParent(builder => builder.BuildElseBlock(context));
+
+    // `While...Wend` (MS-VBAL 5.4.2.18). The condition has no wrapper rule, so
+    // _isCapturingLoopHeaderExpression (cleared by the loop's own EnterBlock) opts it into capture.
+    public override void EnterWhileWendStmt([NotNull] VBAParser.WhileWendStmtContext context)
+    {
+        OnEnterParent();
+        _isCapturingLoopHeaderExpression++;
+    }
+    public override void ExitWhileWendStmt([NotNull] VBAParser.WhileWendStmtContext context)
+    {
+        OnExitParentIfBuilt(builder => builder.BuildWhileWendStatement(context));
+        // recovery can reach Exit without the body's Block ever starting (and so never consuming the
+        // increment above) — clear defensively rather than let a stale "capturing" state leak forward.
+        _isCapturingLoopHeaderExpression = 0;
+    }
+
+    // `Do...Loop` (MS-VBAL 5.4.2.5-7): one grammar rule, three unlabeled alternatives (no condition;
+    // condition before the body; condition after it) dispatched here into 5 node types. Which
+    // alternative matched isn't knowable at Enter (nothing has been parsed yet), and the trailing form
+    // puts its condition *after* the body's own block — so the "capture until the next EnterBlock"
+    // trick doesn't fit. Instead the condition, if any, is captured once everything is known, at Exit.
+    public override void EnterDoLoopStmt([NotNull] VBAParser.DoLoopStmtContext context)
+        => OnEnterParent();
+    public override void ExitDoLoopStmt([NotNull] VBAParser.DoLoopStmtContext context)
+        => OnExitParentIfBuilt(builder => builder.BuildDoLoopStatement(context, CaptureIsolatedExpression(context.expression())));
+
+    // `For...Next` (MS-VBAL 5.4.2.9). The control-variable assignment `i = 1` is parsed as ONE
+    // `expression` — the grammar's own comment explains why ("expression EQ expression refactored to
+    // expression to allow SLL") — so it arrives as a top-level `=` VBBinaryOperatorExpressionNode that
+    // BuildForStatement splits into Control (Left) / Start (Right). The body uses `unterminatedBlock`,
+    // not `block`, and can be entirely absent (an empty-bodied loop) — a live capture window bounded
+    // by its Enter isn't reliable there, so CaptureIsolatedExpression handles all four expressions.
+    public override void EnterForNextStmt([NotNull] VBAParser.ForNextStmtContext context)
+        => OnEnterParent();
+    public override void ExitForNextStmt([NotNull] VBAParser.ForNextStmtContext context)
+    {
+        var assignment = CaptureIsolatedExpression(context.expression(0));
+        var end = CaptureIsolatedExpression(context.expression(1));
+        var step = CaptureIsolatedExpression(context.stepStmt()?.expression());
+        OnExitParentIfBuilt(builder => builder.BuildForStatement(context, assignment, end, step));
+    }
+
+    // `For Each...Next` (MS-VBAL 5.4.2.9). Same body/capture shape as For; no assignment to split —
+    // the control variable and the collection are two independent expressions.
+    public override void EnterForEachStmt([NotNull] VBAParser.ForEachStmtContext context)
+        => OnEnterParent();
+    public override void ExitForEachStmt([NotNull] VBAParser.ForEachStmtContext context)
+    {
+        var control = CaptureIsolatedExpression(context.expression(0));
+        var collection = CaptureIsolatedExpression(context.expression(1));
+        OnExitParentIfBuilt(builder => builder.BuildForEachStatement(context, control, collection));
+    }
+
+    // `Select Case` (MS-VBAL 5.4.2.10). Every expression here — the control expression, and each
+    // Case line's range clause(s) — uses CaptureIsolatedExpression uniformly: a Case line can carry
+    // several comma-separated range clauses with no single reliable boundary rule between them, so
+    // the live-window trick doesn't fit any better here than it did for Do/For.
+    public override void EnterSelectCaseStmt([NotNull] VBAParser.SelectCaseStmtContext context)
+        => OnEnterParent();
+    public override void ExitSelectCaseStmt([NotNull] VBAParser.SelectCaseStmtContext context)
+        => OnExitParentIfBuilt(builder => builder.BuildSelectCaseStatement(context, CaptureIsolatedExpression(context.selectExpression()?.expression())));
+
+    public override void EnterCaseClause([NotNull] VBAParser.CaseClauseContext context)
+        => OnEnterParent();
+    public override void ExitCaseClause([NotNull] VBAParser.CaseClauseContext context)
+    {
+        var rangeClauses = context.rangeClause()
+            .Select(CaptureRangeClause)
+            .Where(clause => clause is not null)
+            .Select(clause => clause!)
+            .ToImmutableArray();
+        OnExitParentIfBuilt(builder => builder.BuildCaseExpression(context, rangeClauses));
+    }
+
+    public override void EnterCaseElseClause([NotNull] VBAParser.CaseElseClauseContext context)
+        => OnEnterParent();
+    public override void ExitCaseElseClause([NotNull] VBAParser.CaseElseClauseContext context)
+        => OnExitParent(builder => builder.BuildCaseElseClause(context));
+
+    // A `rangeClause` is one of three independent shapes (MS-VBAL 5.4.2.10): a `To` range, a
+    // comparison, or a plain value. `_children`-position-based IDs don't apply here (these clauses are
+    // never added to a builder's children — they're returned, since a Case line can have several), so
+    // each clause gets its own id nested under the case clause's own current slot.
+    private CaseRangeClauseNode? CaptureRangeClause(VBAParser.RangeClauseContext context, int index)
+    {
+        var id = GetCurrentNodeId().Add(index);
+        var location = context.GetSourceLocation(_rootUri);
+
+        if (context.selectStartValue() is { } startValue && context.selectEndValue() is { } endValue)
+        {
+            var start = CaptureIsolatedExpression(startValue.expression());
+            var end = CaptureIsolatedExpression(endValue.expression());
+            return start is null || end is null ? null : new CaseToRangeClauseNode(id, location, start, end);
+        }
+        if (context.comparisonOperator() is { } comparison)
+        {
+            var value = CaptureIsolatedExpression(context.expression());
+            return value is null ? null : new CaseComparisonRangeClauseNode(id, location, ToComparisonToken(comparison), value);
+        }
+
+        var plainValue = CaptureIsolatedExpression(context.expression());
+        return plainValue is null ? null : new CaseValueRangeClauseNode(id, location, plainValue);
+    }
+
+    private static string ToComparisonToken(VBAParser.ComparisonOperatorContext context)
+        => context.EQ() is not null ? Tokens.CompareEqualOp
+            : context.NEQ() is not null ? Tokens.CompareNotEqualOp
+            : context.GT() is not null ? Tokens.CompareGreaterThanOp
+            : context.GEQ() is not null ? Tokens.CompareGreaterThanOrEqualOp
+            : context.LT() is not null ? Tokens.CompareLessThanOp
+            : context.LEQ() is not null ? Tokens.CompareLessThanOrEqualOp
+            : context.IS() is not null ? Tokens.CompareIsOp
+            : context.LIKE() is not null ? Tokens.CompareLikeOp
+            : context.GetText();
+
+    // Re-walks an already-parsed, self-contained expression subtree in isolation, with capture
+    // enabled just for that walk, into its own fresh scope. Safe because this only ever runs from an
+    // Exit handler — the parser has already fully matched (and moved past) this subtree by then, so
+    // the walk touches a finished, static tree, never the live parse. Existing Exit* operator handlers
+    // (PopLastChildren-based) don't care whether a matching Enter fired first, so they combine
+    // correctly under ParseTreeWalker's ordering exactly as they do under AddParseListener's.
+    private ExpressionNode? CaptureIsolatedExpression(VBAParser.ExpressionContext? context)
+    {
+        if (context is null)
+        {
+            return null;
+        }
+
+        OnEnterParent();
+        _isCapturingConditionExpression++;
+        ParseTreeWalker.Default.Walk(this, context);
+        _isCapturingConditionExpression--;
+        return _builderStack.Pop().GetChildren.LastOrDefault() as ExpressionNode;
+    }
+
+    // like OnExitParent, but the provider may decline to build a node at all (a branch whose
+    // condition recovery left incomplete) rather than always producing one.
+    private void OnExitParentIfBuilt(Func<DeclarationNodeBuilder, SyntaxNode?> provider)
+    {
+        if (_builderStack.Count <= 1)
+        {
+            return;
+        }
+        if (provider.Invoke(_builderStack.Pop()) is { } node)
+        {
+            CurrentBuilder.AddChild(node);
+        }
     }
 
     private bool _isPropertyWriterMember = false;

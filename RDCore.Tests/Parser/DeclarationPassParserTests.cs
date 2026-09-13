@@ -4,6 +4,7 @@ using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.AST.Directives;
 using RDCore.SDK.Model.AST.Expressions;
+using RDCore.SDK.Model.AST.Statements;
 using RDCore.SDK.Model.Values.Intrinsic;
 using System.Text.Json;
 
@@ -563,9 +564,10 @@ End Sub
     }
 
     [TestMethod]
-    // the declarations pass flattens block nesting, so a ReDim inside If/For/With still parents to
-    // the procedure member — the symbol pass reads `member.Children` and must find it there.
-    public void Redim_NestedInABlock_ParentsToTheProcedureMember()
+    // an If block now has its own shape (ConditionExpression + Body), so a ReDim nested in its
+    // branch parents to that branch's Body, not to the procedure member directly — SymbolBuilder is
+    // the one that walks the whole body looking for locals (LanguageServer-side test coverage).
+    public void Redim_NestedInABlock_ParentsToTheIfBranch()
     {
         const string content = """
             Public Sub Grow(ByVal Flag As Boolean)
@@ -579,7 +581,542 @@ End Sub
         Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
 
         var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
-        Assert.AreEqual("Nested", member.Children.OfType<RedimDeclarationNode>().Single().Name);
+        var ifBlock = member.Children.OfType<IfBlockStatementNode>().Single();
+        Assert.AreEqual("Nested", ifBlock.Body.Children.OfType<RedimDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    // a statement's condition is inside a procedure body, where the declaration pass otherwise drops
+    // every expression (IsDeclarationPassExpression) until the general statement-body pass exists —
+    // `booleanExpression` is the narrow carve-out that lets If/ElseIf conditions through today.
+    public void IfStatement_WithoutElse_CapturesConditionAndBody()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal Flag As Boolean)
+                If Flag Then
+                    Dim x As Long
+                End If
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var ifBlock = member.Children.OfType<IfBlockStatementNode>().Single();
+
+        var condition = (SimpleNameExpressionNode)ifBlock.ConditionExpression;
+        Assert.AreEqual("Flag", condition.IdentifierName);
+        Assert.HasCount(1, ifBlock.Body.Children.OfType<VariableDeclarationNode>());
+        Assert.IsEmpty(ifBlock.ElseIfBlocks);
+        Assert.IsNull(ifBlock.ElseBlock);
+    }
+
+    [TestMethod]
+    // proves the booleanExpression carve-out threads through the full operator pipeline (not just a
+    // bare name): the same operator-tree machinery is now reachable from inside a procedure body.
+    public void IfStatement_ConditionIsAnOperatorTree()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                If N > 0 And N < 10 Then
+                End If
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var ifBlock = member.Children.OfType<IfBlockStatementNode>().Single();
+
+        var and = (VBBinaryOperatorExpressionNode)ifBlock.ConditionExpression;
+        Assert.AreEqual(Tokens.LogicalAndOp, and.Token);
+        Assert.AreEqual(Tokens.CompareGreaterThanOp, ((VBBinaryOperatorExpressionNode)and.Left).Token);
+        Assert.AreEqual(Tokens.CompareLessThanOp, ((VBBinaryOperatorExpressionNode)and.Right).Token);
+    }
+
+    [TestMethod]
+    // one IfBlockStatementNode models the whole chain: ElseIf branches in source order, then the
+    // trailing Else — mirroring SelectCaseStatementNode's control-expression + branch-list shape.
+    public void IfStatement_WithElseIfAndElse_ChainsBranchesInSourceOrder()
+    {
+        const string content = """
+            Public Sub Classify(ByVal N As Long)
+                If N = 1 Then
+                    Dim a As Long
+                ElseIf N = 2 Then
+                    Dim b As Long
+                ElseIf N = 3 Then
+                    Dim c As Long
+                Else
+                    Dim d As Long
+                End If
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var ifBlock = member.Children.OfType<IfBlockStatementNode>().Single();
+
+        Assert.AreEqual("a", ifBlock.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+        Assert.HasCount(2, ifBlock.ElseIfBlocks);
+
+        var elseIf1 = ifBlock.ElseIfBlocks[0];
+        Assert.AreEqual(2L, IntValue(((VBBinaryOperatorExpressionNode)elseIf1.ConditionExpression).Right));
+        Assert.AreEqual("b", elseIf1.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+
+        var elseIf2 = ifBlock.ElseIfBlocks[1];
+        Assert.AreEqual(3L, IntValue(((VBBinaryOperatorExpressionNode)elseIf2.ConditionExpression).Right));
+        Assert.AreEqual("c", elseIf2.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+
+        Assert.IsNotNull(ifBlock.ElseBlock);
+        Assert.AreEqual("d", ifBlock.ElseBlock!.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    // While's condition is a bare `expression` with no wrapper rule like If's booleanExpression —
+    // _isCapturingLoopHeaderExpression (cleared by the loop's own EnterBlock) is what unblocks it.
+    public void WhileWendStatement_CapturesConditionAndBody()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                While N > 0
+                    Dim x As Long
+                Wend
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var whileWend = member.Children.OfType<WhileWendStatementNode>().Single();
+
+        var condition = (VBBinaryOperatorExpressionNode)whileWend.ConditionExpression;
+        Assert.AreEqual(Tokens.CompareGreaterThanOp, condition.Token);
+        Assert.AreEqual("x", whileWend.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    // regression guard: giving While its own real scope (like If) means a declaration nested in its
+    // body must still parent to that scope's Body, not flatten onto the enclosing procedure member.
+    public void WhileWendStatement_NestedDeclaration_ParentsToTheLoopBody()
+    {
+        const string content = """
+            Public Sub Grow(ByVal Flag As Boolean)
+                While Flag
+                    ReDim Nested(5)
+                Wend
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var whileWend = member.Children.OfType<WhileWendStatementNode>().Single();
+        Assert.AreEqual("Nested", whileWend.Body.Children.OfType<RedimDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    public void DoLoop_NoCondition_BuildsPlainInfiniteLoop()
+    {
+        const string content = """
+            Public Sub DoWork()
+                Do
+                    Dim x As Long
+                Loop
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var doLoop = member.Children.OfType<DoLoopStatementNode>().Single();
+        Assert.AreEqual("x", doLoop.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    public void DoLoop_TopWhile_BuildsDoWhileLoopStatement()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                Do While N > 0
+                    Dim x As Long
+                Loop
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var doWhile = member.Children.OfType<DoWhileLoopStatementNode>().Single();
+        Assert.AreEqual(Tokens.CompareGreaterThanOp, ((VBBinaryOperatorExpressionNode)doWhile.ConditionExpression).Token);
+        Assert.AreEqual("x", doWhile.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    public void DoLoop_TopUntil_BuildsDoUntilLoopStatement()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                Do Until N <= 0
+                    Dim x As Long
+                Loop
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var doUntil = member.Children.OfType<DoUntilLoopStatementNode>().Single();
+        Assert.AreEqual(Tokens.CompareLessThanOrEqualOp, ((VBBinaryOperatorExpressionNode)doUntil.ConditionExpression).Token);
+    }
+
+    [TestMethod]
+    // the bottom-condition forms exercise CaptureIsolatedExpression, not the live-window trick While
+    // uses — this is the one that most needs an operator-tree condition proving the re-walk threads
+    // through the full PopLastChildren pipeline, not just a bare comparison.
+    public void DoLoop_BottomWhile_BuildsDoLoopWhileStatementWithOperatorTreeCondition()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                Do
+                    Dim x As Long
+                Loop While N > 0 And N < 10
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var doLoopWhile = member.Children.OfType<DoLoopWhileStatementNode>().Single();
+
+        var and = (VBBinaryOperatorExpressionNode)doLoopWhile.ConditionExpression;
+        Assert.AreEqual(Tokens.LogicalAndOp, and.Token);
+        Assert.AreEqual(Tokens.CompareGreaterThanOp, ((VBBinaryOperatorExpressionNode)and.Left).Token);
+        Assert.AreEqual(Tokens.CompareLessThanOp, ((VBBinaryOperatorExpressionNode)and.Right).Token);
+        Assert.AreEqual("x", doLoopWhile.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    public void DoLoop_BottomUntil_BuildsDoLoopUntilStatement()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                Do
+                    Dim x As Long
+                Loop Until N <= 0
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var doLoopUntil = member.Children.OfType<DoLoopUntilStatementNode>().Single();
+        Assert.AreEqual(Tokens.CompareLessThanOrEqualOp, ((VBBinaryOperatorExpressionNode)doLoopUntil.ConditionExpression).Token);
+    }
+
+    [TestMethod]
+    // regression guard, same shape as If/While: giving Do its own real scope means a declaration
+    // nested in its body must still parent to that scope's Body, not flatten onto the member.
+    public void DoLoop_NestedDeclaration_ParentsToTheLoopBody()
+    {
+        const string content = """
+            Public Sub Grow(ByVal Flag As Boolean)
+                Do While Flag
+                    ReDim Nested(5)
+                Loop
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var doWhile = member.Children.OfType<DoWhileLoopStatementNode>().Single();
+        Assert.AreEqual("Nested", doWhile.Body.Children.OfType<RedimDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    // the control-variable `i = 1` is parsed as one expression (grammar comment: "expression EQ
+    // expression refactored to expression to allow SLL") — BuildForStatement must split it back into
+    // Control/Start off the top-level `=` operator node.
+    public void ForNextStatement_CapturesControlStartEndAndStep()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                For i = 1 To N Step 2
+                    Dim x As Long
+                Next i
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var forStatement = member.Children.OfType<ForStatementNode>().Single();
+
+        Assert.AreEqual("i", ((SimpleNameExpressionNode)forStatement.ControlExpression).IdentifierName);
+        Assert.AreEqual(1L, IntValue(forStatement.StartExpression));
+        Assert.AreEqual("N", ((SimpleNameExpressionNode)forStatement.EndExpression).IdentifierName);
+        Assert.AreEqual(2L, IntValue(forStatement.StepExpression!));
+        Assert.AreEqual("x", forStatement.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    // no Step clause: MS-VBAL's implicit default of 1 is a runtime concern, not the parser's — the
+    // node must leave this null rather than synthesize a fake literal with no real source location.
+    public void ForNextStatement_WithoutStep_LeavesStepExpressionNull()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                For i = 1 To N
+                Next i
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var forStatement = member.Children.OfType<ForStatementNode>().Single();
+        Assert.IsNull(forStatement.StepExpression);
+    }
+
+    [TestMethod]
+    // proves CaptureIsolatedExpression threads a full operator tree, not just a bare name/literal.
+    public void ForNextStatement_EndExpressionIsAnOperatorTree()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal N As Long)
+                For i = 1 To N * 2
+                Next i
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var forStatement = member.Children.OfType<ForStatementNode>().Single();
+        Assert.AreEqual(Tokens.MultiplicationOp, ((VBBinaryOperatorExpressionNode)forStatement.EndExpression).Token);
+    }
+
+    [TestMethod]
+    public void ForEachStatement_CapturesControlAndCollection()
+    {
+        const string content = """
+            Public Sub DoWork(ByVal Items As Variant)
+                For Each Item In Items
+                    Dim x As Long
+                Next Item
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var forEach = member.Children.OfType<ForEachStatementNode>().Single();
+
+        Assert.AreEqual("Item", ((SimpleNameExpressionNode)forEach.ControlExpression).IdentifierName);
+        Assert.AreEqual("Items", ((SimpleNameExpressionNode)forEach.CollectionExpression).IdentifierName);
+        Assert.AreEqual("x", forEach.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    // regression guard, same shape as If/While/Do: a declaration nested in a For body must still
+    // parent to that loop's own Body, not flatten onto the enclosing procedure member.
+    public void ForNextStatement_NestedDeclaration_ParentsToTheLoopBody()
+    {
+        const string content = """
+            Public Sub Grow()
+                For i = 1 To 5
+                    ReDim Nested(5)
+                Next i
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var forStatement = member.Children.OfType<ForStatementNode>().Single();
+        Assert.AreEqual("Nested", forStatement.Body.Children.OfType<RedimDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    public void SelectCase_ValueRangeClause_BuildsCaseValueRangeClauseNode()
+    {
+        const string content = """
+            Public Sub Classify(ByVal N As Long)
+                Select Case N
+                Case 5
+                    Dim x As Long
+                End Select
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var selectCase = member.Children.OfType<SelectCaseStatementNode>().Single();
+
+        Assert.AreEqual("N", ((SimpleNameExpressionNode)selectCase.ControlExpression).IdentifierName);
+        Assert.HasCount(1, selectCase.CaseExpressionBlocks);
+        var clause = (CaseValueRangeClauseNode)selectCase.CaseExpressionBlocks[0].RangeClauses.Single();
+        Assert.AreEqual(5L, IntValue(clause.Value));
+        Assert.AreEqual("x", selectCase.CaseExpressionBlocks[0].Block.Children.OfType<VariableDeclarationNode>().Single().Name);
+        Assert.IsNull(selectCase.CaseElseBlock);
+    }
+
+    [TestMethod]
+    public void SelectCase_ComparisonRangeClause_BuildsCaseComparisonRangeClauseNode()
+    {
+        const string content = """
+            Public Sub Classify(ByVal N As Long)
+                Select Case N
+                Case Is > 5
+                End Select
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var selectCase = member.Children.OfType<SelectCaseStatementNode>().Single();
+        var clause = (CaseComparisonRangeClauseNode)selectCase.CaseExpressionBlocks[0].RangeClauses.Single();
+
+        Assert.AreEqual(Tokens.CompareGreaterThanOp, clause.ComparisonOperator);
+        Assert.AreEqual(5L, IntValue(clause.Value));
+    }
+
+    [TestMethod]
+    public void SelectCase_ToRangeClause_BuildsCaseToRangeClauseNode()
+    {
+        const string content = """
+            Public Sub Classify(ByVal N As Long)
+                Select Case N
+                Case 1 To 10
+                End Select
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var selectCase = member.Children.OfType<SelectCaseStatementNode>().Single();
+        var clause = (CaseToRangeClauseNode)selectCase.CaseExpressionBlocks[0].RangeClauses.Single();
+
+        Assert.AreEqual(1L, IntValue(clause.Start));
+        Assert.AreEqual(10L, IntValue(clause.End));
+    }
+
+    [TestMethod]
+    // a single Case line can carry several comma-separated range clauses, each independently one of
+    // the three shapes — proves CaptureRangeClause's per-clause id allocation doesn't collide.
+    public void SelectCase_MultipleRangeClausesOnOneLine_AreCapturedInOrder()
+    {
+        const string content = """
+            Public Sub Classify(ByVal N As Long)
+                Select Case N
+                Case 1, 3, 5 To 10, Is > 100
+                End Select
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var selectCase = member.Children.OfType<SelectCaseStatementNode>().Single();
+        var clauses = selectCase.CaseExpressionBlocks[0].RangeClauses;
+
+        Assert.HasCount(4, clauses);
+        Assert.AreEqual(1L, IntValue(((CaseValueRangeClauseNode)clauses[0]).Value));
+        Assert.AreEqual(3L, IntValue(((CaseValueRangeClauseNode)clauses[1]).Value));
+        var range = (CaseToRangeClauseNode)clauses[2];
+        Assert.AreEqual(5L, IntValue(range.Start));
+        Assert.AreEqual(10L, IntValue(range.End));
+        Assert.AreEqual(Tokens.CompareGreaterThanOp, ((CaseComparisonRangeClauseNode)clauses[3]).ComparisonOperator);
+    }
+
+    [TestMethod]
+    public void SelectCase_WithCaseElse_BuildsCaseElseBlock()
+    {
+        const string content = """
+            Public Sub Classify(ByVal N As Long)
+                Select Case N
+                Case 1
+                    Dim a As Long
+                Case Else
+                    Dim b As Long
+                End Select
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var selectCase = member.Children.OfType<SelectCaseStatementNode>().Single();
+
+        Assert.IsNotNull(selectCase.CaseElseBlock);
+        Assert.AreEqual("b", selectCase.CaseElseBlock!.Body.Children.OfType<VariableDeclarationNode>().Single().Name);
+    }
+
+    [TestMethod]
+    // proves CaptureIsolatedExpression threads a full operator tree for the control expression too.
+    public void SelectCase_ControlExpressionIsAnOperatorTree()
+    {
+        const string content = """
+            Public Sub Classify(ByVal N As Long)
+                Select Case N + 1
+                Case 1
+                End Select
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var selectCase = member.Children.OfType<SelectCaseStatementNode>().Single();
+        Assert.AreEqual(Tokens.AdditionOp, ((VBBinaryOperatorExpressionNode)selectCase.ControlExpression).Token);
+    }
+
+    [TestMethod]
+    // regression guard, same shape as every other construct wired in this PR.
+    public void SelectCase_NestedDeclaration_ParentsToTheCaseBody()
+    {
+        const string content = """
+            Public Sub Grow(ByVal N As Long)
+                Select Case N
+                Case 1
+                    ReDim Nested(5)
+                End Select
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var selectCase = member.Children.OfType<SelectCaseStatementNode>().Single();
+        Assert.AreEqual("Nested", selectCase.CaseExpressionBlocks[0].Block.Children.OfType<RedimDeclarationNode>().Single().Name);
     }
 
     [TestMethod]

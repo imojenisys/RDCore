@@ -538,4 +538,65 @@ public sealed class SyntaxTreeSymbolProviderTests
         Assert.AreEqual("Buffer", local.Name);
         Assert.AreEqual(LocalDeclarationKind.ReDim, local.DeclaredBy);
     }
+
+    [TestMethod]
+    public void Redim_NestedInAWhileLoop_IntroducesLocal()
+    {
+        var local = Single<VBLocalVariableSymbol>(Provide("""
+            Public Sub Foo(ByVal Flag As Boolean)
+                While Flag
+                    ReDim Buffer(5)
+                Wend
+            End Sub
+            """, new IntrinsicSymbolResolver()));
+
+        Assert.AreEqual("Buffer", local.Name);
+        Assert.AreEqual(LocalDeclarationKind.ReDim, local.DeclaredBy);
+    }
+
+    [TestMethod]
+    public void Redim_NestedInADoLoop_IntroducesLocal()
+    {
+        var local = Single<VBLocalVariableSymbol>(Provide("""
+            Public Sub Foo(ByVal Flag As Boolean)
+                Do While Flag
+                    ReDim Buffer(5)
+                Loop
+            End Sub
+            """, new IntrinsicSymbolResolver()));
+
+        Assert.AreEqual("Buffer", local.Name);
+        Assert.AreEqual(LocalDeclarationKind.ReDim, local.DeclaredBy);
+    }
+
+    [TestMethod]
+    public void Redim_NestedInAForLoop_IntroducesLocal()
+    {
+        var local = Single<VBLocalVariableSymbol>(Provide("""
+            Public Sub Foo()
+                For i = 1 To 5
+                    ReDim Buffer(5)
+                Next i
+            End Sub
+            """, new IntrinsicSymbolResolver()));
+
+        Assert.AreEqual("Buffer", local.Name);
+        Assert.AreEqual(LocalDeclarationKind.ReDim, local.DeclaredBy);
+    }
+
+    [TestMethod]
+    public void Redim_NestedInASelectCase_IntroducesLocal()
+    {
+        var local = Single<VBLocalVariableSymbol>(Provide("""
+            Public Sub Foo(ByVal N As Long)
+                Select Case N
+                Case 1
+                    ReDim Buffer(5)
+                End Select
+            End Sub
+            """, new IntrinsicSymbolResolver()));
+
+        Assert.AreEqual("Buffer", local.Name);
+        Assert.AreEqual(LocalDeclarationKind.ReDim, local.DeclaredBy);
+    }
 }
