@@ -432,6 +432,20 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         OnKeywordStatement(token, context);
     }
 
+    // `Call`/bare-call (MS-VBAL §5.4.4). `Call Foo(1, 2)` carries its arguments inside the callee's
+    // own lExpression tree (an IndexExpressionNode) — the statement's own Arguments stays empty. Only
+    // the bare form (`Foo 1, 2`, no `Call`, no parens) has a separate statement-level argument list;
+    // `Call` grants no such shape (it always requires the parenthesized form).
+    public override void ExitCallStmt([NotNull] VBAParser.CallStmtContext context)
+    {
+        if (CaptureIsolatedExpression(context.lExpression()) is not { } callee)
+        {
+            return;
+        }
+        var arguments = CaptureIsolated(context.argumentList()).Cast<ExpressionNode>().ToImmutableArray();
+        CurrentBuilder.AddChild(new CallStatementNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri), callee, arguments, context.CALL() is not null));
+    }
+
     public override void ExitSeekStmt([NotNull] VBAParser.SeekStmtContext context)
         => OnKeywordStatement(Tokens.Seek, context, CaptureFileNumber(context.fileNumber()), CaptureIsolatedExpression(context.position()?.expression()));
 
@@ -491,25 +505,30 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
             : [start];
     }
 
-    // Re-walks an already-parsed, self-contained expression subtree in isolation, with capture
-    // enabled just for that walk, into its own fresh scope. Safe because this only ever runs from an
-    // Exit handler — the parser has already fully matched (and moved past) this subtree by then, so
-    // the walk touches a finished, static tree, never the live parse. Existing Exit* operator handlers
+    // Re-walks an already-parsed, self-contained subtree in isolation, with capture enabled just for
+    // that walk, into its own fresh scope. Safe because this only ever runs from an Exit handler — the
+    // parser has already fully matched (and moved past) this subtree by then, so the walk touches a
+    // finished, static tree, never the live parse. Existing Exit* operator/lExpression handlers
     // (PopLastChildren-based) don't care whether a matching Enter fired first, so they combine
-    // correctly under ParseTreeWalker's ordering exactly as they do under AddParseListener's.
-    private ExpressionNode? CaptureIsolatedExpression(VBAParser.ExpressionContext? context)
+    // correctly under ParseTreeWalker's ordering exactly as they do under AddParseListener's. Not tied
+    // to `expression` specifically — an `lExpression` or `argumentList` subtree walks exactly the same
+    // way, so this accepts any rule context (`CallStatementNode`'s callee/arguments need both).
+    private ImmutableArray<SyntaxNode> CaptureIsolated(VBABaseParserRuleContext? context)
     {
         if (context is null)
         {
-            return null;
+            return [];
         }
 
         OnEnterParent();
         _isCapturingConditionExpression++;
         ParseTreeWalker.Default.Walk(this, context);
         _isCapturingConditionExpression--;
-        return _builderStack.Pop().GetChildren.LastOrDefault() as ExpressionNode;
+        return [.. _builderStack.Pop().GetChildren];
     }
+
+    private ExpressionNode? CaptureIsolatedExpression(VBABaseParserRuleContext? context)
+        => CaptureIsolated(context).LastOrDefault() as ExpressionNode;
 
     // like OnExitParent, but the provider may decline to build a node at all (a branch whose
     // condition recovery left incomplete) rather than always producing one.
@@ -620,6 +639,126 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         var location = context.GetSourceLocation(_rootUri);
         OnExpression(new SimpleNameExpressionNode(GetCurrentNodeId(), location, value));
     }
+
+    // `lExpression` (MS-VBAL §5.6.10-16) is left-recursive, same as `expression` — every alternative
+    // below follows the same no-Enter-override, PopLastChildren-at-Exit discipline as the operators
+    // above, for the same reason (AddParseListener fires Exit before Enter on a left-recursive
+    // alternative). `expression`'s own `lExpr` label needs no handler of its own: whatever this
+    // listener builds here IS already the expression result, passed through transparently (same as
+    // `parenthesizedExpr`) — confirmed by ExitSimpleNameExpr already working everywhere `expression`
+    // is expected, with no `ExitLExpr` override anywhere.
+    public override void ExitInstanceExpr([NotNull] VBAParser.InstanceExprContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        OnExpression(new InstanceExpressionNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri)));
+    }
+
+    public override void ExitMemberAccessExpr([NotNull] VBAParser.MemberAccessExprContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        var owner = (ExpressionNode)CurrentBuilder.PopLastChildren(1)[0];
+        var id = GetCurrentNodeId();
+        var member = new SimpleNameExpressionNode(id.Add(0), context.unrestrictedIdentifier().GetSourceLocation(_rootUri), context.unrestrictedIdentifier().Name());
+        CurrentBuilder.AddChild(new MemberAccessExpressionNode(id, context.GetSourceLocation(_rootUri), owner, member));
+    }
+
+    public override void ExitWithMemberAccessExpr([NotNull] VBAParser.WithMemberAccessExprContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        var id = GetCurrentNodeId();
+        var member = new SimpleNameExpressionNode(id.Add(0), context.unrestrictedIdentifier().GetSourceLocation(_rootUri), context.unrestrictedIdentifier().Name());
+        CurrentBuilder.AddChild(new MemberAccessExpressionNode(id, context.GetSourceLocation(_rootUri), null, member));
+    }
+
+    public override void ExitDictionaryAccessExpr([NotNull] VBAParser.DictionaryAccessExprContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        var owner = (ExpressionNode)CurrentBuilder.PopLastChildren(1)[0];
+        var id = GetCurrentNodeId();
+        var member = new SimpleNameExpressionNode(id.Add(0), context.unrestrictedIdentifier().GetSourceLocation(_rootUri), context.unrestrictedIdentifier().Name());
+        CurrentBuilder.AddChild(new DictionaryAccessExpressionNode(id, context.GetSourceLocation(_rootUri), owner, member));
+    }
+
+    public override void ExitWithDictionaryAccessExpr([NotNull] VBAParser.WithDictionaryAccessExprContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        var id = GetCurrentNodeId();
+        var member = new SimpleNameExpressionNode(id.Add(0), context.unrestrictedIdentifier().GetSourceLocation(_rootUri), context.unrestrictedIdentifier().Name());
+        CurrentBuilder.AddChild(new DictionaryAccessExpressionNode(id, context.GetSourceLocation(_rootUri), null, member));
+    }
+
+    // `indexExpr`/`whitespaceIndexExpr` (MS-VBAL §5.6.13) — identical shape, differing only by a
+    // line-continuation token that carries no AST meaning. The callee is always exactly one already-
+    // built node (whatever built it added itself, depth-first, same as any operator's operand); each
+    // argument slot — positional, named, missing, or AddressOf — likewise always contributes exactly
+    // one node (see ExitNamedArgument/ExitMissingArgument/ExitAddressOfExpression below), so the total
+    // to reclaim is always 1 + the argument count, known directly from the grammar.
+    public override void ExitIndexExpr([NotNull] VBAParser.IndexExprContext context)
+        => BuildIndexExpression(context, context.argumentList());
+    public override void ExitWhitespaceIndexExpr([NotNull] VBAParser.WhitespaceIndexExprContext context)
+        => BuildIndexExpression(context, context.argumentList());
+
+    private void BuildIndexExpression(VBABaseParserRuleContext context, VBAParser.ArgumentListContext? argumentList)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        var argumentCount = argumentList?.argument().Length ?? 0;
+        var popped = CurrentBuilder.PopLastChildren(1 + argumentCount);
+        var callee = (ExpressionNode)popped[0];
+        var arguments = popped.Skip(1).Cast<ExpressionNode>().ToImmutableArray();
+        CurrentBuilder.AddChild(new IndexExpressionNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri), callee, arguments));
+    }
+
+    // a positional argument's own `expression` (or ByVal-marked expression) flows through
+    // transparently, same as `expression`'s `lExpr` alternative — no handler needed here. Only the
+    // other three MS-VBAL §5.6.13.1 argument forms need to wrap what their own inner expression (if
+    // any) already added, so every argument slot still contributes exactly one node.
+    public override void ExitNamedArgument([NotNull] VBAParser.NamedArgumentContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        var value = (ExpressionNode)CurrentBuilder.PopLastChildren(1)[0];
+        CurrentBuilder.AddChild(new NamedArgumentNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri), context.unrestrictedIdentifier().Name(), value));
+    }
+
+    public override void ExitMissingArgument([NotNull] VBAParser.MissingArgumentContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        OnExpression(new MissingArgumentNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri)));
+    }
+
+    public override void ExitAddressOfExpression([NotNull] VBAParser.AddressOfExpressionContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        var target = (ExpressionNode)CurrentBuilder.PopLastChildren(1)[0];
+        CurrentBuilder.AddChild(new AddressOfExpressionNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri), target));
+    }
+
     public override void ExitLiteralIdentifier([NotNull] VBAParser.LiteralIdentifierContext context)
     {
         if (!IsDeclarationPassExpression)
