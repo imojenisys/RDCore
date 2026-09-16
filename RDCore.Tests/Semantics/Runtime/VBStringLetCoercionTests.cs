@@ -112,4 +112,10 @@ public sealed class VBStringLetCoercionTests : LetCoercionRuntimeSemanticsTests
             Coerce(Sut(), new VBDateValue(source.ToOADate()), VBStringType.TypeInfo),
             $"{source.ToShortDateString()} {source.ToLongTimeString()}");
     }
+
+    [TestMethod]
+    public void EmptySource_IsAZeroLengthString()
+        // fixed 2026-09-16: see VBNumericLetCoercionTests.EmptySource_IsZero for why this was
+        // unreachable (MS-VBAL 5.5.1.2.11).
+        => AssertCoercedTo<VBStringValue>(Coerce(Sut(), VBEmptyValue.Empty, VBStringType.TypeInfo), "");
 }
