@@ -685,6 +685,77 @@ End Sub
     }
 
     [TestMethod]
+    // LSet/RSet (MS-VBAL §5.4.3.6/7) reuse AssignmentStatementNode too - same `keyword target =
+    // expression` shape as Let/Set, just with string-fixing coercion semantics.
+    public void LSetStatement_IsLSetKind()
+    {
+        var result = ParseInProcedure("LSet x = \"foo\"");
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var assignment = member.Children.OfType<AssignmentStatementNode>().Single();
+
+        Assert.AreEqual(AssignmentKind.LSet, assignment.Kind);
+        Assert.AreEqual("x", ((SimpleNameExpressionNode)assignment.Target).IdentifierName);
+    }
+
+    [TestMethod]
+    public void RSetStatement_IsRSetKind()
+    {
+        var result = ParseInProcedure("RSet x = \"foo\"");
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var assignment = member.Children.OfType<AssignmentStatementNode>().Single();
+
+        Assert.AreEqual(AssignmentKind.RSet, assignment.Kind);
+        Assert.AreEqual("x", ((SimpleNameExpressionNode)assignment.Target).IdentifierName);
+    }
+
+    [TestMethod]
+    public void MidStatement_WithoutLength_CapturesTargetStartAndValue()
+    {
+        var result = ParseInProcedure("Mid(x, 1) = \"foo\"");
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var mid = member.Children.OfType<MidStatementNode>().Single();
+
+        Assert.IsFalse(mid.IsByteMode);
+        Assert.IsFalse(mid.IsStringInput);
+        Assert.AreEqual("x", ((SimpleNameExpressionNode)mid.Target).IdentifierName);
+        Assert.AreEqual(1L, IntValue(mid.Start));
+        Assert.IsNull(mid.Length);
+    }
+
+    [TestMethod]
+    public void MidStatement_WithLength_CapturesLength()
+    {
+        var result = ParseInProcedure("Mid(x, 1, 3) = \"foo\"");
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var mid = member.Children.OfType<MidStatementNode>().Single();
+
+        Assert.IsNotNull(mid.Length);
+        Assert.AreEqual(3L, IntValue(mid.Length!));
+    }
+
+    [TestMethod]
+    // IsByteMode and IsStringInput are independent flags off the same modeSpecifier - all four
+    // spellings are distinct combinations, not two shapes collapsed into one.
+    [DataRow("Mid", false, false, DisplayName = "Mid: character-indexed, Variant-coerced")]
+    [DataRow("Mid$", false, true, DisplayName = "Mid$: character-indexed, String-coerced")]
+    [DataRow("MidB", true, false, DisplayName = "MidB: byte-indexed, Variant-coerced")]
+    [DataRow("MidB$", true, true, DisplayName = "MidB$: byte-indexed, String-coerced")]
+    public void MidStatement_ModeSpecifierSpelling_SetsBothFlagsIndependently(string modeSpecifier, bool expectedIsByteMode, bool expectedIsStringInput)
+    {
+        var result = ParseInProcedure($"{modeSpecifier}(x, 1) = \"foo\"");
+
+        var member = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
+        var mid = member.Children.OfType<MidStatementNode>().Single();
+
+        Assert.AreEqual(expectedIsByteMode, mid.IsByteMode);
+        Assert.AreEqual(expectedIsStringInput, mid.IsStringInput);
+    }
+
+    [TestMethod]
     public void GoToStatement_CapturesLabelExpression()
     {
         var result = ParseInProcedure("GoTo Label1");
