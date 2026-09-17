@@ -100,6 +100,24 @@ public sealed class WorkspaceSymbolResolverTests
     }
 
     [TestMethod]
+    public void AClassModulesDefaultInterface_ExcludesOnlyPrivateMembers()
+        // Members stays the full, unfiltered declaration surface (asserted above); DefaultInterfaceMembers
+        // is the separate, precomputed default-interface view - Public/implicit/Friend, never Private -
+        // that New/As-type/Me read directly instead of rebuilding at resolution time.
+    {
+        var target = ClassModule("Widget",
+            "Public Sub PublicSub()\r\nEnd Sub\r\nFriend Sub FriendSub()\r\nEnd Sub\r\nPrivate Sub PrivateSub()\r\nEnd Sub\r\n");
+        var resolver = WorkspaceSymbolResolver.Compose(WorkspaceRoot, [target], new IntrinsicSymbolResolver());
+
+        var module = Assert.IsInstanceOfType<VBClassModuleSymbol>(
+            resolver.Resolve("Widget", ScopeKind.Global, target.Uri).Symbol);
+
+        Assert.HasCount(2, module.DefaultInterfaceMembers);
+        Assert.IsTrue(module.DefaultInterfaceMembers.Any(member => member.Name == "PublicSub"));
+        Assert.IsTrue(module.DefaultInterfaceMembers.Any(member => member.Name == "FriendSub"));
+    }
+
+    [TestMethod]
     public void AClassModulesMembers_ExcludeProcedureLocals()
         // Members is the class's own API surface - a procedure's Dim locals parent to the procedure,
         // not the module, and must not leak into it.
@@ -151,5 +169,42 @@ public sealed class WorkspaceSymbolResolverTests
             resolver.Resolve("Loose", ScopeKind.Global, target.Uri).Symbol);
 
         Assert.IsFalse(module.Directives.Explicit);
+    }
+
+    [TestMethod]
+    public void AClassModuleWithoutVB_Creatable_DefaultsToCreatable()
+        // VBE's own default: a class module that declares no Attribute VB_Creatable is creatable.
+    {
+        var target = ClassModule("Widget", "Public Total As Long\r\n");
+        var resolver = WorkspaceSymbolResolver.Compose(WorkspaceRoot, [target], new IntrinsicSymbolResolver());
+
+        var module = Assert.IsInstanceOfType<VBClassModuleSymbol>(
+            resolver.Resolve("Widget", ScopeKind.Global, target.Uri).Symbol);
+
+        Assert.IsTrue(module.GetProperty(SymbolProperties.Creatable));
+    }
+
+    [TestMethod]
+    public void AClassModuleDeclaringVB_CreatableFalse_IsNotCreatable()
+    {
+        var target = ClassModule("Widget", "Attribute VB_Creatable = False\r\nPublic Total As Long\r\n");
+        var resolver = WorkspaceSymbolResolver.Compose(WorkspaceRoot, [target], new IntrinsicSymbolResolver());
+
+        var module = Assert.IsInstanceOfType<VBClassModuleSymbol>(
+            resolver.Resolve("Widget", ScopeKind.Global, target.Uri).Symbol);
+
+        Assert.IsFalse(module.GetProperty(SymbolProperties.Creatable));
+    }
+
+    [TestMethod]
+    public void AProjectName_SynthesizesAResolvableVBProjectSymbol()
+    {
+        var target = Module("Globals", "Public Total As Long\r\n");
+        var resolver = WorkspaceSymbolResolver.Compose(WorkspaceRoot, [target], new IntrinsicSymbolResolver(), projectName: "MyProject");
+
+        var project = Assert.IsInstanceOfType<VBProjectSymbol>(
+            resolver.Resolve("MyProject", ScopeKind.Global, target.Uri).Symbol);
+
+        Assert.AreEqual("MyProject", project.Name);
     }
 }

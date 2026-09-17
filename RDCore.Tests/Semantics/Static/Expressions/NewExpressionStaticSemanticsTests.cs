@@ -25,13 +25,18 @@ public sealed class NewExpressionStaticSemanticsTests
     private static readonly SourceRange R = SourceRange.Empty;
 
     private static VBStandardModuleSymbol Module(string name) => new(Root, Root, name);
-    private static VBClassModuleSymbol ClassModule(string name) => new(Root, Root, name);
+
+    private static VBClassModuleSymbol ClassModule(string name, bool creatable = true)
+        => (VBClassModuleSymbol)new VBClassModuleSymbol(Root, Root, name).With(SymbolProperties.Creatable, creatable);
 
     private static VBModuleFieldVariableMemberSymbol Field(Uri moduleUri, string name, VBType type)
         => new(Root, moduleUri, name, ScopeKind.Module, type, R, R, AccessModifier.Implicit);
 
     private static SimpleNameExpressionNode NameOf(string identifier)
         => new(new(TestUri.TestModuleUri().AbsolutePath, [42]), TestLocations.TestLocation, identifier);
+
+    private static MemberAccessExpressionNode MemberOf(ExpressionNode owner, string memberName)
+        => new(new(TestUri.TestModuleUri().AbsolutePath, [43]), TestLocations.TestLocation, owner, NameOf(memberName));
 
     private static NewExpressionNode NewOf(ExpressionNode typeExpression)
         => new(new(TestUri.TestModuleUri().AbsolutePath, [42]), TestLocations.TestLocation, typeExpression);
@@ -57,14 +62,35 @@ public sealed class NewExpressionStaticSemanticsTests
     }
 
     [TestMethod]
-    public void ResolvesToAClassModule_CarriesItsMemberList()
-        // proves the class's Members - populated by WorkspaceSymbolResolver.Compose's second pass,
-        // not built here - flow straight through into the resulting VBClassType.
+    public void ResolvesToAClassModule_CarriesItsDefaultInterface()
+        // proves the class's DefaultInterfaceMembers - populated once by WorkspaceSymbolResolver.
+        // Compose's second pass, not built here - flow straight through into the resulting VBClassType.
     {
         var module = Module("Caller");
         var classModule = ClassModule("Collection1");
         var field = Field(classModule.Uri, "Count", VBLongType.TypeInfo);
-        var populated = classModule with { Members = [field] };
+        var populated = classModule with { Members = [field], DefaultInterfaceMembers = [field] };
+        var context = ContextAt(module.Uri, module, populated);
+
+        var result = NewExpressionStaticSemantics.Instance.DetermineDeclaredType(context, NewOf(NameOf("Collection1")));
+
+        var classType = Assert.IsInstanceOfType<VBClassType>(result.Result);
+        Assert.HasCount(1, classType.Members);
+        Assert.AreEqual("Count", classType.Members[0].Name);
+    }
+
+    [TestMethod]
+    public void DoesNotRecomputeTheDefaultInterfaceFromMembers()
+        // guards against re-introducing VBClassType.FromClassModule at resolution time: Members here
+        // holds only a field that Compose would have excluded from the default interface, yet
+        // DefaultInterfaceMembers (the precomputed value) is what must come back - proving this rule
+        // reads it directly rather than rebuilding it from Members on every New.
+    {
+        var module = Module("Caller");
+        var classModule = ClassModule("Collection1");
+        var excludedFromInterface = Field(classModule.Uri, "Internal", VBLongType.TypeInfo);
+        var precomputed = Field(classModule.Uri, "Count", VBLongType.TypeInfo);
+        var populated = classModule with { Members = [excludedFromInterface], DefaultInterfaceMembers = [precomputed] };
         var context = ContextAt(module.Uri, module, populated);
 
         var result = NewExpressionStaticSemantics.Instance.DetermineDeclaredType(context, NewOf(NameOf("Collection1")));
@@ -100,18 +126,68 @@ public sealed class NewExpressionStaticSemanticsTests
     }
 
     [TestMethod]
-    public void AQualifiedTypeExpression_SucceedsAsUnknown()
-        // New Project.ClassName isn't modeled yet (TypeExpression isn't a SimpleNameExpressionNode) -
-        // defer rather than misreport an instantiability error for a shape this rule doesn't understand.
+    public void AMalformedTypeExpressionShape_SucceedsAsUnknown()
+        // a shape this rule doesn't understand (neither a bare name nor an owner.member qualified
+        // reference) - defer rather than misreport an instantiability error.
     {
         var module = Module("Mod1");
         var context = ContextAt(module.Uri, module);
-        var notASimpleName = new LiteralExpressionNode(new(TestUri.TestModuleUri().AbsolutePath, [1]), TestLocations.TestLocation, VBUnknownType.TypeInfo.DefaultValue);
+        var notAName = new LiteralExpressionNode(new(TestUri.TestModuleUri().AbsolutePath, [1]), TestLocations.TestLocation, VBUnknownType.TypeInfo.DefaultValue);
 
-        var result = NewExpressionStaticSemantics.Instance.DetermineDeclaredType(context, NewOf(notASimpleName));
+        var result = NewExpressionStaticSemantics.Instance.DetermineDeclaredType(context, NewOf(notAName));
 
         Assert.IsTrue(result.IsSuccess);
         Assert.AreEqual(VBUnknownType.TypeInfo, result.Result);
+    }
+
+    [TestMethod]
+    public void QualifiedByTheEnclosingProjectsOwnName_ResolvesTheClass()
+        // MS-VBAL 5.6.4's type binding context: New Project.ClassName where Project is the enclosing
+        // project's own name resolves ClassName the same as the unqualified form.
+    {
+        var project = new VBProjectSymbol(Root, "MyProject");
+        var module = Module("Caller");
+        var classModule = ClassModule("Collection1");
+        var context = ContextAt(module.Uri, project, module, classModule);
+
+        var result = NewExpressionStaticSemantics.Instance.DetermineDeclaredType(
+            context, NewOf(MemberOf(NameOf("MyProject"), "Collection1")));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Description);
+        Assert.AreEqual("Collection1", Assert.IsInstanceOfType<VBClassType>(result.Result).Name);
+    }
+
+    [TestMethod]
+    public void QualifiedByAnUnknownName_IsAnError()
+        // "Foo" doesn't resolve to a VBProjectSymbol at all (no referenced-project namespace is
+        // modeled yet) - stays unbound rather than silently falling through to the bare name.
+    {
+        var project = new VBProjectSymbol(Root, "MyProject");
+        var module = Module("Caller");
+        var classModule = ClassModule("Collection1");
+        var context = ContextAt(module.Uri, project, module, classModule);
+
+        var result = NewExpressionStaticSemantics.Instance.DetermineDeclaredType(
+            context, NewOf(MemberOf(NameOf("SomeOtherProject"), "Collection1")));
+
+        Assert.IsTrue(result.IsError);
+        Assert.AreEqual(VBCompileErrorId.UserDefinedTypeNotDefined, result.ErrorInfo!.VBCompileErrorId);
+    }
+
+    [TestMethod]
+    public void ANonCreatableClass_IsATypeMismatchError()
+        // Attribute VB_Creatable = False - the workspace's own classes are always creatable in
+        // practice; this exercises the check itself ahead of referenced-library classes actually
+        // being reachable (no library symbol provider exists yet).
+    {
+        var module = Module("Caller");
+        var classModule = ClassModule("Collection1", creatable: false);
+        var context = ContextAt(module.Uri, module, classModule);
+
+        var result = NewExpressionStaticSemantics.Instance.DetermineDeclaredType(context, NewOf(NameOf("Collection1")));
+
+        Assert.IsTrue(result.IsError);
+        Assert.AreEqual(VBCompileErrorId.TypeMismatch, result.ErrorInfo!.VBCompileErrorId);
     }
 
     [TestMethod]
