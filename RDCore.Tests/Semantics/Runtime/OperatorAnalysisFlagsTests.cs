@@ -189,7 +189,7 @@ public sealed class OperatorAnalysisFlagsTests : LetCoercionRuntimeSemanticsTest
 
     [TestMethod]
     public void AStringComparison_ReportsAStringEffectiveType()
-        => Assert.AreEqual(ComparisonOperatorSemanticFlags.StringEffectiveType, Compare(new VBStringValue("a"), new VBStringValue("b")));
+        => Assert.AreEqual(ComparisonOperatorSemanticFlags.StringEffectiveType | ComparisonOperatorSemanticFlags.StringComparisonBinary, Compare(new VBStringValue("a"), new VBStringValue("b")));
 
     [TestMethod]
     public void ABooleanComparison_ReportsABooleanEffectiveType()
@@ -370,6 +370,44 @@ public sealed class OperatorAnalysisFlagsTests : LetCoercionRuntimeSemanticsTest
                 new RDCore.SDK.Model.Symbols.VBProject.VBUserDefinedTypeMemberSymbol(new Uri("file://rdcore-test"), new Uri("file://rdcore-test"), "Point",
                     RDCore.SDK.Model.Symbols.Abstract.ScopeKind.Module, RDCore.SDK.Model.Source.SourceRange.Empty, RDCore.SDK.Model.Source.SourceRange.Empty, RDCore.SDK.Model.AccessModifier.Public), [])),
             new VBStringValue("b")).HasFlag(ConcatOperationSemanticFlags.HasUserDefinedTypeOperand));
+
+    #endregion
+
+    #region operands no effective type is defined for
+
+    // an object is no operand of any operator here: there is no effective type to report, and the operation's error says why.
+
+    private static void AssertNoEffectiveType<TContext, TFlags>(IRuntimeSemantics<TContext, TFlags> op, params VBTypedValue[] operands)
+        where TContext : SemanticContext<TFlags>, new()
+        where TFlags : struct, Enum
+    {
+        var context = OperatorAnalysisHarness.Analyze(op, operands.Length == 1 ? UnaryOf("-") : ThrowawayExpression, operands);
+
+        Assert.AreEqual(default, context.Flags, op.GetType().Name);
+        Assert.HasCount(1, context.Errors, op.GetType().Name);
+    }
+
+    [TestMethod]
+    public void AnObjectOperand_LeavesAnArithmeticOperationWithNoEffectiveType()
+        => AssertNoEffectiveType(new BinaryAdditionOperatorRuntimeSemantics(Provider(), Formatter()), AnObject(), new VBLongValue(1));
+
+    [TestMethod]
+    public void AnObjectOperand_LeavesAUnaryArithmeticOperationWithNoEffectiveType()
+        => AssertNoEffectiveType(new UnaryNegationOperatorRuntimeSemantics(Provider(), Formatter()), AnObject());
+
+    [TestMethod]
+    public void AnObjectOperand_LeavesARelationalOperationWithNoEffectiveType()
+        => AssertNoEffectiveType(new BinaryEqRelationalOperatorRuntimeSemantics(Provider(), Formatter()), AnObject(), new VBStringValue("a"));
+
+    [TestMethod]
+    public void AnObjectOperand_LeavesALogicalOperationWithNoEffectiveType()
+        => AssertNoEffectiveType(new BinaryAndLogicalOperatorRuntimeSemantics(Provider(), Formatter()), AnObject(), new VBLongValue(1));
+
+    [TestMethod]
+    public void TwoStrings_AreAddedAsStrings()
+        // MS-VBAL 5.6.9.3.2: the sum of two Strings is their concatenation.
+        => Assert.AreEqual(ArithmeticOperatorSemanticFlags.VBStringEffectiveType,
+            FlagsOf(new BinaryAdditionOperatorRuntimeSemantics(Provider(), Formatter()), new VBStringValue("a"), new VBStringValue("b")));
 
     #endregion
 
