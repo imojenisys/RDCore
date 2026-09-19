@@ -88,7 +88,8 @@ public sealed class EvilTestCase2ResolverTests
         End Sub
         """;
 
-    // Interface.cls — the interface, whose members all return the interface itself.
+    // Interface.cls — the interface, whose members all return the interface itself. Neither class module is
+    // predeclared: the sample is exactly as the issue lists it (imported into a VBE by the author, 2026-09-18).
     private const string InterfaceSource = """
         Attribute VB_Name = "Interface"
         Option Explicit
@@ -441,17 +442,36 @@ public sealed class EvilTestCase2ResolverTests
     }
 
     [TestMethod]
-    [Ignore("MS-VBAL 5.6.10's default binding context has no class module (a class module is only a name through a predeclared " +
-        "instance, VB_PredeclaredId), so `Set Interface = New Interface` in a module with Option Explicit is VariableNotDefined. " +
-        "Class modules still bind as names in the default context until predeclared instances are modeled.")]
     public void Class_SetInterfaceEqualsNewInterface_IsAnUndefinedVariable()
+        // The one line of the sample that MS-VBA accepts and MS-VBAL does not (the author imported the sample into a
+        // VBE, 2026-09-18: it compiles and runs, yet the VBE cannot go to the definition of the assigned `Interface`,
+        // and Rubberduck reports an undeclared variable). Neither class module is predeclared, so no default instance
+        // variable has the name (5.2.4.1.2), and no default-context tier holds a class module (5.6.10): under
+        // Option Explicit the name is undefined. The spec is right and MS-VBA has a bug; RD-VBA follows the spec.
     {
         var (context, block) = BodyOf(ClassParse, "Interface_MyProject", MemberKind.PropertyGet);
+
+        CollectionAssert.AreEqual(
+            new[] { "Interface = New Interface  ->  ERROR VariableNotDefined := Interface" },
+            TypedTrace(context, block));
 
         var errors = StatementStaticSemanticsEvaluator.Evaluate(context, block);
 
         Assert.HasCount(1, errors);
         Assert.AreEqual(VBCompileErrorId.VariableNotDefined, errors[0].VBCompileErrorId);
+        Assert.AreEqual("Interface", errors[0].Verbose);
+    }
+
+    [TestMethod]
+    public void NeitherClassOfTheSample_HasADefaultInstance_SoNeitherNameIsAValue()
+    {
+        var resolver = Composed().Resolver;
+
+        foreach (var name in new[] { "Interface", "Class" })
+        {
+            Assert.IsTrue(resolver.ResolveValue(name, ScopeKind.Unallocated, MyModuleParse.Uri).IsUnbound, $"'{name}' from MyModule");
+            Assert.IsTrue(resolver.ResolveValue(name, ScopeKind.Unallocated, ModuleUri("Class")).IsUnbound, $"'{name}' from Class");
+        }
     }
 
     [TestMethod]
