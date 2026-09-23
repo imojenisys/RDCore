@@ -117,9 +117,9 @@ entirely: no instruction, no `ByNode` entry, no label definition — exactly as 
 never been there, the same way the real MS-VBA preprocessor logically removes it before the rest of the
 language ever sees it (**MS-VBAL §3.4.2**).
 
-**Not yet lowered.** `GoSub`/`Return`/`On…GoSub` and error-handling instructions (`On Error`, `Resume`,
-`Error`) fall through as `Simple`, same as any other statement kind this pass does not yet give a dedicated
-shape — a later slice.
+**Unrecognized statement kinds.** `GoSub`/`Return`/`On…GoSub` and error-handling statements (`On Error`,
+`Resume`, `Error`) fall through as `Simple`, the same as any statement kind this pass does not give a
+dedicated shape.
 
 ---
 ## 3.5.4 Placement and licensing
