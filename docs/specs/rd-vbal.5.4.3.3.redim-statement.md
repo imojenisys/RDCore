@@ -1,7 +1,7 @@
 # 5.4.3.3 ReDim Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3.3 ReDim Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/22b5d372-0a54-4617-9462-4934b5edc88c).
+> This section describes the implementation of [**MS-VBAL §5.4.3.3** ReDim Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/22b5d372-0a54-4617-9462-4934b5edc88c).
 
 ## Syntax
 

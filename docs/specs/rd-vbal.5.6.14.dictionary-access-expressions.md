@@ -1,7 +1,7 @@
 # 5.6.14 Dictionary Access Expressions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.14 Dictionary Access Expressions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f20c9ebc-3365-4614-9788-1cd50a504574).
+> This section describes the implementation of [**MS-VBAL §5.6.14** Dictionary Access Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f20c9ebc-3365-4614-9788-1cd50a504574).
 
 ## Syntax
 

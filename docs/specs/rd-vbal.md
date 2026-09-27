@@ -70,15 +70,15 @@ This platform specification presents a similar _technical prose_ style as its in
     - 3.5.3 [Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md)
     - 3.5.4 [Execution](rd-vbal.3.5.4.execution.md)
     - 3.5.5 [Placement and Licensing](rd-vbal.3.5.5.placement-and-licensing.md)
-- 4.0 [Program Structure and Organization](rd-vbal.4.0.program-structure.md) — *reserved*
+- 4.0 [Program Structure and Organization](rd-vbal.4.0.program-structure.md)
   - 4.1 [VBIDE Synchronization](rd-vbal.4.1.vbide-synchronization.md)
 - 5.0 [Semantics](rd-vbal.5.0.semantics.md)
   - 5.1 [Module Body Structure](rd-vbal.5.1.module-body-structure.md) — *reserved*
   - 5.2 [Module Declaration Section Structure](rd-vbal.5.2.module-declaration-section-structure.md) — *reserved*
     - 5.2.1 [Option Directives](rd-vbal.5.2.1.option-directives.md)
     - 5.2.2 [Implicit Definition Directives](rd-vbal.5.2.2.implicit-definition-directives.md)
-    - 5.2.3 [Module Declarations](rd-vbal.5.2.3.module-declarations.md) — *reserved*
-    - 5.2.4 [Class Module Declarations](rd-vbal.5.2.4.class-module-declarations.md) — *reserved*
+    - 5.2.3 [Module Declarations](rd-vbal.5.2.3.module-declarations.md)
+    - 5.2.4 [Class Module Declarations](rd-vbal.5.2.4.class-module-declarations.md)
   - 5.3 [Module Code Section Structure](rd-vbal.5.3.module-code-section-structure.md) — *reserved*
     - 5.3.1 [Procedure Declarations](rd-vbal.5.3.1.procedure-declarations.md) — *reserved*
   - 5.4 [Procedure Bodies and Statements](rd-vbal.5.4.procedure-bodies-and-statements.md)
@@ -92,7 +92,7 @@ This platform specification presents a similar _technical prose_ style as its in
     - 5.5.2 [Set-coercion](rd-vbal.5.5.2.set-coercion.md) — *reserved*
   - 5.6 [Expressions](rd-vbal.5.6.expressions.md) — *reserved*
     - 5.6.1 [Expression Classifications](rd-vbal.5.6.1.expression-classifications.md) — *reserved*
-    - 5.6.2 [Expression Evaluation](rd-vbal.5.6.2.expression-evaluation.md) — *reserved*
+    - 5.6.2 [Expression Evaluation](rd-vbal.5.6.2.expression-evaluation.md)
     - 5.6.3 [Member Resolution](rd-vbal.5.6.3.member-resolution.md) — *reserved*
     - 5.6.4 [Expression Binding Contexts](rd-vbal.5.6.4.expression-binding-contexts.md) — *reserved*
     - 5.6.5 [Literal Expressions](rd-vbal.5.6.5.literal-expressions.md) — *reserved*
@@ -103,10 +103,10 @@ This platform specification presents a similar _technical prose_ style as its in
     - 5.6.10 [Simple Name Expressions](rd-vbal.5.6.10.simple-name-expressions.md)
     - 5.6.11 [Instance Expressions](rd-vbal.5.6.11.instance-expressions.md)
     - 5.6.12 [Member Access Expressions](rd-vbal.5.6.12.member-access-expressions.md)
-    - 5.6.13 [Index Expressions](rd-vbal.5.6.13.index-expressions.md) — *reserved*
+    - 5.6.13 [Index Expressions](rd-vbal.5.6.13.index-expressions.md)
     - 5.6.14 [Dictionary Access Expressions](rd-vbal.5.6.14.dictionary-access-expressions.md)
     - 5.6.15 [With Expressions](rd-vbal.5.6.15.with-expressions.md)
-    - 5.6.16 [Constrained Expressions](rd-vbal.5.6.16.constrained-expressions.md) — *reserved*
+    - 5.6.16 [Constrained Expressions](rd-vbal.5.6.16.constrained-expressions.md)
 - 6.0 [Standard Library](rd-vbal.6.0.standard-library.md)
   - 6.1 [VBA Project](rd-vbal.6.1.vba-project.md)
     - 6.1.1 [Predefined Enums](rd-vbal.6.1.1.predefined-enums.md)

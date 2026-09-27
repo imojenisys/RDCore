@@ -1,7 +1,7 @@
 # 5.5.2.2 Runtime semantics
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.2.2 Runtime semantics**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/bdd2d85a-3236-4381-b289-002bf0bf8ffd).
+> This section describes the implementation of [**MS-VBAL §5.5.2.2** Runtime semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/bdd2d85a-3236-4381-b289-002bf0bf8ffd).
 
 Set-coercion is evaluated by `SetCoercionRuntimeSemantics`, through
 [ISetCoercionRuntimeSemantics](../api/RDCore.SDK.Runtime.Abstract.ISetCoercionRuntimeSemantics.html).
@@ -19,7 +19,7 @@ by contrast, dispatches to a per-destination-type strategy; see
 ## 5.5.2.2.1 Set-coercion to and from a class or Object or Nothing
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.2.2.1 Set-coercion to and from a class or Object or Nothing**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/83404cf0-9a0f-49f5-93bd-eb4c473492c5).
+> This section describes the implementation of [**MS-VBAL §5.5.2.2.1** Set-coercion to and from a class or Object or Nothing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/83404cf0-9a0f-49f5-93bd-eb4c473492c5).
 
 `SetCoercionRuntimeSemantics` unwraps a `Variant` that wraps an object before its
 [VBObjectValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBObjectValue.html) pattern-match. The unwrap is recursive,
@@ -32,7 +32,7 @@ because a `Variant` may wrap another `Variant`.
 
 ## 5.5.2.2.2 Set-coercion to and from non-object types
 
-This section corresponds to [**MS-VBAL §5.5.2.2.2 Set-coercion to and from non-object types**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9a2eb890-a7c8-4f10-b86c-3ec77a564294).
+This section corresponds to [**MS-VBAL §5.5.2.2.2** Set-coercion to and from non-object types](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9a2eb890-a7c8-4f10-b86c-3ec77a564294).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

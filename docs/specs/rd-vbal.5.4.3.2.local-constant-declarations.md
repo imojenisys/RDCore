@@ -1,7 +1,7 @@
 # 5.4.3.2 Local Constant Declarations
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3.2 Local Constant Declarations**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/90382d70-261f-468f-92de-0068235c012b).
+> This section describes the implementation of [**MS-VBAL §5.4.3.2** Local Constant Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/90382d70-261f-468f-92de-0068235c012b).
 
 ## Syntax
 

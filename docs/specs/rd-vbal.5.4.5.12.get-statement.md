@@ -1,7 +1,7 @@
 # 5.4.5.12 Get Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.12 Get Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/60c6f92b-d1fc-484b-91d1-6ba5246334b4).
+> This section describes the implementation of [**MS-VBAL §5.4.5.12** Get Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/60c6f92b-d1fc-484b-91d1-6ba5246334b4).
 
 ## Syntax
 
@@ -23,7 +23,7 @@ target, as **MS-VBAL §5.4.5.12** specifies.
 ### Record Format
 
 `Get` reads the record format `Put` writes:
-[**MS-VBAL §5.4.5.11**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/46eeacb8-7a06-4ec8-9736-eea42de4eeca)'s
+[**MS-VBAL §5.4.5.11** Put Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/46eeacb8-7a06-4ec8-9736-eea42de4eeca)'s
 Variant type descriptors and binary widths. The format is a wire format rather than a behaviour, and follows
 MS-VBA's so that a file RD-VBA writes is a file MS-VBA reads. See
 [**RD-VBAL §5.4.5.11** Put Statement](rd-vbal.5.4.5.11.put-statement.md) for the format.

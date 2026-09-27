@@ -1,7 +1,7 @@
 # 5.4.2.7 Exit Do Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.7 Exit Do Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f672b312-fe2a-4f4d-9ad4-42729b110fe7).
+> This section describes the implementation of [**MS-VBAL §5.4.2.7** Exit Do Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f672b312-fe2a-4f4d-9ad4-42729b110fe7).
 
 ## Syntax
 

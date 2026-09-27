@@ -1,7 +1,7 @@
 # 5.4.5.6 Line Input Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.6 Line Input Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/dab5496c-a151-4d69-adc4-bb5effc066e9).
+> This section describes the implementation of [**MS-VBAL §5.4.5.6** Line Input Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/dab5496c-a151-4d69-adc4-bb5effc066e9).
 
 ## Syntax
 

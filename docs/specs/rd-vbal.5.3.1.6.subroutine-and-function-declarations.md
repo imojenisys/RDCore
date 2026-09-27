@@ -1,7 +1,7 @@
 # 5.3.1.6 Subroutine and Function Declarations
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.3.1.6 Subroutine and Function Declarations**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/b9466587-f1b4-47f5-b34e-3af3398063f4).
+> This section describes the implementation of [**MS-VBAL §5.3.1.6** Subroutine and Function Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/b9466587-f1b4-47f5-b34e-3af3398063f4).
 
 ## Static Semantics
 
@@ -15,7 +15,7 @@ A `Sub`'s own symbol already carries `VBVoidType` as its type. See
 ## Function Result Variable
 
 `Function` and `Property Get` return values (the function result variable) follow
-[**MS-VBAL §5.3.1 Procedure Declarations**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/227005ad-78fb-479f-8145-fa3b8b610386).
+[**MS-VBAL §5.3.1** Procedure Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/227005ad-78fb-479f-8145-fa3b8b610386).
 
 - Each invocation of a `Function` or `Property Get` gets a fresh function result variable.
 - The function result variable is modeled as

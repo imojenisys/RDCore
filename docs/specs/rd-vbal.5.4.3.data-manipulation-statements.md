@@ -1,7 +1,7 @@
 # 5.4.3 Data Manipulation Statements
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3 Data Manipulation Statements**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ee62ca0d-bf15-4679-8d11-6e411b37901b).
+> This section describes the implementation of [**MS-VBAL §5.4.3** Data Manipulation Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ee62ca0d-bf15-4679-8d11-6e411b37901b).
 
 Each data manipulation statement is listed below with the node the parser produces for it, the instruction kind
 it lowers to, and the RD-VBAL page that describes its implementation. The node catalog is in

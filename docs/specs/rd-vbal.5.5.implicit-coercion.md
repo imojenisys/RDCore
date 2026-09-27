@@ -1,7 +1,7 @@
 # 5.5 Implicit coercion
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5 Implicit coercion**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/72801139-6d53-4492-ad30-4d4363d6c6f9).
+> This section describes the implementation of [**MS-VBAL §5.5** Implicit coercion](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/72801139-6d53-4492-ad30-4d4363d6c6f9).
 
 **RDCore** implements the MS-VBAL type-coercion rules through _pattern-matching_ against its type system.
 

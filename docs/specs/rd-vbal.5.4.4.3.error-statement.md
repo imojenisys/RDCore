@@ -1,7 +1,7 @@
 # 5.4.4.3 Error Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.4.3 Error Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/70ca285b-7f18-4f0a-b0b9-7edcddf30ec4).
+> This section describes the implementation of [**MS-VBAL §5.4.4.3** Error Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/70ca285b-7f18-4f0a-b0b9-7edcddf30ec4).
 
 ## Syntax
 

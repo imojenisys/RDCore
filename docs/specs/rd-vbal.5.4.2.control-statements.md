@@ -1,7 +1,7 @@
 # 5.4.2 Control Statements
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2 Control Statements**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/70d423da-18b4-42d2-9897-9f0b8100786b).
+> This section describes the implementation of [**MS-VBAL §5.4.2** Control Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/70d423da-18b4-42d2-9897-9f0b8100786b).
 
 A control statement's effect on the flow of execution is carried by the instruction it lowers to. A statement's own
 runtime semantics stay pure: they evaluate operands and return a result, and never mutate control state. The

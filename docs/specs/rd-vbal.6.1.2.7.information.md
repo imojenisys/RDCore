@@ -1,7 +1,7 @@
 # 6.1.2.7 Information
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.7 Information**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fd00fc8f-ea7d-4c3b-b7a5-5e55377551e4).
+> This section describes the implementation of [**MS-VBAL §6.1.2.7** Information](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fd00fc8f-ea7d-4c3b-b7a5-5e55377551e4).
 
 The `Information` module is represented in the SDK by the interface
 [IStdInformationModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInformationModule.html).
@@ -18,7 +18,7 @@ off those declarations ([**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standar
 ## 6.1.2.7.1 Public Functions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.7.1 Public Functions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f0bab2d6-d9af-4bbc-9cad-18011c755afb).
+> This section describes the implementation of [**MS-VBAL §6.1.2.7.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f0bab2d6-d9af-4bbc-9cad-18011c755afb).
 
 `Erl` and `Err` are not members MS-VBAL lists under this module. They are numbered after the last MS-VBAL member of
 this section.

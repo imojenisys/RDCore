@@ -1,6 +1,6 @@
 # 5.3 Module Code Section Structure
 
-This section corresponds to [**MS-VBAL §5.3 Module Code Section Structure**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/10d7f639-e0e0-4d05-be3a-cff2e542cd35).
+This section corresponds to [**MS-VBAL §5.3** Module Code Section Structure](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/10d7f639-e0e0-4d05-be3a-cff2e542cd35).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

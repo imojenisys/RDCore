@@ -1,7 +1,7 @@
 # 5.4.5.10 Input Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.10 Input Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f41b8636-a3f5-4501-b1a9-78058017c232).
+> This section describes the implementation of [**MS-VBAL §5.4.5.10** Input Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f41b8636-a3f5-4501-b1a9-78058017c232).
 
 ## Syntax
 

@@ -1,7 +1,7 @@
 # 5.2.1 Option Directives
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.1 Option Directives**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/049088bd-acb7-4e33-a875-ab17a891ccda).
+> This section describes the implementation of [**MS-VBAL §5.2.1** Option Directives](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/049088bd-acb7-4e33-a875-ab17a891ccda).
 
 _Directives_ include the `Option` statements
 ([**RD-VBAL §3.1** Attributes and Directives](rd-vbal.3.1.attributes-directives.md)):
@@ -30,7 +30,7 @@ A module's [LexicalScope](../api/RDCore.SDK.Model.Symbols.LexicalScope.html) car
 ## 5.2.1.1 Option Compare Directive
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.1.1 Option Compare Directive**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/801de7da-232b-46dd-9695-21167620e078).
+> This section describes the implementation of [**MS-VBAL §5.2.1.1** Option Compare Directive](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/801de7da-232b-46dd-9695-21167620e078).
 
 The `Option Compare` directive determines the comparison mode for string comparisons: `Text` or `Binary`. The
 comparison mode may instead be a _host-defined token_, which dynamically configures the comparison mode.
@@ -39,7 +39,7 @@ comparison mode may instead be a _host-defined token_, which dynamically configu
 ## 5.2.1.2 Option Base Directive
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.1.2 Option Base Directive**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a4d229ea-e66e-4e3d-bd17-7d7cf2ac9290).
+> This section describes the implementation of [**MS-VBAL §5.2.1.2** Option Base Directive](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a4d229ea-e66e-4e3d-bd17-7d7cf2ac9290).
 
 The `Option Base` directive determines the base (0 or 1) of implicitly-sized arrays.
 
@@ -59,7 +59,7 @@ the array value, not of the declaration pass
 ## 5.2.1.3 Option Explicit Directive
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.1.3 Option Explicit Directive**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e9253cf2-5139-4abd-8c1d-eaf390805cb8).
+> This section describes the implementation of [**MS-VBAL §5.2.1.3** Option Explicit Directive](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e9253cf2-5139-4abd-8c1d-eaf390805cb8).
 
 Under the `Option Explicit` directive, implicit declarations become compile-time errors.
 
@@ -80,7 +80,7 @@ An implicit declaration by an unqualified `ReDim` target is legal under `Option 
 ## 5.2.1.4 Option Private Directive
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.1.4 Option Private Directive**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/41e5d997-61bf-4b9b-b62d-661a33578927).
+> This section describes the implementation of [**MS-VBAL §5.2.1.4** Option Private Directive](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/41e5d997-61bf-4b9b-b62d-661a33578927).
 
 The `Option Private Module` directive determines the _accessibility_ of a module.
 

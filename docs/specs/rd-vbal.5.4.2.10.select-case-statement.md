@@ -1,7 +1,7 @@
 # 5.4.2.10 Select Case Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.10 Select Case Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/94a2f0fe-bdbe-4f5d-b3f4-bbf339b0ac65).
+> This section describes the implementation of [**MS-VBAL §5.4.2.10** Select Case Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/94a2f0fe-bdbe-4f5d-b3f4-bbf339b0ac65).
 
 ## Syntax
 

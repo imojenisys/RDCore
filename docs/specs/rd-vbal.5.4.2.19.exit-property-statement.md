@@ -1,7 +1,7 @@
 # 5.4.2.19 Exit Property Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.19 Exit Property Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/2c254f33-48b5-40b7-9dc7-4943313a1742).
+> This section describes the implementation of [**MS-VBAL §5.4.2.19** Exit Property Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/2c254f33-48b5-40b7-9dc7-4943313a1742).
 
 ## Syntax
 

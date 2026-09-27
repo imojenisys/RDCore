@@ -1,7 +1,7 @@
 # 5.4.2.2 While Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.2 While Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4f2f6c46-3c09-4a6d-905b-fe6658405b6f).
+> This section describes the implementation of [**MS-VBAL §5.4.2.2** While Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4f2f6c46-3c09-4a6d-905b-fe6658405b6f).
 
 ## Syntax
 
@@ -29,7 +29,7 @@ dispatched exactly like an `If` header ([**RD-VBAL §5.4.2.8** If Statement](rd-
 
 1. Evaluate the condition. It is a Boolean condition, evaluated by the same `ConditionEvaluator` an `If` uses, and
    forced to `Boolean`
-   ([**MS-VBAL §5.5.1.2.2**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
+   ([**MS-VBAL §5.5.1.2.2** Let-coercion to and from Boolean](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
 2. When the condition is `True`, fall through into the body. The body's synthesized `Jump` returns to the header.
 3. When the condition is `False`, go to the header's `Else` offset, right past the loop.
 

@@ -1,7 +1,7 @@
 # 5.4.5.2 Close and Reset Statements
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.2 Close and Reset Statements**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/73ef1ac2-4da7-4cda-b2a3-5984a8649ded).
+> This section describes the implementation of [**MS-VBAL §5.4.5.2** Close and Reset Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/73ef1ac2-4da7-4cda-b2a3-5984a8649ded).
 
 ## Syntax
 

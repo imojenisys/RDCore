@@ -1,7 +1,7 @@
 # 5.6.13 Index Expressions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.13 Index Expressions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/551030b2-72a4-4c95-9cb0-fb8f8c8774b4).
+> This section describes the implementation of [**MS-VBAL §5.6.13** Index Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/551030b2-72a4-4c95-9cb0-fb8f8c8774b4).
 
 ## Syntax
 
@@ -41,7 +41,7 @@ an array the same as a declared array. It unwraps a
 
 ## 5.6.13.1 Argument Lists
 
-This section corresponds to [**MS-VBAL §5.6.13.1 Argument Lists**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5b35d806-1305-4427-a120-d25a71c45c02).
+This section corresponds to [**MS-VBAL §5.6.13.1** Argument Lists](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5b35d806-1305-4427-a120-d25a71c45c02).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
@@ -51,7 +51,7 @@ See [**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.
 
 ## 5.6.13.2 Argument List Queues
 
-This section corresponds to [**MS-VBAL §5.6.13.2 Argument List Queues**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9a66cbdb-d2af-40e4-b6f2-b63bcde2a1f3).
+This section corresponds to [**MS-VBAL §5.6.13.2** Argument List Queues](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9a66cbdb-d2af-40e4-b6f2-b63bcde2a1f3).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

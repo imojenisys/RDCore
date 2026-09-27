@@ -1,7 +1,7 @@
 # 5.4.5.7 Width Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.7 Width Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e427933b-d398-424b-9dbc-8cb91dece4cc).
+> This section describes the implementation of [**MS-VBAL §5.4.5.7** Width Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e427933b-d398-424b-9dbc-8cb91dece4cc).
 
 ## Syntax
 

@@ -1,7 +1,7 @@
 # 5.6.9.5 Relational Operators
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.9.5 Relational Operators**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f8acd631-55c1-4199-bc1e-022aaab6d9c8).
+> This section describes the implementation of [**MS-VBAL §5.6.9.5** Relational Operators](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f8acd631-55c1-4199-bc1e-022aaab6d9c8).
 
 ## Runtime Semantics
 
@@ -58,42 +58,42 @@ String/Numeric case.
 
 ## 5.6.9.5.1 = Operator
 
-This section corresponds to [**MS-VBAL §5.6.9.5.1 = Operator**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/34660fe0-2ce9-4526-b0c3-00613c9fa19e).
+This section corresponds to [**MS-VBAL §5.6.9.5.1** = Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/34660fe0-2ce9-4526-b0c3-00613c9fa19e).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
 
 ## 5.6.9.5.2 <> Operator
 
-This section corresponds to [**MS-VBAL §5.6.9.5.2 <> Operator**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a5a4bd2c-a89d-4e88-a634-40a8bca8d458).
+This section corresponds to [**MS-VBAL §5.6.9.5.2** <> Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a5a4bd2c-a89d-4e88-a634-40a8bca8d458).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
 
 ## 5.6.9.5.3 < Operator
 
-This section corresponds to [**MS-VBAL §5.6.9.5.3 < Operator**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6b25b2c5-a96f-4e20-b77e-d328a13c66cd).
+This section corresponds to [**MS-VBAL §5.6.9.5.3** < Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6b25b2c5-a96f-4e20-b77e-d328a13c66cd).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
 
 ## 5.6.9.5.4 > Operator
 
-This section corresponds to [**MS-VBAL §5.6.9.5.4 > Operator**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c648bb41-d1b0-4462-9da1-a37c251521a4).
+This section corresponds to [**MS-VBAL §5.6.9.5.4** > Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c648bb41-d1b0-4462-9da1-a37c251521a4).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
 
 ## 5.6.9.5.5 <= Operator
 
-This section corresponds to [**MS-VBAL §5.6.9.5.5 <= Operator**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/66dfebc2-a5e1-43fd-965f-75334e04f5ec).
+This section corresponds to [**MS-VBAL §5.6.9.5.5** <= Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/66dfebc2-a5e1-43fd-965f-75334e04f5ec).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
 
 ## 5.6.9.5.6 >= Operator
 
-This section corresponds to [**MS-VBAL §5.6.9.5.6 >= Operator**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/0720f474-42ca-429c-ac1d-09f2453128a6).
+This section corresponds to [**MS-VBAL §5.6.9.5.6** >= Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/0720f474-42ca-429c-ac1d-09f2453128a6).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

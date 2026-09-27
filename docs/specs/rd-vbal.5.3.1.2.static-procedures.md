@@ -1,7 +1,7 @@
 # 5.3.1.2 Static Procedures
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.3.1.2 Static Procedures**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/125068ec-a57e-4296-843b-5d009169de2f).
+> This section describes the implementation of [**MS-VBAL §5.3.1.2** Static Procedures](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/125068ec-a57e-4296-843b-5d009169de2f).
 
 In a procedure declared `Static`, every one of its local variables has module extent, not just the ones
 declared with an explicit `Static` keyword.

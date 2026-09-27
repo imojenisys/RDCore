@@ -1,7 +1,7 @@
 # 5.4.2.18 Exit Function Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.18 Exit Function Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d70e6f6f-b830-4be2-acce-aa491c8acb5a).
+> This section describes the implementation of [**MS-VBAL §5.4.2.18** Exit Function Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d70e6f6f-b830-4be2-acce-aa491c8acb5a).
 
 ## Syntax
 

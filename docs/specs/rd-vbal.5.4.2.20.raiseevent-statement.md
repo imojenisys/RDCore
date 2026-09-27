@@ -1,7 +1,7 @@
 # 5.4.2.20 RaiseEvent Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.20 RaiseEvent Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3795fff1-ce8a-40f7-8d2c-b1e2c1a251c4).
+> This section describes the implementation of [**MS-VBAL §5.4.2.20** RaiseEvent Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3795fff1-ce8a-40f7-8d2c-b1e2c1a251c4).
 
 ## Syntax
 

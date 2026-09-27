@@ -1,7 +1,7 @@
 # 5.4.2.4 For Each Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.4 For Each Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/b132463a-fd25-4143-8fc7-a443930e0651).
+> This section describes the implementation of [**MS-VBAL §5.4.2.4** For Each Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/b132463a-fd25-4143-8fc7-a443930e0651).
 
 ## Syntax
 
@@ -83,7 +83,7 @@ are the specified outcome, not a missing feature. The error identifiers are list
 ## 5.4.2.4.1 Array Enumeration Order
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.4.1 Array Enumeration Order**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ce63be3a-aa7a-4f5f-bcf8-a2d266bf7cfc).
+> This section describes the implementation of [**MS-VBAL §5.4.2.4.1** Array Enumeration Order](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ce63be3a-aa7a-4f5f-bcf8-a2d266bf7cfc).
 
 An array's storage is column-major, which is the traversal order **MS-VBAL §5.4.2.4.1** mandates. The element block
 of an array value is addressed in column-major order: the first subscript varies fastest, matching an OLE

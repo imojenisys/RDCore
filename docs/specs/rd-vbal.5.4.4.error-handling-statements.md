@@ -1,7 +1,7 @@
 # 5.4.4 Error Handling Statements
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.4 Error Handling Statements**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/47b18690-3175-44d9-9de1-31629f0aacc7).
+> This section describes the implementation of [**MS-VBAL §5.4.4** Error Handling Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/47b18690-3175-44d9-9de1-31629f0aacc7).
 
 Each error-handling statement is listed below with the node the parser produces for it, the instruction kind it
 lowers to, and the RD-VBAL page that describes its implementation.

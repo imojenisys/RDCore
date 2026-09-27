@@ -10,7 +10,7 @@ Like an _object value_, the underlying value of a UDT value is a unique addressa
 
 A UDT has location identity. A UDT is never copied by value at the level of its underlying value (its addressable ID).
 
-> 👉 UDT values **MUST** be passed by reference (`ByRef`). See [**RD-VBAL §5.3.1.5** Parameter Lists](rd-vbal.5.3.1.5.parameter-lists.md) and [**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md).
+> 👉 UDT values **must** be passed by reference (`ByRef`). See [**RD-VBAL §5.3.1.5** Parameter Lists](rd-vbal.5.3.1.5.parameter-lists.md) and [**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md).
 
 ## Field Store
 

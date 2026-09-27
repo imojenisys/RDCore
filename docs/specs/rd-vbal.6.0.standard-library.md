@@ -1,7 +1,7 @@
 # 6.0 Standard Library
 
 This chapter describes the **RD-VBA** implementation of the VBA standard library,
-[**MS-VBAL §6 VBA Standard Library**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c645c903-9bd4-4849-8735-3136e867536a).
+[**MS-VBAL §6** VBA Standard Library](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c645c903-9bd4-4849-8735-3136e867536a).
 
 The `VBA` project consists of a set of classes, functions, `Enum` types and constants that together form VBA's
 _standard library_ ([**RD-VBAL §6.1** VBA Project](rd-vbal.6.1.vba-project.md)).

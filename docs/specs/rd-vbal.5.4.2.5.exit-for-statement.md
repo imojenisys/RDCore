@@ -1,7 +1,7 @@
 # 5.4.2.5 Exit For Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.5 Exit For Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/aa978e90-6240-454c-a7af-0a3e80779dc7).
+> This section describes the implementation of [**MS-VBAL §5.4.2.5** Exit For Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/aa978e90-6240-454c-a7af-0a3e80779dc7).
 
 ## Syntax
 

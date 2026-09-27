@@ -1,7 +1,7 @@
 # 5.4.3.8 Let Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3.8 Let Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ce2a98d4-2625-4cb7-982c-5c58e568cd18).
+> This section describes the implementation of [**MS-VBAL §5.4.3.8** Let Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ce2a98d4-2625-4cb7-982c-5c58e568cd18).
 
 ## Syntax
 

@@ -1,7 +1,7 @@
 # 5.4.5.4 Lock Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.4 Lock Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5ff8a0e5-4e44-45a3-92a6-3c77cea3e3c5).
+> This section describes the implementation of [**MS-VBAL §5.4.5.4** Lock Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5ff8a0e5-4e44-45a3-92a6-3c77cea3e3c5).
 
 ## Syntax
 

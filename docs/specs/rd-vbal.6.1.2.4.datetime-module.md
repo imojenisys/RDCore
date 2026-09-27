@@ -1,7 +1,7 @@
 # 6.1.2.4 DateTime Module
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.4 DateTime Module**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ccbe147a-4f63-4f72-8404-b4e5b1ad4427).
+> This section describes the implementation of [**MS-VBAL §6.1.2.4** DateTime Module](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ccbe147a-4f63-4f72-8404-b4e5b1ad4427).
 
 The `DateTime` module is represented in the SDK by the interface
 [IStdDateTimeModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdDateTimeModule.html).
@@ -10,7 +10,7 @@ The `DateTime` module is represented in the SDK by the interface
 ## 6.1.2.4.1 Public Functions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.4.1 Public Functions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e6a03763-6801-405f-a55c-9b3c9f27bc7a).
+> This section describes the implementation of [**MS-VBAL §6.1.2.4.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e6a03763-6801-405f-a55c-9b3c9f27bc7a).
 
 |§|Member|Notes|
 |---|---|---|
@@ -33,7 +33,7 @@ The `DateTime` module is represented in the SDK by the interface
 ## 6.1.2.4.2 Public Properties
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.4.2 Public Properties**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f934f430-8fe8-4ded-a778-aadbca928b31).
+> This section describes the implementation of [**MS-VBAL §6.1.2.4.2** Public Properties](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f934f430-8fe8-4ded-a778-aadbca928b31).
 
 |§|Member|Notes|
 |---|---|---|

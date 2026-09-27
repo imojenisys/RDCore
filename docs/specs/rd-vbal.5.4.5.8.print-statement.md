@@ -1,7 +1,7 @@
 # 5.4.5.8 Print Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.8 Print Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6f427c3d-2471-4cd8-8cae-2e2951918b51).
+> This section describes the implementation of [**MS-VBAL §5.4.5.8** Print Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6f427c3d-2471-4cd8-8cae-2e2951918b51).
 
 ## Syntax
 
@@ -37,7 +37,7 @@ The output list these nodes carry is described in **5.4.5.8.1 Output Lists** bel
 ## 5.4.5.8.1 Output Lists
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.8.1 Output Lists**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/630ce2fe-abf1-4aae-a126-1c6567ac2a41).
+> This section describes the implementation of [**MS-VBAL §5.4.5.8.1** Output Lists](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/630ce2fe-abf1-4aae-a126-1c6567ac2a41).
 
 `PrintStatementNode` and `ObjectPrintExpressionNode` share one output-list shape:
 

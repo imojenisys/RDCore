@@ -1,7 +1,7 @@
 # 5.5.1.2 Runtime semantics
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2 Runtime semantics**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3e5fb49f-eb20-4562-a6bd-4a26dc5fa733).
+> This section describes the implementation of [**MS-VBAL §5.5.1.2** Runtime semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3e5fb49f-eb20-4562-a6bd-4a26dc5fa733).
 
 _Let-coercion_ is the implicit conversion applied to an operand, or to an assignment RHS, so that its value fits a
 required _destination declared type_.
@@ -80,7 +80,7 @@ source passes its own expression (§5.5.1.2.2). The operator runtime semantics' 
 ## 5.5.1.2.1 Let-coercion between numeric types
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2.1 Let-coercion between numeric types**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/56fb78c3-a0ea-4bf0-8ee4-eb5f89bda4f7).
+> This section describes the implementation of [**MS-VBAL §5.5.1.2.1** Let-coercion between numeric types](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/56fb78c3-a0ea-4bf0-8ee4-eb5f89bda4f7).
 
 One let-coercion strategy keyed on [VBNumericType](../api/RDCore.SDK.Model.Types.Abstract.VBNumericType.html),
 `VBNumericLetCoercionTypeRuntimeSemantics`, serves every concrete numeric type.
@@ -121,7 +121,7 @@ this section ([**RD-VBAL §5.0** Semantics](rd-vbal.5.0.semantics.md)).
 ### 5.5.1.2.1.1 Banker's rounding
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2.1.1 Banker's rounding**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/98152b5a-4d86-4acb-b875-66cb1f49433e).
+> This section describes the implementation of [**MS-VBAL §5.5.1.2.1.1** Banker's rounding](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/98152b5a-4d86-4acb-b875-66cb1f49433e).
 
 The rounding used when narrowing a floating-point or fixed-point value to an integral type is round-half-to-even
 ("banker's rounding").
@@ -130,7 +130,7 @@ The rounding used when narrowing a floating-point or fixed-point value to an int
 ## 5.5.1.2.2 Let-coercion to and from Boolean
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2.2 Let-coercion to and from Boolean**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9).
+> This section describes the implementation of [**MS-VBAL §5.5.1.2.2** Let-coercion to and from Boolean](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9).
 
 A `Date` source let-coerced to a `Boolean` destination reports `ConversionSemanticFlags.DateSerial`.
 `VBBooleanLetCoercionRuntimeSemantics` reuses `VBNumericLetCoercionTypeRuntimeSemantics.DateSerialFlagsOf` for it
@@ -144,7 +144,7 @@ in for an operator that is not present in source
 ## 5.5.1.2.3 Let-coercion to and from Date
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2.3 Let-coercion to and from Date**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/8a4a9201-4e7f-4856-b9fc-5927d2879723).
+> This section describes the implementation of [**MS-VBAL §5.5.1.2.3** Let-coercion to and from Date](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/8a4a9201-4e7f-4856-b9fc-5927d2879723).
 
 `VBDateLetCoercionRuntimeSemantics` runs only when `Date` is the destination type.
 
@@ -155,7 +155,7 @@ in for an operator that is not present in source
 ## 5.5.1.2.4 Let-coercion to and from String
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2.4 Let-coercion to and from String**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/00113388-401b-41c2-8107-dc3fc0485554).
+> This section describes the implementation of [**MS-VBAL §5.5.1.2.4** Let-coercion to and from String](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/00113388-401b-41c2-8107-dc3fc0485554).
 
 Floating-point value types define a `SignificantIntegerDigits`. It is used to represent floating-point values correctly
 as [VBStringValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBStringValue.html) in conversions and coercions to
@@ -169,7 +169,7 @@ as [VBStringValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBStringValue.html) 
 
 ## 5.5.1.2.5 Let-coercion to String \* length (fixed-length strings)
 
-This section corresponds to [**MS-VBAL §5.5.1.2.5 Let-coercion to String \* length (fixed-length strings)**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/442a2cdd-118a-4c0b-99d1-9b494633fabb).
+This section corresponds to [**MS-VBAL §5.5.1.2.5** Let-coercion to String * length (fixed-length strings)](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/442a2cdd-118a-4c0b-99d1-9b494633fabb).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
@@ -178,7 +178,7 @@ This section corresponds to [**MS-VBAL §5.5.1.2.5 Let-coercion to String \* len
 ## 5.5.1.2.6 Let-coercion to and from resizable Byte()
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2.6 Let-coercion to and from resizable Byte()**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/acf31907-ebaf-4830-9892-bfabe6fe1416).
+> This section describes the implementation of [**MS-VBAL §5.5.1.2.6** Let-coercion to and from resizable Byte()](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/acf31907-ebaf-4830-9892-bfabe6fe1416).
 
 [VBResizableByteArrayType](../api/RDCore.SDK.Model.Types.VBResizableByteArrayType.html) has specific let-coercion
 semantics attached, allowing implicit conversion to and from
@@ -188,7 +188,7 @@ semantics attached, allowing implicit conversion to and from
 
 ## 5.5.1.2.7 Let-coercion to and from non-Byte arrays
 
-This section corresponds to [**MS-VBAL §5.5.1.2.7 Let-coercion to and from non-Byte arrays**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/38315eed-8ea8-4e2a-b91c-25a96910407a).
+This section corresponds to [**MS-VBAL §5.5.1.2.7** Let-coercion to and from non-Byte arrays](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/38315eed-8ea8-4e2a-b91c-25a96910407a).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
@@ -196,7 +196,7 @@ This section corresponds to [**MS-VBAL §5.5.1.2.7 Let-coercion to and from non-
 
 ## 5.5.1.2.8 Let-coercion to and from a UDT
 
-This section corresponds to [**MS-VBAL §5.5.1.2.8 Let-coercion to and from a UDT**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d5727cbc-068f-45f0-8119-7e7f13db9d54).
+This section corresponds to [**MS-VBAL §5.5.1.2.8** Let-coercion to and from a UDT](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d5727cbc-068f-45f0-8119-7e7f13db9d54).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
@@ -204,7 +204,7 @@ This section corresponds to [**MS-VBAL §5.5.1.2.8 Let-coercion to and from a UD
 
 ## 5.5.1.2.9 Let-coercion to and from Error
 
-This section corresponds to [**MS-VBAL §5.5.1.2.9 Let-coercion to and from Error**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a7ac9943-2198-46cf-9fb6-a3dd5e029e44).
+This section corresponds to [**MS-VBAL §5.5.1.2.9** Let-coercion to and from Error](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a7ac9943-2198-46cf-9fb6-a3dd5e029e44).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
@@ -212,7 +212,7 @@ This section corresponds to [**MS-VBAL §5.5.1.2.9 Let-coercion to and from Erro
 
 ## 5.5.1.2.10 Let-coercion from Null
 
-This section corresponds to [**MS-VBAL §5.5.1.2.10 Let-coercion from Null**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/deab39e3-8dbf-4bbe-b3f5-5aa12c542fe6).
+This section corresponds to [**MS-VBAL §5.5.1.2.10** Let-coercion from Null](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/deab39e3-8dbf-4bbe-b3f5-5aa12c542fe6).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
@@ -220,7 +220,7 @@ This section corresponds to [**MS-VBAL §5.5.1.2.10 Let-coercion from Null**](ht
 
 ## 5.5.1.2.11 Let-coercion from Empty
 
-This section corresponds to [**MS-VBAL §5.5.1.2.11 Let-coercion from Empty**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e2637723-3010-449d-bead-9f17533dc105).
+This section corresponds to [**MS-VBAL §5.5.1.2.11** Let-coercion from Empty](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e2637723-3010-449d-bead-9f17533dc105).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
@@ -229,7 +229,7 @@ This section corresponds to [**MS-VBAL §5.5.1.2.11 Let-coercion from Empty**](h
 ## 5.5.1.2.12 Let-coercion to Variant
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2.12 Let-coercion to Variant**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/2ae5553a-6515-4967-9b91-e06b527b137f): `Variant` let-coercion and storage.
+> This section describes the implementation of [**MS-VBAL §5.5.1.2.12** Let-coercion to Variant](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/2ae5553a-6515-4967-9b91-e06b527b137f): `Variant` let-coercion and storage.
 
 Any value except a class or `Nothing` let-coerces to `Variant` as a copy. A value let-coerced to `Variant` is wrapped
 in a `VBVariantValue` ([**RD-VBAL §2.5.2.1.5** Variant Values](rd-vbal.2.5.2.1.5.variant-values.md)).
@@ -284,7 +284,7 @@ Code that does not unwrap a `VBVariantValue` sees the box instead of the value.
 ## 5.5.1.2.13 Let-coercion to and from a class or Object or Nothing
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.5.1.2.13 Let-coercion to and from a class or Object or Nothing**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9b8fc7b4-8329-497d-b2dd-2d0fa2b7b48c).
+> This section describes the implementation of [**MS-VBAL §5.5.1.2.13** Let-coercion to and from a class or Object or Nothing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9b8fc7b4-8329-497d-b2dd-2d0fa2b7b48c).
 
 The default member of a class type can be implicitly invoked through let-coercion, yielding the _data value_ of the
 object ([**RD-VBAL §2.4.2** Non-intrinsic Types](rd-vbal.2.4.2.non-intrinsic-types.md);

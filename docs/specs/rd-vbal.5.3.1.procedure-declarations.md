@@ -1,6 +1,6 @@
 # 5.3.1 Procedure Declarations
 
-This section corresponds to [**MS-VBAL §5.3.1 Procedure Declarations**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/227005ad-78fb-479f-8145-fa3b8b610386).
+This section corresponds to [**MS-VBAL §5.3.1** Procedure Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/227005ad-78fb-479f-8145-fa3b8b610386).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

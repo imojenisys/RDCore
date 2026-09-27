@@ -1,7 +1,7 @@
 # 5.3.1.11 Procedure Invocation Argument Processing
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.3.1.11 Procedure Invocation Argument Processing**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1fb9af32-fc48-4c4f-998a-ed8047048ca5).
+> This section describes the implementation of [**MS-VBAL §5.3.1.11** Procedure Invocation Argument Processing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1fb9af32-fc48-4c4f-998a-ed8047048ca5).
 
 Procedures are invoked through
 [IProcedureInvoker](../api/RDCore.SDK.Runtime.Abstract.Execution.IProcedureInvoker.html).
@@ -97,7 +97,7 @@ An unmapped `Optional` parameter's default is bound with no Let-coercion and no 
 ### Omitted Arguments and IsMissing
 
 In MS-VBA, what depends on an omitted argument's parameter being `Variant` is
-[**MS-VBAL §6.1.2.7.1.6 IsMissing**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9ec6f6f1-14a6-458e-9024-05dd0d9afb26)
+[**MS-VBAL §6.1.2.7.1.6** IsMissing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9ec6f6f1-14a6-458e-9024-05dd0d9afb26)
 (see [**RD-VBAL §6.1.2.7** Information](rd-vbal.6.1.2.7.information.md)):
 
 - The value of an omitted argument is a `VT_ERROR` `Variant` carrying `DISP_E_PARAMNOTFOUND`.
@@ -177,7 +177,7 @@ for the same reason; see [**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.l
 > type, falls through to a `ByVal`-style copy. This is a documented gap narrower than **MS-VBAL §5.3.1.11**,
 > not a wrong result.
 
-> 👉 UDT values **MUST** be passed by reference (`ByRef`). See
+> 👉 UDT values **must** be passed by reference (`ByRef`). See
 > [**RD-VBAL §2.5.2.1.3** User-Defined Type (UDT) Values](rd-vbal.2.5.2.1.3.udt-values.md).
 
 ### Standard Library Calls
@@ -199,7 +199,7 @@ for the same reason; see [**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.l
 - The `Me` value is pushed to the stack frame of an instance member call as any parameter is. See
   [**RD-VBAL §5.6.11** Instance Expressions](rd-vbal.5.6.11.instance-expressions.md).
 - Each invocation of a `Function` or `Property Get` gets a fresh function result variable
-  ([**MS-VBAL §5.3.1 Procedure Declarations**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/227005ad-78fb-479f-8145-fa3b8b610386)),
+  ([**MS-VBAL §5.3.1** Procedure Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/227005ad-78fb-479f-8145-fa3b8b610386)),
   modeled as `ICallStackFrame.ReturnValue`, a single per-activation slot. `ReturnValue`
   is seeded to the default value of the procedure's declared return type before the procedure body runs. See
   [**RD-VBAL §5.3.1.6** Subroutine and Function Declarations](rd-vbal.5.3.1.6.subroutine-and-function-declarations.md).

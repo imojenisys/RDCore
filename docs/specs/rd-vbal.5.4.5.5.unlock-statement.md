@@ -1,7 +1,7 @@
 # 5.4.5.5 Unlock Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.5 Unlock Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/102f53f2-0393-4df1-8fe8-6f23f2d58d14).
+> This section describes the implementation of [**MS-VBAL §5.4.5.5** Unlock Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/102f53f2-0393-4df1-8fe8-6f23f2d58d14).
 
 ## Syntax
 
@@ -20,7 +20,7 @@ each carry one expression. See [**RD-VBAL §3.4.3** File Statements](rd-vbal.3.4
 
 > [!NOTE]
 > **Not implemented.** `Lock` and `Unlock` do not apply a real OS-level lock.
-> [**MS-VBAL §5.4.5.4**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5ff8a0e5-4e44-45a3-92a6-3c77cea3e3c5)
+> [**MS-VBAL §5.4.5.4** Lock Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5ff8a0e5-4e44-45a3-92a6-3c77cea3e3c5)
 > leaves applying an OS-level lock implementation-defined.
 
 ## Implementation

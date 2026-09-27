@@ -1,7 +1,7 @@
 # 5.4.2.22 End Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.22 End Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/76570466-0d4d-4159-9e84-1baf9d6e6d2f).
+> This section describes the implementation of [**MS-VBAL §5.4.2.22** End Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/76570466-0d4d-4159-9e84-1baf9d6e6d2f).
 
 ## Syntax
 

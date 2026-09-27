@@ -1,7 +1,7 @@
 # 5.6.9.2 Simple Data Operators
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.9.2 Simple Data Operators**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/dccbdeae-5b2e-4c2e-857e-1ad9b861e196).
+> This section describes the implementation of [**MS-VBAL §5.6.9.2** Simple Data Operators](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/dccbdeae-5b2e-4c2e-857e-1ad9b861e196).
 
 ## Runtime Semantics
 

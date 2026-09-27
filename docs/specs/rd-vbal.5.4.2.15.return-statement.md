@@ -1,7 +1,7 @@
 # 5.4.2.15 Return Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.15 Return Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4cc2aabb-5940-4abb-ad6b-953bd5631073).
+> This section describes the implementation of [**MS-VBAL §5.4.2.15** Return Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4cc2aabb-5940-4abb-ad6b-953bd5631073).
 
 ## Syntax
 

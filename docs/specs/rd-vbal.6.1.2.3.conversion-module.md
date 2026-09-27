@@ -1,7 +1,7 @@
 # 6.1.2.3 Conversion Module
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.3 Conversion Module**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/498c1238-f735-4e3b-810f-e0999b4d5fda).
+> This section describes the implementation of [**MS-VBAL §6.1.2.3** Conversion Module](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/498c1238-f735-4e3b-810f-e0999b4d5fda).
 
 The `Conversion` module is represented in the SDK by the interface
 [IStdConversionModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdConversionModule.html).
@@ -13,7 +13,7 @@ declaration by declaration, including their return types and their `Optional` pa
 ## 6.1.2.3.1 Public Functions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.3.1 Public Functions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1951c2a7-7527-4d8d-b4a5-3b212d2442d5).
+> This section describes the implementation of [**MS-VBAL §6.1.2.3.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1951c2a7-7527-4d8d-b4a5-3b212d2442d5).
 
 |§|Member|Notes|
 |---|---|---|
@@ -42,7 +42,7 @@ declaration by declaration, including their return types and their `Optional` pa
 ### 6.1.2.3.1.10 CLngPtr
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.3.1.10 CLngPtr**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/39e8676c-5beb-4f2f-b7ac-8f4e832c5d62).
+> This section describes the implementation of [**MS-VBAL §6.1.2.3.1.10** CLngPtr](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/39e8676c-5beb-4f2f-b7ac-8f4e832c5d62).
 
 `CLngPtr` needs the one thing a standard-library declaration cannot state: its `LongPtr` return type depends on the
 pointer width. `LongPtr` is a different type in each pointer width

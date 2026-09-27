@@ -1,7 +1,7 @@
 # 5.4.5.1 Open Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.1 Open Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/29a62f38-5bf6-4e08-9dae-0094e377058b).
+> This section describes the implementation of [**MS-VBAL §5.4.5.1** Open Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/29a62f38-5bf6-4e08-9dae-0094e377058b).
 
 ## Syntax
 
@@ -32,7 +32,7 @@ default record length; see [**RD-VBAL §5.4.5.11** Put Statement](rd-vbal.5.4.5.
 
 ## 5.4.5.1.1 File Numbers
 
-This section corresponds to [**MS-VBAL §5.4.5.1.1 File Numbers**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/38cf0628-c62b-4cb5-be3e-865600a9bc59).
+This section corresponds to [**MS-VBAL §5.4.5.1.1** File Numbers](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/38cf0628-c62b-4cb5-be3e-865600a9bc59).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

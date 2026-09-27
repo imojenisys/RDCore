@@ -3,7 +3,7 @@
 > [!NOTE]
 > This specification may be incomplete at this time.
 
-> [**MS-VBAL §2 VBA Computational Environment**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/46dd2a34-a53c-4cc8-8a59-fcbbb5fdae6d)  
+> [**MS-VBAL §2** VBA Computational Environment](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/46dd2a34-a53c-4cc8-8a59-fcbbb5fdae6d)  
 > VBA is a programming language used to define computer programs that perform computations that occur within a specific computational environment called a _VBA Environment_. A _VBA Environment_ is **typically hosted** and controlled by another computer application called the _host application_. The _host application_ controls and invokes computational processes within its hosted _VBA Environment_. The _host application_ can also make available within its hosted _VBA Environment_ computational resources that enable VBA programs to access _host application_ data and host computational processes. The remainder of this section defines the key computational concepts of the _VBA Environment_.
 
 ## Host

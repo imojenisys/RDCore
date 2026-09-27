@@ -1,7 +1,7 @@
 # 5.4.2.1 Call Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.1 Call Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f7c864a8-8fce-49dc-8347-30dc749d6576).
+> This section describes the implementation of [**MS-VBAL §5.4.2.1** Call Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f7c864a8-8fce-49dc-8347-30dc749d6576).
 
 ## Syntax
 

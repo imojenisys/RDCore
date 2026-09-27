@@ -1,7 +1,7 @@
 # 5.4.2.23 Assert Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.23 Assert Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4deae985-1f0b-4a95-9b69-7c69a91ea7a1).
+> This section describes the implementation of [**MS-VBAL §5.4.2.23** Assert Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4deae985-1f0b-4a95-9b69-7c69a91ea7a1).
 
 ## Syntax
 

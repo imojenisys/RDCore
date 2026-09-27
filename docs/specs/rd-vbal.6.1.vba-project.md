@@ -1,7 +1,7 @@
 # 6.1 VBA Project
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1 VBA Project**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f96f7c1e-4482-4603-8833-ed3cd2b4ac09).
+> This section describes the implementation of [**MS-VBAL §6.1** VBA Project](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f96f7c1e-4482-4603-8833-ed3cd2b4ac09).
 
 The `VBA` project is a _host project_. It is present in every _VBA environment_.
 

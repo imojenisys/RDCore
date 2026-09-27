@@ -98,7 +98,7 @@ A dead `#If`/`#ElseIf`/`#Else` branch is never lowered. `Lower` takes the source
 A statement or label lexically inside a dead range, at any depth, is skipped entirely: it gets no instruction,
 no `ByNode` entry, and no label definition. This behaves exactly as if the excluded source had never been there,
 the same way the MS-VBA preprocessor logically removes it before the rest of the language sees it
-([MS-VBAL §3.4.2](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7fca6481-24cc-4736-9757-f4af90863e26)).
+([**MS-VBAL §3.4.2** Conditional Compilation If Directives](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7fca6481-24cc-4736-9757-f4af90863e26)).
 
 ## Labels and diagnostics
 

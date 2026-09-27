@@ -1,7 +1,7 @@
 # 5.4.2.6 Do Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.6 Do Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/61d886e0-1768-4032-8bbb-dd3eca7977df).
+> This section describes the implementation of [**MS-VBAL §5.4.2.6** Do Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/61d886e0-1768-4032-8bbb-dd3eca7977df).
 
 ## Syntax
 
@@ -36,7 +36,7 @@ MS-VBAL models `…While` and `…Until` loops as the same construct with opposi
 
 The condition of a pre-test or post-test loop is a Boolean condition, evaluated by the same `ConditionEvaluator` an
 `If` uses. The condition is forced to `Boolean`
-([**MS-VBAL §5.5.1.2.2**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
+([**MS-VBAL §5.5.1.2.2** Let-coercion to and from Boolean](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
 
 |Loop|Exits when the condition is|
 |---|---|

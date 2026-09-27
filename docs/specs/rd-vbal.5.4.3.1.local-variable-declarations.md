@@ -1,7 +1,7 @@
 # 5.4.3.1 Local Variable Declarations
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3.1 Local Variable Declarations**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7e93afc7-de6f-4c25-a139-164e92271d00).
+> This section describes the implementation of [**MS-VBAL §5.4.3.1** Local Variable Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7e93afc7-de6f-4c25-a139-164e92271d00).
 
 ## Syntax
 
@@ -52,7 +52,7 @@ value of the appropriate array type in the scope of the declaration; see
 ## Runtime Semantics
 
 Hoisting of procedure-local variables is governed by
-[**MS-VBAL §5.4.3**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ee62ca0d-bf15-4679-8d11-6e411b37901b)
+[**MS-VBAL §5.4.3** Data Manipulation Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ee62ca0d-bf15-4679-8d11-6e411b37901b)
 ([**RD-VBAL §5.4.3** Data Manipulation Statements](rd-vbal.5.4.3.data-manipulation-statements.md)). **MS-VBAL**
 procedure invocation step 4 reads: "create the function result variable and any procedure extent local variables
 declared within the procedure". RD-VBA implements procedure invocation step 4 for `Dim` and `Static` locals as

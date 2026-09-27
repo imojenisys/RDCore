@@ -1,7 +1,7 @@
 # 5.4.3.5 Mid/MidB/Mid$/MidB$ Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3.5 Mid/MidB/Mid$/MidB$ Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/2a8f3567-c8e0-4176-a802-cf2edeba425f).
+> This section describes the implementation of [**MS-VBAL §5.4.3.5** Mid/MidB/Mid$/MidB$ Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/2a8f3567-c8e0-4176-a802-cf2edeba425f).
 
 ## Syntax
 

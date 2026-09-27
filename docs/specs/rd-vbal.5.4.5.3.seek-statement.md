@@ -1,7 +1,7 @@
 # 5.4.5.3 Seek Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.3 Seek Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fec0271d-31ed-4e3d-bff4-13f3b7f09f3b).
+> This section describes the implementation of [**MS-VBAL §5.4.5.3** Seek Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fec0271d-31ed-4e3d-bff4-13f3b7f09f3b).
 
 ## Syntax
 

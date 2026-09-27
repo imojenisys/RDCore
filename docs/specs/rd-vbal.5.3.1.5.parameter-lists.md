@@ -1,7 +1,7 @@
 # 5.3.1.5 Parameter Lists
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.3.1.5 Parameter Lists**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/78bcb344-4966-4401-bb55-72729790ebee).
+> This section describes the implementation of [**MS-VBAL §5.3.1.5** Parameter Lists](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/78bcb344-4966-4401-bb55-72729790ebee).
 
 ## Syntax
 
@@ -22,7 +22,7 @@ parameters or not. A `Property Let` or `Property Set` with no parameters has no 
 what is being assigned, and raises [VBC09321](../diagnostics/vbc09321.md). See also
 [**RD-VBAL §5.3.1.7** Property Declarations](rd-vbal.5.3.1.7.property-declarations.md).
 
-> 👉 UDT values **MUST** be passed by reference (`ByRef`). See
+> 👉 UDT values **must** be passed by reference (`ByRef`). See
 > [**RD-VBAL §2.5.2.1.3** User-Defined Type (UDT) Values](rd-vbal.2.5.2.1.3.udt-values.md).
 
 ### Optional parameters

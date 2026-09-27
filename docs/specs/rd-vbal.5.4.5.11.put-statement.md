@@ -1,7 +1,7 @@
 # 5.4.5.11 Put Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.11 Put Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/46eeacb8-7a06-4ec8-9736-eea42de4eeca).
+> This section describes the implementation of [**MS-VBAL §5.4.5.11** Put Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/46eeacb8-7a06-4ec8-9736-eea42de4eeca).
 
 ## Syntax
 
@@ -36,7 +36,7 @@ The record format follows MS-VBA's, so that a file RD-VBA writes is a file MS-VB
 ### User-Defined Types
 
 **MS-VBAL §5.4.5.11** and
-[**MS-VBAL §5.4.5.12**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/60c6f92b-d1fc-484b-91d1-6ba5246334b4)
+[**MS-VBAL §5.4.5.12** Get Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/60c6f92b-d1fc-484b-91d1-6ba5246334b4)
 say "the value of each member of the UDT is written to the file... in the order in which the members are
 declared". `Put` writes, and `Get` reads, each member of a UDT in declaration order, recursively through a nested
 UDT.
@@ -69,12 +69,12 @@ MS-VBAL leaves two gaps in record positioning, and RD-VBA names its choice for e
 
 **Record length.** A `Random` channel whose `Open` statement declared no `Len` clause counts positions in 128-byte
 records. 128 bytes is MS-VBA's own default record length.
-[**MS-VBAL §5.4.5.1**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/29a62f38-5bf6-4e08-9dae-0094e377058b)
+[**MS-VBAL §5.4.5.1** Open Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/29a62f38-5bf6-4e08-9dae-0094e377058b)
 constrains the `Len` clause but does not say what an absent `Len` clause means.
 
 **Record 1.** **MS-VBAL §5.4.5.11** says the file position becomes "exactly `<record-number>` number of bytes
 from the start". It also defaults the `Put` record number to the current file-pointer-position, which
-[**MS-VBAL §5.4.5.3**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fec0271d-31ed-4e3d-bff4-13f3b7f09f3b)
+[**MS-VBAL §5.4.5.3** Seek Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fec0271d-31ed-4e3d-bff4-13f3b7f09f3b)
 (`Seek`) counts from 1.
 
 The record number and the file-pointer-position are one quantity, and `Seek` and `Get` must agree on it. That is

@@ -22,7 +22,7 @@ below. This page describes the loop, how it dispatches, and the state it keeps p
 
 When the program counter reaches `Items.Length`, execution falls off the end of the instruction list. The
 activation then completes "as if execution had reached the end of the body" (the wording of
-[MS-VBAL §5.4.2.17](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fe55464d-a2c4-4ca6-ace1-e757dbe95e73);
+[**MS-VBAL §5.4.2.17** Exit Sub Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fe55464d-a2c4-4ca6-ace1-e757dbe95e73);
 [**RD-VBAL §5.4.2.17** Exit Sub Statement](rd-vbal.5.4.2.17.exit-sub-statement.md)): the same outcome as an
 explicit `Exit`.
 
@@ -97,7 +97,7 @@ condition raises a run-time error ([**RD-VBAL §2.6.3** Runtime Errors](rd-vbal.
 
 A `ConditionalBranch` instruction's condition is forced to `Boolean` by
 `RDCore.Runtime.Execution.ConditionEvaluator`
-([MS-VBAL §5.5.1.2.2](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9);
+([**MS-VBAL §5.5.1.2.2** Let-coercion to and from Boolean](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9);
 [**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md)).
 
 `ConditionEvaluator` calls `VBBooleanLetCoercionRuntimeSemantics` directly, rather than through an operator node.
@@ -185,7 +185,7 @@ activation ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd
 
 ## Error interception
 
-`On Error` and `Resume` ([MS-VBAL §5.4.4](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/47b18690-3175-44d9-9de1-31629f0aacc7);
+`On Error` and `Resume` ([**MS-VBAL §5.4.4** Error Handling Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/47b18690-3175-44d9-9de1-31629f0aacc7);
 [**RD-VBAL §5.4.4** Error Handling Statements](rd-vbal.5.4.4.error-handling-statements.md)) work by interception,
 not by dedicated per-error branch logic:
 

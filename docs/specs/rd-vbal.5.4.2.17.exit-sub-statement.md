@@ -1,7 +1,7 @@
 # 5.4.2.17 Exit Sub Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.17 Exit Sub Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fe55464d-a2c4-4ca6-ace1-e757dbe95e73).
+> This section describes the implementation of [**MS-VBAL §5.4.2.17** Exit Sub Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fe55464d-a2c4-4ca6-ace1-e757dbe95e73).
 
 ## Syntax
 

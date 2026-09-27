@@ -1,7 +1,7 @@
 # 6.1.2.8 Interaction
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.8 Interaction**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9a7e0f79-3164-41dd-beda-bcc02dc79d1f).
+> This section describes the implementation of [**MS-VBAL §6.1.2.8** Interaction](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9a7e0f79-3164-41dd-beda-bcc02dc79d1f).
 
 The `Interaction` module is represented in the SDK by the interface
 [IStdInteractionModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInteractionModule.html).
@@ -15,7 +15,7 @@ The application settings members (`GetAllSettings`, `GetSetting`, and the RD-VBA
 ## 6.1.2.8.1 Public Functions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.8.1 Public Functions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5253bced-81cd-4a45-a4da-0270224bf0e5).
+> This section describes the implementation of [**MS-VBAL §6.1.2.8.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5253bced-81cd-4a45-a4da-0270224bf0e5).
 
 `GetJsonSettings` and `GetJsonSetting` are RD-VBA variants of `GetAllSettings` and `GetSetting`, and take a child
 number of the member they vary.
@@ -45,7 +45,7 @@ number of the member they vary.
 ## 6.1.2.8.2 Public Subroutines
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.8.2 Public Subroutines**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9af0f4b6-9d30-4c6c-a8f1-fb32903f8142).
+> This section describes the implementation of [**MS-VBAL §6.1.2.8.2** Public Subroutines](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9af0f4b6-9d30-4c6c-a8f1-fb32903f8142).
 
 |§|Member|Notes|
 |---|---|---|

@@ -1,7 +1,7 @@
 # 5.4.4.2 Resume Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.4.2 Resume Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/00439540-cf97-451d-9f20-7856d4d98c9b).
+> This section describes the implementation of [**MS-VBAL §5.4.4.2** Resume Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/00439540-cf97-451d-9f20-7856d4d98c9b).
 
 ## Syntax
 

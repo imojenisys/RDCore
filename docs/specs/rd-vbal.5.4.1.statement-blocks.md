@@ -1,6 +1,6 @@
 # 5.4.1 Statement Blocks
 
-This section corresponds to [**MS-VBAL §5.4.1 Statement Blocks**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d3220925-f958-4ae4-a9cc-e529072e156f).
+This section corresponds to [**MS-VBAL §5.4.1** Statement Blocks](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d3220925-f958-4ae4-a9cc-e529072e156f).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

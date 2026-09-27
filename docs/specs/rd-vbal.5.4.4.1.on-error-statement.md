@@ -1,7 +1,7 @@
 # 5.4.4.1 On Error Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.4.1 On Error Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e2561165-c99a-444b-8bc0-be60a196867a).
+> This section describes the implementation of [**MS-VBAL §5.4.4.1** On Error Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e2561165-c99a-444b-8bc0-be60a196867a).
 
 ## Syntax
 
@@ -17,7 +17,7 @@
   `OnErrorDisable`.
 - `OnErrorGoToStatementNode`'s doc comment anticipates the `On Error GoTo -1` form.
 - The `0` of `On Error GoTo 0` is the same
-  [**MS-VBAL §5.4.4.2**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/00439540-cf97-451d-9f20-7856d4d98c9b)
+  [**MS-VBAL §5.4.4.2** Resume Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/00439540-cf97-451d-9f20-7856d4d98c9b)
   sentinel that `Resume 0` uses; see [**RD-VBAL §5.4.4.2** Resume Statement](rd-vbal.5.4.4.2.resume-statement.md).
 
 See [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md) and
@@ -40,7 +40,7 @@ An `On Error` statement sets the error-handling policy of the current activation
 
 |Policy (`ErrorHandlingMode`)|Set by|When an error is raised|
 |---|---|---|
-|`Disabled` (the policy [MS-VBAL §5.4.4](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/47b18690-3175-44d9-9de1-31629f0aacc7) calls *Default*)|`On Error GoTo 0`, `On Error GoTo -1`; an error caught under `GoTo`|The error is not caught: it propagates out of the activation (see [Propagation](#propagation)).|
+|`Disabled` (the policy [**MS-VBAL §5.4.4** Error Handling Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/47b18690-3175-44d9-9de1-31629f0aacc7) calls *Default*)|`On Error GoTo 0`, `On Error GoTo -1`; an error caught under `GoTo`|The error is not caught: it propagates out of the activation (see [Propagation](#propagation)).|
 |`ResumeNext`|`On Error Resume Next`|The error is caught silently. Execution continues at the statement right after the one that raised the error. The policy is not reset: every later error in the same activation is caught the same way.|
 |`GoTo`|`On Error GoTo <label>`|The error branches to the label. The policy is reset to disabled: a second, unhandled error inside the handler body propagates rather than re-entering the handler.|
 

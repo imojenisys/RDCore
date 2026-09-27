@@ -1,7 +1,7 @@
 # 5.6.10 Simple Name Expressions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.10 Simple Name Expressions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e3af3398-f090-40db-ade6-de3a93589c76).
+> This section describes the implementation of [**MS-VBAL §5.6.10** Simple Name Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e3af3398-f090-40db-ade6-de3a93589c76).
 
 ## Syntax
 

@@ -1,7 +1,7 @@
 # 5.6.7 TypeOf...Is Expressions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.7 TypeOf...Is Expressions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/22d0220a-65bc-412a-9052-adb02aadb875).
+> This section describes the implementation of [**MS-VBAL §5.6.7** TypeOf...Is Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/22d0220a-65bc-412a-9052-adb02aadb875).
 
 ## Syntax
 

@@ -1,7 +1,7 @@
 # 5.4.2.9 Single-line If Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.9 Single-line If Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6b4fae50-5e47-4469-970b-a2b5a2b62e7a).
+> This section describes the implementation of [**MS-VBAL §5.4.2.9** Single-line If Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6b4fae50-5e47-4469-970b-a2b5a2b62e7a).
 
 ## Syntax
 
@@ -24,7 +24,7 @@ The executor dispatches `ConditionalBranch` for a single-line `If`, with a Boole
 block `If` header ([**RD-VBAL §5.4.2.8** If Statement](rd-vbal.5.4.2.8.if-statement.md)).
 
 1. Evaluate the condition, forced to `Boolean` by `ConditionEvaluator`
-   ([**MS-VBAL §5.5.1.2.2**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
+   ([**MS-VBAL §5.5.1.2.2** Let-coercion to and from Boolean](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
 2. When the condition is `True`, fall through into `ThenBody`.
 3. When the condition is `False`, go to the header's `Else` offset.
 

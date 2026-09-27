@@ -1,7 +1,7 @@
 # 6.1.2.5 FileSystem
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.5 FileSystem**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/bf77cb3b-1e75-4dad-b849-56d661ce1990).
+> This section describes the implementation of [**MS-VBAL §6.1.2.5** FileSystem](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/bf77cb3b-1e75-4dad-b849-56d661ce1990).
 
 The `FileSystem` module is represented in the SDK by the interface
 [IStdFileSystemModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdFileSystemModule.html).
@@ -10,7 +10,7 @@ The `FileSystem` module is represented in the SDK by the interface
 ## 6.1.2.5.1 Public Functions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.5.1 Public Functions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a7ed1298-8f98-41ac-a121-6349f4a3a152).
+> This section describes the implementation of [**MS-VBAL §6.1.2.5.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a7ed1298-8f98-41ac-a121-6349f4a3a152).
 
 |§|Member|Notes|
 |---|---|---|
@@ -29,7 +29,7 @@ The `FileSystem` module is represented in the SDK by the interface
 ## 6.1.2.5.2 Public Subroutines
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.5.2 Public Subroutines**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/edf27283-49d4-4aea-a681-721532898a66).
+> This section describes the implementation of [**MS-VBAL §6.1.2.5.2** Public Subroutines](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/edf27283-49d4-4aea-a681-721532898a66).
 
 |§|Member|Notes|
 |---|---|---|

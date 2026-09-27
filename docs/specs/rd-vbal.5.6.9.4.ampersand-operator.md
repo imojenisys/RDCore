@@ -1,7 +1,7 @@
 # 5.6.9.4 & Operator
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.9.4 & Operator**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9f072ffc-e943-4fcc-a4d0-f3c7db96abd9).
+> This section describes the implementation of [**MS-VBAL §5.6.9.4** & Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9f072ffc-e943-4fcc-a4d0-f3c7db96abd9).
 
 ## Runtime Semantics
 

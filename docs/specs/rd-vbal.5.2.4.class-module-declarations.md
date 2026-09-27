@@ -1,7 +1,7 @@
 # 5.2.4 Class Module Declarations
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.4 Class Module Declarations**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6b025f78-471c-43bc-9d77-79dac281a6f3).
+> This section describes the implementation of [**MS-VBAL §5.2.4** Class Module Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6b025f78-471c-43bc-9d77-79dac281a6f3).
 
 Class modules defined in _workspace source code_ have no means to _inherit_ another class module in the
 _Object-Oriented Programming_ sense of inheritance
@@ -15,7 +15,7 @@ other members need an instance to be reached through, but a declared type needs 
 ## 5.2.4.1 Non-Syntactic Class Characteristics
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.4.1 Non-Syntactic Class Characteristics**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/73a89f41-1c32-460e-a2b5-73a0c1971636).
+> This section describes the implementation of [**MS-VBAL §5.2.4.1** Non-Syntactic Class Characteristics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/73a89f41-1c32-460e-a2b5-73a0c1971636).
 
 [VBClassModuleSymbol](../api/RDCore.SDK.Model.Symbols.VBClassModuleSymbol.html).`AutomationKind`
 ([VBAutomationKind](../api/RDCore.SDK.Model.Symbols.VBAutomationKind.html)) distinguishes an Automation-capable
@@ -32,7 +32,7 @@ Every RD-VBA class module has `AutomationKind` `Dispatch` (`VT_DISPATCH`). See
 ### 5.2.4.1.1 Class Accessibility and Instancing
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.4.1.1 Class Accessibility and Instancing**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a09fd48e-abed-4da8-8c4c-a110bf4ef6b6).
+> This section describes the implementation of [**MS-VBAL §5.2.4.1.1** Class Accessibility and Instancing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a09fd48e-abed-4da8-8c4c-a110bf4ef6b6).
 
 The accessibility and instancing of a class module are determined by two module attributes
 ([**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md), §3.1.1.2 and §3.1.1.3):
@@ -63,7 +63,7 @@ with _semantic flags_ issued, if the _host environment_ is configured to allow b
 ### 5.2.4.1.2 Default Instance Variables Static Semantics
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.4.1.2 Default Instance Variables Static Semantics**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/189fb41b-cc3a-4999-a6d2-ba89f72d2870).
+> This section describes the implementation of [**MS-VBAL §5.2.4.1.2** Default Instance Variables Static Semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/189fb41b-cc3a-4999-a6d2-ba89f72d2870).
 
 The `VB_PredeclaredId` attribute ([**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md), §3.1.1.6)
 determines whether the _environment host_ declares a global _auto-object_ instance of the class with a _predeclared
@@ -107,7 +107,7 @@ It is invalid for the default instance variable to be the target of a `Set` assi
 ## 5.2.4.2 Implements Directive
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.2.4.2 Implements Directive**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/da526020-9b41-44a6-a5f3-47a7ac255a9e).
+> This section describes the implementation of [**MS-VBAL §5.2.4.2** Implements Directive](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/da526020-9b41-44a6-a5f3-47a7ac255a9e).
 
 The `Implements` directive specifies that the (class) module _implements_ an _interface class_
 ([**RD-VBAL §3.1** Attributes and Directives](rd-vbal.3.1.attributes-directives.md)).
@@ -129,7 +129,7 @@ in the class type's `SuperTypes` array
 
 ## 5.2.4.3 Event Declaration
 
-This section corresponds to [**MS-VBAL §5.2.4.3 Event Declaration**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ff9d44a9-7a89-474e-9546-a1b169d38a26).
+This section corresponds to [**MS-VBAL §5.2.4.3** Event Declaration](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ff9d44a9-7a89-474e-9546-a1b169d38a26).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

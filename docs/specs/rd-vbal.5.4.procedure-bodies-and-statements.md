@@ -1,7 +1,7 @@
 # 5.4 Procedure Bodies and Statements
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4 Procedure Bodies and Statements**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/618815bc-c68b-4488-8082-ed1b36fac6d4).
+> This section describes the implementation of [**MS-VBAL §5.4** Procedure Bodies and Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/618815bc-c68b-4488-8082-ed1b36fac6d4).
 
 At runtime, statements induce side-effects to program, global, or host environment state
 ([**RD-VBAL §5.0** Semantics](rd-vbal.5.0.semantics.md)).

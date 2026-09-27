@@ -1,10 +1,10 @@
 # 5.4.3.7 RSet Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3.7 RSet Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/beccdd43-9dad-4bcf-b063-e542869917a1).
+> This section describes the implementation of [**MS-VBAL §5.4.3.7** RSet Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/beccdd43-9dad-4bcf-b063-e542869917a1).
 
 `RSet` (**MS-VBAL §5.4.3.7**) and `LSet`
-([MS-VBAL §5.4.3.6](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6964d2a4-b3e3-497b-bb80-8bc98f0edab9);
+([**MS-VBAL §5.4.3.6** LSet Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6964d2a4-b3e3-497b-bb80-8bc98f0edab9);
 [**RD-VBAL §5.4.3.6** LSet Statement](rd-vbal.5.4.3.6.lset-statement.md)) are implemented.
 
 ## Syntax

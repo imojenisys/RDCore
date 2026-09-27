@@ -1,7 +1,7 @@
 # 5.6.15 With Expressions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.15 With Expressions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/97f83233-034d-4a41-ba62-1b5518da85a2).
+> This section describes the implementation of [**MS-VBAL §5.6.15** With Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/97f83233-034d-4a41-ba62-1b5518da85a2).
 
 A _with-expression_ is a `.Member` or `!member` expression inside a `With` block. It refers to the target of the
 innermost enclosing `With` statement. See [**RD-VBAL §5.4.2.21** With Statement](rd-vbal.5.4.2.21.with-statement.md).

@@ -1,7 +1,7 @@
 # 5.4.3.4 Erase Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3.4 Erase Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f7958382-95a7-47fa-91bd-42262ab9ad32).
+> This section describes the implementation of [**MS-VBAL §5.4.3.4** Erase Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f7958382-95a7-47fa-91bd-42262ab9ad32).
 
 ## Syntax
 

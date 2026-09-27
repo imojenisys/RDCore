@@ -1,7 +1,7 @@
 # 6.1.2 Predefined Procedural Modules
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2 Predefined Procedural Modules**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e74eaaeb-e2e5-4ec5-9fb0-f3c739c53403).
+> This section describes the implementation of [**MS-VBAL §6.1.2** Predefined Procedural Modules](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e74eaaeb-e2e5-4ec5-9fb0-f3c739c53403).
 
 The SDK defines the twelve **MS-VBAL §6.1.2** predefined procedural modules:
 

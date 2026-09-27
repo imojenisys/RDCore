@@ -1,7 +1,7 @@
 # 5.4.3.9 Set Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.3.9 Set Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f343de03-5100-41f0-8197-93546c4fc21f).
+> This section describes the implementation of [**MS-VBAL §5.4.3.9** Set Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f343de03-5100-41f0-8197-93546c4fc21f).
 
 ## Syntax
 
@@ -33,7 +33,7 @@ statement kinds the `Simple` statement provider handles
 
 1. The value expression is evaluated.
 2. The value is Set-coerced
-   ([MS-VBAL §5.5.2.2](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/bdd2d85a-3236-4381-b289-002bf0bf8ffd);
+   ([**MS-VBAL §5.5.2.2** Runtime semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/bdd2d85a-3236-4381-b289-002bf0bf8ffd);
    [**RD-VBAL §5.5.2.2** Runtime semantics](rd-vbal.5.5.2.2.runtime-semantics.md)).
 3. The Set-coerced value is assigned to the target.
 

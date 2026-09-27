@@ -1,7 +1,7 @@
 # 5.6.11 Instance Expressions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.11 Instance Expressions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6665e1e5-6c40-43a3-a989-da7ee48e7bd1).
+> This section describes the implementation of [**MS-VBAL §5.6.11** Instance Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6665e1e5-6c40-43a3-a989-da7ee48e7bd1).
 
 An _instance expression_ is the keyword `Me`.
 

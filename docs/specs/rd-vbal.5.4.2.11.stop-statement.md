@@ -1,7 +1,7 @@
 # 5.4.2.11 Stop Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.11 Stop Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3e8463a8-ee71-4e33-8008-0bd4910e68ea).
+> This section describes the implementation of [**MS-VBAL §5.4.2.11** Stop Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3e8463a8-ee71-4e33-8008-0bd4910e68ea).
 
 ## Syntax
 

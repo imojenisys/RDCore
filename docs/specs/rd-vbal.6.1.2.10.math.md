@@ -1,7 +1,7 @@
 # 6.1.2.10 Math
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.10 Math**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4f944a0e-59e2-432f-a6ed-8e54311690d1).
+> This section describes the implementation of [**MS-VBAL §6.1.2.10** Math](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4f944a0e-59e2-432f-a6ed-8e54311690d1).
 
 The `Math` module is represented in the SDK by the interface
 [IStdMathModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdMathModule.html).
@@ -13,7 +13,7 @@ declaration, including their return types and their `Optional` parameters.
 ## 6.1.2.10.1 Public Functions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.10.1 Public Functions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/443a9a6f-be5d-4f74-bd58-769b445c46e3).
+> This section describes the implementation of [**MS-VBAL §6.1.2.10.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/443a9a6f-be5d-4f74-bd58-769b445c46e3).
 
 |§|Member|Notes|
 |---|---|---|
@@ -33,7 +33,7 @@ declaration, including their return types and their `Optional` parameters.
 ## 6.1.2.10.2 Public Subroutines
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.10.2 Public Subroutines**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d968e1a4-384e-4a48-896e-523f4ccec631).
+> This section describes the implementation of [**MS-VBAL §6.1.2.10.2** Public Subroutines](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d968e1a4-384e-4a48-896e-523f4ccec631).
 
 |§|Member|Notes|
 |---|---|---|

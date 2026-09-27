@@ -1,7 +1,7 @@
 # 5.4.1.1 Statement Labels
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.1.1 Statement Labels**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/825de02b-0e13-4783-8527-de14fbb7104f).
+> This section describes the implementation of [**MS-VBAL §5.4.1.1** Statement Labels](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/825de02b-0e13-4783-8527-de14fbb7104f).
 
 ## Syntax
 

@@ -1,7 +1,7 @@
 # 5.4.2.14 GoSub Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.14 GoSub Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/492e1f84-c47f-40ef-819f-f1d23e475c91).
+> This section describes the implementation of [**MS-VBAL §5.4.2.14** GoSub Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/492e1f84-c47f-40ef-819f-f1d23e475c91).
 
 ## Syntax
 

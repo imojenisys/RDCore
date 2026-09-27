@@ -1,7 +1,7 @@
 # 5.4.2.8 If Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.8 If Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/17ff9b37-fbc8-491f-85b2-13c3a379acac).
+> This section describes the implementation of [**MS-VBAL §5.4.2.8** If Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/17ff9b37-fbc8-491f-85b2-13c3a379acac).
 
 ## Syntax
 
@@ -22,7 +22,7 @@ The executor dispatches `ConditionalBranch` for an `If` or `ElseIf` header, or a
 condition.
 
 1. Evaluate the header's condition, forced to `Boolean` by `ConditionEvaluator`
-   ([**MS-VBAL §5.5.1.2.2**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
+   ([**MS-VBAL §5.5.1.2.2** Let-coercion to and from Boolean](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
 2. When the condition is `True`, fall through into the branch's body.
 3. When the condition is `False`, go to the header's `Else` offset: the next header in the chain, the first
    instruction of the `Else` body, or right past the whole construct.

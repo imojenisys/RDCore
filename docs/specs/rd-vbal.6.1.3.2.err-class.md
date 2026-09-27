@@ -1,7 +1,7 @@
 # 6.1.3.2 Err Class
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.3.2 Err Class**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7075a4ae-6055-4173-b4b6-e0dab68155e3).
+> This section describes the implementation of [**MS-VBAL §6.1.3.2** Err Class](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7075a4ae-6055-4173-b4b6-e0dab68155e3).
 
 The `Err` class is represented in the SDK by the interface
 [IStdErrClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdErrClass.html). RD-VBA names the class `ErrObject`.
@@ -37,7 +37,7 @@ The MS-VBA shape leaves `ErrObject` nameable in an `As` clause, instead of shado
 ## 6.1.3.2.1 Public Subroutines
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.3.2.1 Public Subroutines**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/0d8e11d5-36bf-4bad-9d45-b54f9f473ba4).
+> This section describes the implementation of [**MS-VBAL §6.1.3.2.1** Public Subroutines](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/0d8e11d5-36bf-4bad-9d45-b54f9f473ba4).
 
 |§|Member|Notes|
 |---|---|---|
@@ -48,7 +48,7 @@ The MS-VBA shape leaves `ErrObject` nameable in an `As` clause, instead of shado
 ## 6.1.3.2.2 Public Properties
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.3.2.2 Public Properties**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fbf7d695-f4ad-46e8-8980-e41ffe32ca43).
+> This section describes the implementation of [**MS-VBAL §6.1.3.2.2** Public Properties](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fbf7d695-f4ad-46e8-8980-e41ffe32ca43).
 
 `StackTrace` is not an MS-VBAL member. It is numbered after the last MS-VBAL member of this section.
 
@@ -65,7 +65,7 @@ The MS-VBA shape leaves `ErrObject` nameable in an `As` clause, instead of shado
 ### 6.1.3.2.2.6 Source
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.3.2.2.6 Source**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a282720f-a558-4918-b5cb-6aa7114c0d47).
+> This section describes the implementation of [**MS-VBAL §6.1.3.2.2.6** Source](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a282720f-a558-4918-b5cb-6aa7114c0d47).
 
 `Err.Source` defaults to the project name (**MS-VBAL §6.1.3.2.2.6**). The default is applied where a run-time error is
 reported to the host: when the error's source is empty, the `rdcore/session/execute` result reports the project name

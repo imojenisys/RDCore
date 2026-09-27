@@ -1,7 +1,7 @@
 # 5.4.2.3 For Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.3 For Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/389b1dc4-e608-4ed0-ae64-d88f62f12ea3).
+> This section describes the implementation of [**MS-VBAL §5.4.2.3** For Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/389b1dc4-e608-4ed0-ae64-d88f62f12ea3).
 
 ## Syntax
 
@@ -46,7 +46,7 @@ A `For` loop needs per-activation state. Its opener stashes a
 1. Read the stashed `ForLoopState` back via `Instruction.Matching`.
 2. Read the counter's current value. The body may have reassigned the counter directly.
 3. Add `step` to it through the addition operator
-   ([**MS-VBAL §5.6.9.3**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e070115f-8d40-40cf-ac6d-ab18b9c6c906);
+   ([**MS-VBAL §5.6.9.3** Arithmetic Operators](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e070115f-8d40-40cf-ac6d-ab18b9c6c906);
    [**RD-VBAL §5.6.9.3** Arithmetic Operators](rd-vbal.5.6.9.3.arithmetic-operators.md)). The addition is an
    overflow-checked operation, not a bare CLR add.
 4. Let-assign the sum back to the counter.
@@ -56,7 +56,7 @@ A `For` loop needs per-activation state. Its opener stashes a
 ### Range Test
 
 The range checks of `ForOpener` and `ForNext` use the relational operators `>` and `<`
-([**MS-VBAL §5.6.9.5**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f8acd631-55c1-4199-bc1e-022aaab6d9c8);
+([**MS-VBAL §5.6.9.5** Relational Operators](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f8acd631-55c1-4199-bc1e-022aaab6d9c8);
 [**RD-VBAL §5.6.9.5** Relational Operators](rd-vbal.5.6.9.5.relational-operators.md)), not a raw numeric
 comparison. The counter's declared type (`Currency`, `Decimal`, `Date` as `Double`, …) has spec-mandated comparison
 semantics that a plain CLR `>`/`<` would get wrong.

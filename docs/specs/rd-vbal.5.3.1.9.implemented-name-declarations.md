@@ -1,6 +1,6 @@
 # 5.3.1.9 Implemented Name Declarations
 
-This section corresponds to [**MS-VBAL §5.3.1.9 Implemented Name Declarations**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9e68b3a3-7c21-47ba-8621-2d03aebd83cf).
+This section corresponds to [**MS-VBAL §5.3.1.9** Implemented Name Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9e68b3a3-7c21-47ba-8621-2d03aebd83cf).
 
 > [!NOTE]
 > Reserved. This section has no content yet.

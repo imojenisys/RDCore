@@ -1,7 +1,7 @@
 # 5.6.12 Member Access Expressions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.6.12 Member Access Expressions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/af3a4059-3059-4e79-8aa5-685324fb266a).
+> This section describes the implementation of [**MS-VBAL §5.6.12** Member Access Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/af3a4059-3059-4e79-8aa5-685324fb266a).
 
 ## Syntax
 

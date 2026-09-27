@@ -1,7 +1,7 @@
 # 5.4.2.12 GoTo Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.12 GoTo Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9ce18dd2-6864-426e-aec3-fd30518024a8).
+> This section describes the implementation of [**MS-VBAL §5.4.2.12** GoTo Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9ce18dd2-6864-426e-aec3-fd30518024a8).
 
 ## Syntax
 

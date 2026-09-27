@@ -1,7 +1,7 @@
 # 6.1.3.1 Collection Object
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.3.1 Collection Object**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/31ec9e63-f71e-4521-863b-a7d12007b7cc).
+> This section describes the implementation of [**MS-VBAL §6.1.3.1** Collection Object](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/31ec9e63-f71e-4521-863b-a7d12007b7cc).
 
 The `Collection` class is represented in the SDK by the interface
 [IStdCollectionClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdCollectionClass.html).
@@ -17,7 +17,7 @@ A `For Each` statement finds an object's enumeration member through
 ## 6.1.3.1.1 Public Functions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.3.1.1 Public Functions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3f2c31e1-524e-415c-823c-dc9d51bf9b7e).
+> This section describes the implementation of [**MS-VBAL §6.1.3.1.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3f2c31e1-524e-415c-823c-dc9d51bf9b7e).
 
 |§|Member|Notes|
 |---|---|---|
@@ -28,7 +28,7 @@ A `For Each` statement finds an object's enumeration member through
 ## 6.1.3.1.2 Public Subroutines
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.3.1.2 Public Subroutines**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/8f97f8a0-e0a8-430a-8601-330d589b8e3b).
+> This section describes the implementation of [**MS-VBAL §6.1.3.1.2** Public Subroutines](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/8f97f8a0-e0a8-430a-8601-330d589b8e3b).
 
 |§|Member|Notes|
 |---|---|---|

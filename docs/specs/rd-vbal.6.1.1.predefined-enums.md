@@ -1,7 +1,7 @@
 # 6.1.1 Predefined Enums
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.1 Predefined Enums**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/cc0c4b7c-bd09-448b-9eeb-19a9d4c19504).
+> This section describes the implementation of [**MS-VBAL §6.1.1** Predefined Enums](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/cc0c4b7c-bd09-448b-9eeb-19a9d4c19504).
 
 RD-VBA implements all sixteen **MS-VBAL §6.1.1** predefined enums. The SDK defines all sixteen, and the standard
 library's symbols are read off those SDK declarations
@@ -36,7 +36,7 @@ without qualification ([**RD-VBAL §5.2.3** Module Declarations](rd-vbal.5.2.3.m
 ## 6.1.1.16 VbVarType
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.1.16 VbVarType**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c15d7483-4ac0-48e0-a23b-8bfb91a57cad).
+> This section describes the implementation of [**MS-VBAL §6.1.1.16** VbVarType](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c15d7483-4ac0-48e0-a23b-8bfb91a57cad).
 
 ### Tag Space
 

@@ -1,7 +1,7 @@
 # 5.4.5.9 Write Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.5.9 Write Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7d516617-3cbc-4cb1-88f7-d64e8e640a07).
+> This section describes the implementation of [**MS-VBAL §5.4.5.9** Write Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7d516617-3cbc-4cb1-88f7-d64e8e640a07).
 
 ## Syntax
 

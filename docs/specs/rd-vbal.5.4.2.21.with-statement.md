@@ -1,7 +1,7 @@
 # 5.4.2.21 With Statement
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §5.4.2.21 With Statement**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/52caae3d-3ded-436f-a36a-8d5a30c21600).
+> This section describes the implementation of [**MS-VBAL §5.4.2.21** With Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/52caae3d-3ded-436f-a36a-8d5a30c21600).
 
 ## Syntax
 

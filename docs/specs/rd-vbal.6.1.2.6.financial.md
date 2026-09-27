@@ -1,7 +1,7 @@
 # 6.1.2.6 Financial
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.6 Financial**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/368e9272-18bc-4632-a4c3-f7dd2c64b215).
+> This section describes the implementation of [**MS-VBAL §6.1.2.6** Financial](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/368e9272-18bc-4632-a4c3-f7dd2c64b215).
 
 The `Financial` module is represented in the SDK by the interface
 [IStdFinancialModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdFinancialModule.html).
@@ -10,7 +10,7 @@ The `Financial` module is represented in the SDK by the interface
 ## 6.1.2.6.1 Public Functions
 
 > [!NOTE]
-> This section describes the implementation of [**MS-VBAL §6.1.2.6.1 Public Functions**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/89736f0d-d6fa-47a3-9472-ac8ee640c77d).
+> This section describes the implementation of [**MS-VBAL §6.1.2.6.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/89736f0d-d6fa-47a3-9472-ac8ee640c77d).
 
 |§|Member|Notes|
 |---|---|---|

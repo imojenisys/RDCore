@@ -1,6 +1,6 @@
 # 5.6.9.7 Is Operator
 
-This section corresponds to [**MS-VBAL §5.6.9.7 Is Operator**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4730e541-8747-4259-ae76-128c7024b3b8).
+This section corresponds to [**MS-VBAL §5.6.9.7** Is Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4730e541-8747-4259-ae76-128c7024b3b8).
 
 > [!NOTE]
 > Reserved. This section has no content yet.
