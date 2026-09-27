@@ -9,10 +9,14 @@ using RDCore.Runtime.StdLib;
 using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.AST.Statements;
+using RDCore.SDK.Model.Errors;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
+using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Complex;
+using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
+using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Abstract.StdLib;
@@ -112,6 +116,31 @@ public sealed class StdLibDispatchTests
             "30 Debug.Print \"trapped\"");
 
         Assert.Contains("trapped", output[^1]);
+    }
+
+    [TestMethod]
+    public void AnArrayArgument_ReachesAnArrayParameter()
+    {
+        // the call site coerces an array argument into a fresh copy nothing has bound yet, and reading that
+        // copy's value threw out of the interpreter before anything was called. Join is not written yet, so
+        // the error saying so is what shows the call arrived.
+        var values = new VBModuleFieldVariableMemberSymbol(
+            Root, RuntimeSourceHarness.ModuleUri, "V", ScopeKind.Module, new VBFixedSizeArrayType(VBVariantType.TypeInfo),
+            SourceRange.Empty, SourceRange.Empty, AccessModifier.Implicit);
+        var array = new VBFixedSizeArrayValue([(0, 1)], VBVariantType.TypeInfo);
+        array.TrySetElement(new ValueBindingHandle(new VBVariantValue(new VBStringValue("a")).RuntimeValue), 0);
+        array.TrySetElement(new ValueBindingHandle(new VBVariantValue(new VBStringValue("b")).RuntimeValue), 1);
+
+        var (_, outcome) = RuntimeSourceHarness.Run(
+            fileSystem: null, [values], output: null, standardLibrary: true,
+            session => session.Symbols.Resolver.GetValue(values).SetValue(
+                session.Symbols.Resolver, new VBRuntimeValue<VBRuntimeArrayValue>(new VBRuntimeArrayValue(array))),
+            "Debug.Print Join(V)");
+
+        // 🚧 TODO when Join is written: the call completes, and prints "a b".
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
+        Assert.AreEqual((int)VBRuntimeErrorId.ApplicationDefinedOrObjectDefinedError, outcome.ErrorInfo!.ErrorId, outcome.ErrorInfo.Verbose);
+        Assert.AreEqual("'Join' is declared but not implemented yet.", outcome.ErrorInfo.Verbose);
     }
 
     [TestMethod]

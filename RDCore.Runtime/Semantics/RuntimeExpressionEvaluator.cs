@@ -409,7 +409,17 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
                 return RuntimeSemanticsEvaluationResult.Error(coercionResult.ErrorInfo!);
             }
 
-            arguments[i] = coercionResult.Result!.RuntimeValue;
+            // an array coerced to an array parameter is a fresh copy nothing has bound yet, so it has no
+            // RuntimeValue of its own to hand over: it is boxed around itself instead, the same shape
+            // SymbolAddressTable.FreshBinding gives an array variable and a ParamArray is collected into. A
+            // standard-library array parameter always arrives here, being ByVal; a ByRef one does when its
+            // argument is not a variable it can alias.
+            // 🚧 TODO: that includes a fixed-size array passed to a ByRef dynamic array parameter, which VBA passes
+            // by reference and this copies - TryResolveByRefArgument aliases only an argument of the parameter's
+            // own declared type.
+            arguments[i] = coercionResult.Result is VBArrayValue array
+                ? new VBRuntimeValue<VBRuntimeArrayValue>(new VBRuntimeArrayValue(array))
+                : coercionResult.Result!.RuntimeValue;
         }
 
         // through a binding rather than straight to the invoker: whether this member's code is the workspace's

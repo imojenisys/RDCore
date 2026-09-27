@@ -260,6 +260,32 @@ public sealed class StdLibSymbolReaderTests
     }
 
     [TestMethod]
+    public void AnArrayParameter_MayStateItsElementType()
+    {
+        // MS-VBAL 6.1.2.6.1.7: NPV(Rate As Double, ValueArray() As Double). A VBResizableArrayValue alone reads
+        // as Variant(), so the declaration says what the elements are - and the call site coerces an argument
+        // to an array of those, rather than refusing a Double() for not being a Variant().
+        var sum = (VBFunctionMemberSymbol)new StdLibSymbolReader(Root).Read([typeof(IStdLibWithTypedArrays)])
+            .Single(symbol => symbol.Name == "Sum");
+
+        var type = (VBResizableArrayType)sum.Parameters.Single().ResolvedType;
+        Assert.AreEqual(VBDoubleType.TypeInfo, type.ItemType);
+    }
+
+    [TestMethod]
+    [DataRow("Checksum")]
+    [DataRow("Digest")]
+    public void AByteArrayParameter_IsTheByteArrayType(string member)
+    {
+        // a Byte() is a type of its own - the one a Dim with the same element type declares - whether the
+        // declaration takes the array of any element type or the byte array itself.
+        var function = (VBFunctionMemberSymbol)new StdLibSymbolReader(Root).Read([typeof(IStdLibWithTypedArrays)])
+            .Single(symbol => symbol.Name == member);
+
+        Assert.IsInstanceOfType<VBResizableByteArrayType>(function.Parameters.Single().ResolvedType);
+    }
+
+    [TestMethod]
     public void CLngPtrsReturnType_FollowsThePointerWidthOfTheEnvironment()
     {
         // MS-VBAL 3.3.2: LongPtr is a different type in each pointer width, so its width is the one thing
@@ -348,6 +374,24 @@ public sealed class StdLibSymbolReaderTests
         Assert.Contains("TimeSpan", exception.Message);
     }
 
+    [TestMethod]
+    [DataRow(typeof(IStdLibWithAScalarElementType), "Scale")]
+    [DataRow(typeof(IStdLibWithAnOptionalArray), "Sum")]
+    [DataRow(typeof(IStdLibWithAByRefArray), "Fill")]
+    [DataRow(typeof(IStdLibWithAParamArrayElementType), "Total")]
+    [DataRow(typeof(IStdLibWithAByteArrayOfDoubles), "Average")]
+    public void AnElementTypeForAParameterThatIsNoRequiredArray_IsRefused(Type declaration, string member)
+    {
+        // an element type makes the parameter an array of it: stated for a scalar it would silently change the
+        // parameter's type, for an optional array it would declare an omission nothing gives a value, for a ByRef
+        // one a parameter no argument reaches, for a ParamArray a type it cannot have, and for a Byte() an array
+        // that could never hold its argument.
+        var reader = new StdLibSymbolReader(Root);
+
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => reader.Read([declaration]));
+        Assert.Contains(member, exception.Message);
+    }
+
     private interface IUnmarked
     {
         RuntimeSemanticsEvaluationResult<VBLongValue> Whatever();
@@ -357,5 +401,45 @@ public sealed class StdLibSymbolReaderTests
     private interface IStdLibWithABadParameter
     {
         RuntimeSemanticsEvaluationResult<VBLongValue> Nope(TimeSpan notAVBAType);
+    }
+
+    [StdLibModule("Arrays")]
+    private interface IStdLibWithTypedArrays
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Sum([StdLibArray(typeof(VBDoubleValue))] VBResizableArrayValue values);
+
+        RuntimeSemanticsEvaluationResult<VBLongValue> Checksum([StdLibArray(typeof(VBByteValue))] VBResizableArrayValue bytes);
+
+        RuntimeSemanticsEvaluationResult<VBLongValue> Digest([StdLibArray(typeof(VBByteValue))] VBResizableByteArrayValue bytes);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAScalarElementType
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Scale([StdLibArray(typeof(VBDoubleValue))] VBDoubleValue value);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAByRefArray
+    {
+        RuntimeSemanticsEvaluationResult Fill([StdLibArray(typeof(VBDoubleValue))] ref VBResizableArrayValue values);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAParamArrayElementType
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Total([StdLibArray(typeof(VBDoubleValue))] params VBVariantValue[] values);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAByteArrayOfDoubles
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Average([StdLibArray(typeof(VBDoubleValue))] VBResizableByteArrayValue values);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAnOptionalArray
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Sum([StdLibArray(typeof(VBDoubleValue))] VBResizableArrayValue? values = default);
     }
 }
