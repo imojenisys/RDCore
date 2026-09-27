@@ -72,7 +72,7 @@ predeclared instance of.
 
 #### Static Semantics
 
-✅ The static semantics of `VB_PredeclaredId` are modeled:
+The static semantics of `VB_PredeclaredId` are modeled:
 
 - A class module with `VB_PredeclaredId = True` has a
   [VBPredeclaredInstanceSymbol](../api/RDCore.SDK.Model.Symbols.VBPredeclaredInstanceSymbol.html): a global
@@ -95,8 +95,10 @@ It is invalid for the default instance variable to be the target of a `Set` assi
 
 #### Runtime Semantics
 
+In MS-VBA:
+
 - Setting an _auto-object_ (predeclared instance) to `Nothing` destroys its internal state.
-- An auto-object reference is re-created immediately as soon as it is referred to, including within an `Is Nothing`
+- An auto-object reference is re-created as soon as it is referred to, including within an `Is Nothing`
   reference check.
 
 > [!NOTE]
@@ -121,10 +123,10 @@ in the class type's `SuperTypes` array
 > Extensible ("document") modules cannot specify any `Implements` directives.
 >
 > MS-VBA does not strictly enforce this rule. In MS-VBA, an `Implements` directive in an extensible module can cause
-> host application instabilities, source project corruption, and host application crashes. Such a directive should
-> be statically caught early, as a normal compile-time error.
+> host application instabilities, source project corruption, and host application crashes.
 >
-> **RD-VBA** must explicitly and statically deny `Implements` directives in extensible modules.
+> **RD-VBA** must explicitly and statically deny `Implements` directives in extensible modules, as a normal
+> compile-time error.
 
 
 ## 5.2.4.3 Event Declaration

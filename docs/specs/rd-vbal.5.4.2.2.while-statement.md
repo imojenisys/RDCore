@@ -18,14 +18,14 @@
 MS-VBAL gives `While…Wend` no exit statement of its own. A `While…Wend` loop satisfies neither `Exit For` nor
 `Exit Do`.
 
-An `Exit Do` written inside a `While…Wend` is not consumed by it: it resolves against whatever `Do` loop already
-encloses the `While…Wend` ([**RD-VBAL §5.4.2.7** Exit Do Statement](rd-vbal.5.4.2.7.exit-do-statement.md)).
+An `Exit Do` written inside a `While…Wend` is not consumed by it: it resolves against the `Do` loop that encloses
+the `While…Wend` ([**RD-VBAL §5.4.2.7** Exit Do Statement](rd-vbal.5.4.2.7.exit-do-statement.md)).
 
 ## Runtime Semantics
 
 A `While…Wend` loop is a pre-test loop, like `Do While` and `Do Until`
 ([**RD-VBAL §5.4.2.6** Do Statement](rd-vbal.5.4.2.6.do-statement.md)). Its header is a `ConditionalBranch`,
-dispatched exactly like an `If` header ([**RD-VBAL §5.4.2.8** If Statement](rd-vbal.5.4.2.8.if-statement.md)).
+dispatched in the same way as an `If` header ([**RD-VBAL §5.4.2.8** If Statement](rd-vbal.5.4.2.8.if-statement.md)).
 
 1. Evaluate the condition. It is a Boolean condition, evaluated by the same `ConditionEvaluator` an `If` uses, and
    forced to `Boolean`

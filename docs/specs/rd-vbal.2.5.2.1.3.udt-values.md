@@ -16,7 +16,7 @@ A UDT has location identity. A UDT is never copied by value at the level of its 
 
 A UDT value carries a **field store**: one cell per declared field, in **declaration order**.
 
-A UDT value carries its field store exactly as an array value carries its element block ([**RD-VBAL §2.5.2.1.2** Array Values](rd-vbal.2.5.2.1.2.array-values.md)), and for the same reason: a UDT's real data is its fields, which a scalar managed value has nowhere to hold.
+A UDT value carries its field store in the same way as an array value carries its element block ([**RD-VBAL §2.5.2.1.2** Array Values](rd-vbal.2.5.2.1.2.array-values.md)), and for the same reason: a UDT's real data is its fields, which a scalar managed value has nowhere to hold.
 
 The declaration order of the field store is normative rather than incidental. It is:
 
@@ -29,7 +29,7 @@ A UDT field is not an addressable symbol the way a variable is: a `Let` assignme
 
 ## Storage
 
-Like an array, a UDT value is **location-identified**. Three pieces let a UDT value survive storage:
+Like an array, a UDT value is **location-identified**. Three pieces preserve a UDT value through storage:
 
 |Piece|Role|
 |---|---|
@@ -37,9 +37,9 @@ Like an array, a UDT value is **location-identified**. Three pieces let a UDT va
 |[VBUserDefinedType](../api/RDCore.SDK.Model.Types.VBUserDefinedType.html)`.CreateValue(IBindingHandle)` unboxing|Unboxes the stored UDT value back out unchanged, rather than rebuilding one with default fields.|
 |The `VBUserDefinedTypeValue` copy constructor|Gives every `with`-derived copy a field store of its own.|
 
-`VBRuntimeUserDefinedTypeValue` is the third location-identified value of its kind, after an array and a `Variant`.
+Three kinds of value are location-identified this way: an array, a `Variant`, and a UDT (`VBRuntimeUserDefinedTypeValue`).
 
-`VBUserDefinedType.CreateValue` unboxes the stored UDT value rather than reconstructing one. Reconstructing a UDT value from a handle would hand back a UDT with default fields, however much had been assigned to it.
+Reconstructing a UDT value from a handle, instead of unboxing it, would return a UDT with default fields, whatever had been assigned to it.
 
 `VBRuntimeUserDefinedTypeValue` is a plain (non-`record`) wrapper, for the same reason [VBRuntimeArrayValue](../api/RDCore.SDK.Model.Values.Runtime.VBRuntimeArrayValue.html) is: structural equality would recurse into the value's own equality through the boxed value.
 
@@ -60,9 +60,9 @@ A copy of a UDT value gets a field store of its own. The copy is deep through a 
 
 ### In-Memory Layout
 
-**MS-VBAL** itself calls the UDT in-memory padding "implementation-specific". RD-VBA chooses MS-VBA's padding, because the in-memory size of a UDT is precisely the kind of thing a program measures with `LenB` and then relies on.
+**MS-VBAL** calls the UDT in-memory padding "implementation-specific". RD-VBA chooses MS-VBA's padding, because a program measures a UDT's in-memory size with `LenB` and relies on it.
 
-`VBUserDefinedTypeLayout` represents the second (in-memory, `LenB`) size of a UDT:
+`VBUserDefinedTypeLayout` represents the in-memory (`LenB`) size of a UDT:
 
 - It holds MS-VBA's own natural alignment (padding) rule in one place.
 - It holds each field's offset.
@@ -77,7 +77,7 @@ A copy of a UDT value gets a field store of its own. The copy is deep through a 
 |Variable-length `String`|A pointer|Its characters|
 |Fixed-length `String`|Unicode|ANSI|
 
-The memory-versus-record widths of `String` fields are the whole reason the two UDT sizes disagree. They are also the reason for the MS-VBAL warning that "Len might not be able to determine the actual number of storage bytes required when used with variable-length strings in user-defined data types". A record whose members include a variable-length `String` is the case that warning covers.
+The memory and record widths of `String` fields are why the two UDT sizes differ. They are also the reason for the MS-VBAL warning that "Len might not be able to determine the actual number of storage bytes required when used with variable-length strings in user-defined data types". A record whose members include a variable-length `String` is the case that warning covers.
 
 ### Pointer Width
 
@@ -85,7 +85,7 @@ The pointer width of a UDT layout is a parameter of `VBUserDefinedTypeLayout`. I
 
 - Every MS-VBA UDT is laid out for a 32-bit pointer width.
 - RD-VBA assumes a 32-bit pointer so that its UDT layout agrees with a file, or a `LenB`, from MS-VBA.
-- A 64-bit host widens a pointer field and a `LongPtr` field of a UDT.
+- On a 64-bit host, a pointer field and a `LongPtr` field of a UDT are wider. RD-VBA does not model this (see the note below).
 
 > [!NOTE]
 > **Not implemented.** A 64-bit UDT layout is not implemented: RD-VBA does not thread the environment's own pointer width through the UDT layout. The RD-VBA UDT layout assumes a 32-bit pointer.

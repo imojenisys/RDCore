@@ -25,7 +25,7 @@ A symbol `Uri` is assembled from the _workspace root_ `Uri` and a relative `Uri`
 - The relative `Uri` path should be that of the symbol's parent module or procedure scope.
 
 > [!WARNING]
-> Symbol `Uri`s look hierarchical, and they are hierarchical. Symbol `Uri`s should never be used to rebuild a client-side tree-like structure.
+> Symbol `Uri`s are hierarchical, but they should never be used to rebuild a client-side tree-like structure.
 
 Name resolution is described in [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md).
 
@@ -37,7 +37,7 @@ Name resolution is described in [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.
 
 ### Scope Kind
 
-`ScopeKind` defines the allocation scopes. The scope kind of a `Symbol` determines exactly how, and whether, the symbol is allocated in memory.
+`ScopeKind` defines the allocation scopes. The scope kind of a `Symbol` determines how, and whether, the symbol is allocated in memory.
 
 |Value|Level|Allocation|
 |---|---|---|
@@ -83,7 +83,7 @@ The symbol kind of a `Symbol` is as specified in **LSP 3.17**. The symbol kinds 
 >
 > RD-VBA repurposes the LSP `Namespace` symbol kind to a different meaning: the RD-VBA `Project` symbol kind maps to `SymbolKind.Namespace`. There is no concept of a namespace in VBA.
 >
-> The LSP `Key` symbol kind fits the token that follows the `!` operator in a dictionary access expression, which represents a dictionary key; see [**RD-VBAL §5.6.14** Dictionary Access Expressions](rd-vbal.5.6.14.dictionary-access-expressions.md).
+> The token that follows the `!` operator in a dictionary access expression represents a dictionary key, which the LSP `Key` symbol kind would fit; see [**RD-VBAL §5.6.14** Dictionary Access Expressions](rd-vbal.5.6.14.dictionary-access-expressions.md).
 
 ### Extension Symbol Kinds
 
@@ -105,7 +105,7 @@ The extension symbol kinds may or may not be supported by an LSP client (editor)
 
 [VBReturningMemberSymbol](../api/RDCore.SDK.Model.Symbols.Abstract.VBReturningMemberSymbol.html) is the base type of a `Function`'s and a `Property Get`'s member symbol. `Const`, `EnumConst`, module-level and instance fields, and UDT fields share this base type with `Function` and `Property Get` symbols.
 
-[VBProcedureMemberSymbol](../api/RDCore.SDK.Model.Symbols.VBProject.VBProcedureMemberSymbol.html)`.Locals` and `VBReturningMemberSymbol.Locals` list every `Dim`, `Static` and `Const` declared in the procedure body. The `Locals` property of a procedure member symbol mirrors its `Parameters` property exactly; see [**RD-VBAL §5.4.3.1** Local Variable Declarations](rd-vbal.5.4.3.1.local-variable-declarations.md).
+[VBProcedureMemberSymbol](../api/RDCore.SDK.Model.Symbols.VBProject.VBProcedureMemberSymbol.html)`.Locals` and `VBReturningMemberSymbol.Locals` list every `Dim`, `Static` and `Const` declared in the procedure body. The `Locals` property of a procedure member symbol mirrors its `Parameters` property; see [**RD-VBAL §5.4.3.1** Local Variable Declarations](rd-vbal.5.4.3.1.local-variable-declarations.md).
 
 A class module with `VB_PredeclaredId = True` has a [VBPredeclaredInstanceSymbol](../api/RDCore.SDK.Model.Symbols.VBPredeclaredInstanceSymbol.html): a global variable named after the class, whose declared type is that class. It is an automatic instantiation variable ([SymbolProperties](../api/RDCore.SDK.Model.Symbols.Abstract.SymbolProperties.html)`.AutoInstantiated`, [**MS-VBAL §2.5.1** Automatic Object Instantiation](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fef06761-45b9-48c2-825c-b75c28aee9b5)), as is any variable declared with an `As New` clause. See [**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md) and [**RD-VBAL §5.2.3** Module Declarations](rd-vbal.5.2.3.module-declarations.md).
 

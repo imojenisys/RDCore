@@ -21,16 +21,16 @@ Conditions that need symbol information (an undefined name, a duplicate declarat
 
 ## Fallback and Dedicated Codes
 
-`VBC00001` is the general syntax-error fallback code: when input has clearly gone wrong but no more specific code applies, the parser reports `VBC00001`.
+`VBC00001` is the general syntax-error fallback code: when the input is invalid and no more specific code applies, the parser reports `VBC00001`.
 
-The parser deliberately narrows its output over time: recurring syntax-error shapes are promoted to a dedicated code in the `VBC00042`–`VBC00999` range.
+The parser narrows its output: recurring syntax-error shapes are promoted to a dedicated code in the `VBC00042`–`VBC00999` range.
 
 A numeric literal whose value does not fit its type is the `NumericLiteralOverflow` syntax error (`VBC00042`), located at the literal. This includes a literal whose value does not fit its suffix-forced type, a floating-point literal that overflows to infinity, and an unsuffixed radix literal beyond 32 bits; see [**RD-VBAL §3.2.0** Literal Expressions](rd-vbal.3.2.0.literals.md).
 
 ## Conditional Compilation
 
 > [!NOTE]
-> **Not implemented.** A `#If` that splits a single statement across conditional-compilation branches (`#If` / `#Else` / `#End If`) is unparseable by the RD-VBA grammar. It reports located `VBC` diagnostics (`VBC00001`) a client can anchor a squiggle on.
+> **Not implemented.** A `#If` that splits a single statement across conditional-compilation branches (`#If` / `#Else` / `#End If`) is unparseable by the RD-VBA grammar. Such a statement reports located `VBC` diagnostics (`VBC00001`), which a client can anchor to a source range.
 
 ## Published Codes
 

@@ -8,13 +8,13 @@ it, and returns an [InstructionListLoweringResult](../api/RDCore.SDK.Semantics.I
 
 Lowering is pure: it uses no symbol resolver and no runtime session
 ([**RD-VBAL §3.5.5** Placement and Licensing](rd-vbal.3.5.5.placement-and-licensing.md)). It emits one
-instruction per executable statement, plus a handful of synthesized instructions that a block statement needs
+instruction per executable statement, plus the synthesized instructions that a block statement needs
 but has no source node for.
 
 ## Structured blocks
 
 A block statement (`If`, `Select Case`, a loop, `With`) is kept structured; it is not flattened into a
-low-level jump IR. Its header(s) remain real instructions, addressed by `ByNode` like any other statement.
+low-level jump IR. Its header(s) remain instructions of their own, addressed by `ByNode` like any other statement.
 
 Only the control effects between block headers are pre-resolved offsets: an `If`/`Case` branch's
 fall-through-versus-skip choice, and a loop's back-edge. Lowering computes these offsets once, instead of the
@@ -28,8 +28,8 @@ Lowering only flattens the statement tree. It never flattens the expression tree
 `Next`, `Loop` and `Wend` have no AST node of their own: the whole construct is one
 [ForStatementNode](../api/RDCore.SDK.Model.AST.Statements.ForStatementNode.html),
 [DoLoopStatementNode](../api/RDCore.SDK.Model.AST.Statements.DoLoopStatementNode.html) (and so on) with a
-`Body` ([**RD-VBAL §3.4.1** Block Statements](rd-vbal.3.4.1.block-statements.md)). Where a loop's closer does
-real work, lowering emits a real instruction to hold that work:
+`Body` ([**RD-VBAL §3.4.1** Block Statements](rd-vbal.3.4.1.block-statements.md)). Where a loop's closer has
+work to do, lowering emits a closer instruction of its own to hold that work:
 
 |Loop|Closer instruction|Work|`Node`|
 |---|---|---|---|
@@ -45,7 +45,7 @@ A synthesized `Next` closer does not reuse the loop's own node. Doing so would t
 from the opener, which is the more useful attribution for a breakpoint on the `For`/`For Each` line.
 
 `If` and `Select Case` need no synthesized closer. Falling out of the last branch, or out of the `Else`/`Case Else`
-that needs no condition, already lands where the construct's own `End`/`Else` chaining says it should, with
+that needs no condition, already lands where the construct's own `End`/`Else` chaining places it, with
 nothing left to do.
 
 ## Branch trailing jumps
@@ -55,7 +55,7 @@ past the whole construct. It does so even for the last branch, where the jump is
 fall-through.
 
 Always emitting the trailing `Jump` keeps the emission logic uniform, instead of special-casing "is this the last
-branch", at the cost of one harmless extra instruction.
+branch", at the cost of one extra instruction that does not change behaviour.
 
 ## Loop exits
 
@@ -70,7 +70,7 @@ runtime search.
 
 A `While…Wend` loop satisfies neither `Exit For` nor `Exit Do`: MS-VBAL gives `While…Wend` no exit statement of
 its own ([**RD-VBAL §5.4.2.2** While Statement](rd-vbal.5.4.2.2.while-statement.md)). An `Exit Do` written
-inside a `While…Wend` is not consumed by it; it resolves against whatever `Do` loop already encloses the
+inside a `While…Wend` is not consumed by it; it resolves against the `Do` loop, if any, that encloses the
 `While…Wend`.
 
 > [!NOTE]
@@ -83,7 +83,7 @@ inside a `While…Wend` is not consumed by it; it resolves against whatever `Do`
 
 Every instruction lexically inside a `With` block, however deeply nested (through an `If` or a loop), carries
 `EnclosingWith` set to that `With`'s opener offset. When lowering leaves the block, `EnclosingWith` is restored to
-whatever it was before the block.
+its value before the block.
 
 `EnclosingWith` is computed once, at lowering time. It is a purely lexical fact about the instruction, not a
 runtime stack the interpreter pushes and pops. Because it is static, a `GoTo` into or out of a `With` block
@@ -96,14 +96,14 @@ A dead `#If`/`#ElseIf`/`#Else` branch is never lowered. `Lower` takes the source
 [InstructionLoweringOptions](../api/RDCore.SDK.Semantics.Instructions.InstructionLoweringOptions.html)`.DeadRanges`.
 
 A statement or label lexically inside a dead range, at any depth, is skipped entirely: it gets no instruction,
-no `ByNode` entry, and no label definition. This behaves exactly as if the excluded source had never been there,
-the same way the MS-VBA preprocessor logically removes it before the rest of the language sees it
+no `ByNode` entry, and no label definition. The result is the same as if the excluded source were absent, in the
+same way that the MS-VBA preprocessor logically removes it before the rest of the language sees it
 ([**MS-VBAL §3.4.2** Conditional Compilation If Directives](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7fca6481-24cc-4736-9757-f4af90863e26)).
 
 ## Labels and diagnostics
 
 Lowering builds the label table that a jump statement's target resolves against, and needs every label to
-resolve to a single, unambiguous offset. Resolving a jump's target label is entirely lowering's job, for
+resolve to a single, unambiguous offset. Lowering alone resolves a jump's target label, for
 `GoSub` as for `GoTo`: a `GoSub` statement's `Target`, and an `On…GoSub` statement's `Targets`, hold the
 resolved offsets.
 
@@ -111,12 +111,12 @@ resolved offsets.
 |---|---|---|
 |A label operand (`GoTo`, `GoSub`, `On…GoTo`, `On…GoSub`, `On Error GoTo`, `Resume`) names a line label or line number the procedure does not define.|The operand carries a `null` target.|[VBC09309](../diagnostics/vbc09309.md) — Label not defined|
 |A label is defined more than once.|The first offset the label was defined at is kept; every jump to the label resolves against that first definition.|[VBC09319](../diagnostics/vbc09319.md) — Duplicate label definition|
-|An `Exit For`/`Exit Do` has no enclosing loop of the matching kind.|The `ExitLoop` target is left unresolved.|None (see **Loop exits**).|
+|An `Exit For`/`Exit Do` has no enclosing loop of the matching kind.|The `ExitLoop` target is left unresolved.|None (see [Loop exits](#loop-exits)).|
 
 Lowering never fails outright: it always produces a complete `InstructionList`, whether or not every label and
 loop exit resolved.
 
-Whether to refuse to run a body that lowered with errors is a decision for whatever executes the body, not for
+Whether to refuse to run a body that lowered with errors is a decision for the component that executes the body, not for
 lowering ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
 
 ## Other statements

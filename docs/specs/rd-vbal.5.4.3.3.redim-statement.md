@@ -14,7 +14,7 @@ See [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md).
 ## Static Semantics
 
 `ReDim` may be used to declare a `VBResizableArrayValue`, or to redimension an already-declared
-`VBResizableArrayValue`. `ReDim` is illegal to use with any `VBFixedSizeArrayValue`. See
+`VBResizableArrayValue`. It is invalid to use `ReDim` with a `VBFixedSizeArrayValue`. See
 [**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md).
 
 The target name of a `ReDim` statement decides what the statement is:

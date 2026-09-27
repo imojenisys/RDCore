@@ -4,16 +4,16 @@ The *language core* features an *analytical pipeline* that attaches detailed *se
 
 Core semantic flags are **spec-driven**. They are designed to describe the semantic reality of an operation, **without any restraint or judgement**: semantic flags are pure *facts*, not *opinions*.
 
-The existence of a semantic flag is typically motivated by the presence of a branch or condition in the specified semantics:
+A semantic flag typically exists because the specified semantics contain a branch or condition:
 
 |Specified semantics|Semantic flag|
 |---|---|
 |The *effective type* of an operation evaluates a [VBNullType](../api/RDCore.SDK.Model.Types.VBNullType.html) differently than a [VBNumericType](../api/RDCore.SDK.Model.Types.Abstract.VBNumericType.html).|The semantic flags for that operation should reflect the `NullEffectiveType` flag.|
 |The specifications mention a `NaN` operand.|There should be a `HasNaNOperand` semantic flag.|
 
-> 👉 **DO** create new core semantic flags as needed to accurately reflect the semantic reality of an operation.
+> 👉 **Do** create new core semantic flags as needed to accurately reflect the semantic reality of an operation.
 >
-> ❌ **DO NOT** create new core semantic flags that no specified (RD-VBAL) semantics justify.
+> ❌ **Do not** create new core semantic flags that no specified (RD-VBAL) semantics justify.
 
 ## Extensions
 

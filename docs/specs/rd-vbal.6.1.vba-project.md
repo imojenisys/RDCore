@@ -16,7 +16,7 @@ symbols shall carry the appropriate _return type_ metadata.
 
 The SDK defines the interfaces for the _internal representation_ of each standard-library module, and the environment
 host exposes the symbols provided by the standard library to the _workspace_. See
-[**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standard-library.md) (§6.0.1 Symbol Injection).
+[**RD-VBAL §6.0.1** Symbol Injection](rd-vbal.6.0.standard-library.md#601-symbol-injection).
 
 ---
 ## In this section

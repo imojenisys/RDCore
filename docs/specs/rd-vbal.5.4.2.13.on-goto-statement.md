@@ -43,8 +43,7 @@ to a `JumpTable` instruction as follows:
 4. Otherwise, if *n* is negative or greater than 255, run-time error 5 is raised.
 5. Otherwise, execution branches to the *n*'th label (1-based) in `Instruction.Targets`.
 
-A selector out of range therefore falls through at runtime instead of branching. Step 3 takes precedence over
-step 4, in the order **MS-VBAL §5.4.2.13** lists them.
+Step 3 takes precedence over step 4, in the order **MS-VBAL §5.4.2.13** lists them.
 
 |Condition|Run-time error|
 |---|---|
@@ -63,8 +62,8 @@ had reached the end of the procedure body
   (steps 1 and 2). `ProcedureExecutor` applies steps 3 to 5, in one code path shared by `JumpTable` and
   `GoSubTable`.
 - `JumpTableEvaluator` Let-coerces the selector by calling `VBNumericLetCoercionTypeRuntimeSemantics` directly,
-  bypassing the let-coercion provider. `ConditionEvaluator` uses the same bypass-the-provider pattern to force a
-  condition to `Boolean` ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
+  bypassing the let-coercion provider. `ConditionEvaluator` likewise bypasses the provider to force a condition to
+  `Boolean` ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
 
 ---
 > ⏮️ [**RD-VBAL §5.4.2.12** GoTo Statement](rd-vbal.5.4.2.12.goto-statement.md) | ⏭️ [**RD-VBAL §5.4.2.14** GoSub Statement](rd-vbal.5.4.2.14.gosub-statement.md)

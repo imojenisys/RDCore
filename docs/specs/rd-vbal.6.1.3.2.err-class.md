@@ -11,7 +11,7 @@ The `Err` class is represented in the SDK by the interface
 
 ## The Err function
 
-The `Err` function has one deliberate shape in RD-VBA.
+🎯 The error object has two shapes. RD-VBA deliberately implements the MS-VBA one:
 
 |Shape|Described by|The error object is|
 |---|---|---|
@@ -22,16 +22,20 @@ The two shapes are indistinguishable from source. A standard module's members ar
 bare `Err` yields the error object in either shape
 ([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)).
 
-RD-VBA implements the MS-VBA shape of `Err`: a zero-argument `Function` of the `Information` module, returning an
-`ErrObject` (**RD-VBAL §6.1.2.7.1.15**, in [**RD-VBAL §6.1.2.7** Information](rd-vbal.6.1.2.7.information.md)).
-RD-VBA's `Err` is not a global class module with a default instance, the shape MS-VBAL describes.
+RD-VBA's `Err` is a zero-argument `Function` of the `Information` module, returning an `ErrObject`
+([**RD-VBAL §6.1.2.7.1.15** Err](rd-vbal.6.1.2.7.information.md#6127115-err)). It is not a global class module with a
+default instance, the shape MS-VBAL describes.
 
 The MS-VBA shape leaves `ErrObject` nameable in an `As` clause, instead of shadowed by its own default instance.
 
 > [!NOTE]
-> **Not implemented.** The `Err` function of the `Information` module has no runtime implementation: calling it raises
-> the run-time error "Application-defined or object-defined error". VBA source therefore cannot read or call the error
-> object at run time (`Err.Number`, `Err.Raise(...)`).
+> **Not implemented.** VBA source cannot read or call the error object at run time (`Err.Number`,
+> `Err.Raise(...)`), for two reasons:
+>
+> - The `Err` function of the `Information` module has no runtime implementation: calling it raises the run-time
+>   error "Application-defined or object-defined error".
+> - Calling a member of an object through a member access is not implemented: a member access reads only a field
+>   of a class instance, and any other member reports `InternalError`.
 
 
 ## 6.1.3.2.1 Public Subroutines
@@ -73,33 +77,33 @@ as the error's source ([**RD-VBAL §2.0.2** Client/Server Capabilities](rd-vbal.
 
 The session's own `Source`
 ([ISessionErrorState](../api/RDCore.SDK.Runtime.Abstract.Execution.ISessionErrorState.html)`.Source`) is empty until
-source code or `Err.Raise` sets it.
+the error object sets it (`IStdErrClass.Source`, or `IStdErrClass.Raise` with a source argument). VBA source cannot
+reach the error object (see the note under [The Err function](#the-err-function)), so the `rdcore/session/execute`
+result always reports the project name as the error's source.
 
 ### 6.1.3.2.2.7 StackTrace
 
-🧩 `ErrObject.StackTrace` is RD-VBA's own addition to MS-VBAL's `Err` class. 🎯 RD-VBA adds this one member to the
-`Err` class: the `StackTrace` property.
+🧩 `ErrObject.StackTrace` is an RD-VBA addition to the MS-VBAL `Err` class, and the only member RD-VBA adds to it.
 
-VBA can say _what_ an error was, but never _where_ it came from. This is what makes an `Err.Description` from deep in a
-call chain so uninformative, and it is the reason for `StackTrace`.
+The MS-VBA error object identifies what an error was, not the call chain it was raised in. `StackTrace` reports that
+call chain.
 
-`StackTrace` is a read-only property. It reports the call stack the current error was raised on, and lists its
-activations innermost activation first.
+`StackTrace` is a read-only property. It lists the activations of the call stack the current error was raised on,
+innermost activation first.
 
 #### Runtime Semantics
 
-1. The stack trace is captured when the error is raised, rather than derived when it is read. It is captured at the
-   interpreter's own error-interception point, the one place every run-time error passes through
-   ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
-2. It must be captured when the error is raised because, by the time a handler reads it, the activations it names have
-   been unwound.
-3. Only the activation the error was raised in carries a location. A caller's activation record does not say where in
-   itself it is suspended, so a caller's activation carries no location.
+The stack trace is captured when the error is raised, rather than derived when it is read, because by the time a
+handler reads it the activations it names have been unwound. It is captured at the interpreter's error-interception
+point, the one place every run-time error passes through ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
+
+Only the activation the error was raised in carries a location. A caller's activation record does not say where in
+itself it is suspended.
 
 |Condition|`StackTrace`|
 |---|---|
 |No error is current.|Empty.|
-|Source made an error current by assigning `Err.Number`, rather than by raising one.|Empty.|
+|An error was made current by setting `Number`, rather than by raising one.|Empty.|
 
 #### Implementation
 

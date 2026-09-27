@@ -6,14 +6,14 @@ The RD-VBA *language core* shall remain strictly compatible with the MS-VBAL spe
 
 ## How to read this section
 
-The RD-VBA philosophy is based on a simple idea:
+The RD-VBA philosophy is based on one idea:
 
 - The *language core* describes what VBA already is.
 - *Extensions* may build on what VBA already is, but must not alter it.
 
 In other words, the language core preserves the semantic identity of VBA, and the platform enables evolution around the language core.
 
-Sections [**RD-VBAL §1.1.1**](rd-vbal.1.1.1.platform-extensions.md) to [**RD-VBAL §1.1.6**](rd-vbal.1.1.6.capabilities-provider.md) formalize this distinction between the language core and the platform and its extensions.
+Sections [**RD-VBAL §1.1.1** Platform Extensions](rd-vbal.1.1.1.platform-extensions.md) to [**RD-VBAL §1.1.6** Capabilities Provider](rd-vbal.1.1.6.capabilities-provider.md) formalize this distinction between the language core and the platform and its extensions.
 
 > [!NOTE]
 > These design principles guide both implementation and contributions. Changes to the *language core* should preserve semantic compatibility with the language specifications, and should prioritize clarity over novelty.

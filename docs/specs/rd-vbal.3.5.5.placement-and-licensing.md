@@ -19,9 +19,9 @@ The instruction model and its contracts live in **RDCore.SDK** (MIT). The interp
 |[VBProcedureMemberSymbol](../api/RDCore.SDK.Model.Symbols.VBProject.VBProcedureMemberSymbol.html)`.Locals`, [VBReturningMemberSymbol](../api/RDCore.SDK.Model.Symbols.Abstract.VBReturningMemberSymbol.html)`.Locals`|RDCore.SDK|MIT|A procedure's `Dim`, `Static` and `Const` locals.|
 |[ScopeTreeBuilder](../api/RDCore.SDK.Model.Symbols.ScopeTreeBuilder.html)|RDCore.SDK|MIT|Extracts `Locals` for name resolution.|
 |`ProcedureExecutor`, its statement dispatch, and activation state (`CallStackFrame`)|RDCore.Runtime|GPLv3|The interpreter ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).|
-|`RuntimeProcedureInvoker`|RDCore.Runtime|GPLv3|The call's real implementation: frame setup, `ByVal`/`ByRef` parameter binding, function result values, and the call-depth guard ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).|
+|`RuntimeProcedureInvoker`|RDCore.Runtime|GPLv3|The concrete implementation of the call contract: frame setup, `ByVal`/`ByRef` parameter binding, function result values, and the call-depth guard ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).|
 |`RuntimeProcedureInvoker.HoistLocals`|RDCore.Runtime|GPLv3|Walks `Locals` for storage ([**RD-VBAL §5.4.3.1** Local Variable Declarations](rd-vbal.5.4.3.1.local-variable-declarations.md)).|
-|`CallStackAwareSymbolResolver`, `RuntimeSymbolResolver`|RDCore.Runtime|GPLv3|The only two resolvers with a real answer for `TryGetAddress` and `TryAllocate`.|
+|`CallStackAwareSymbolResolver`, `RuntimeSymbolResolver`|RDCore.Runtime|GPLv3|The only two resolvers that resolve an address for `TryGetAddress` and allocate storage for `TryAllocate`.|
 
 ## The instruction model
 
@@ -29,14 +29,14 @@ The instruction model and its contracts live in **RDCore.SDK** (MIT). The interp
 Lowering is pure: it uses no symbol resolver and no runtime session.
 
 The instruction types and lowering are in RDCore.SDK because the SDK's static-analysis consumers (unreachable
-code, unused label, a flow-based inspection) want the same flattened instruction list the interpreter drives.
+code, unused label, a flow-based inspection) need the same flattened instruction list that the interpreter executes.
 
-`ProcedureExecutor`, its statement dispatch, and activation state are RDCore.Runtime (GPLv3).
+`ProcedureExecutor`, its statement dispatch, and activation state are in RDCore.Runtime (GPLv3).
 
 ## Read-only interface, mutable implementation
 
-The per-activation state is exposed on the SDK interface `ICallStackFrame`, read-only there. It is only ever
-mutated by the executor, through the concrete RDCore.Runtime class `CallStackFrame`:
+The per-activation state is exposed on the SDK interface `ICallStackFrame`, read-only there. Only the executor
+mutates it, through the concrete RDCore.Runtime class `CallStackFrame`:
 
 |State|Read through `ICallStackFrame`|Mutated through `CallStackFrame`|
 |---|---|---|
@@ -63,17 +63,18 @@ pair, because the error-handler state is a single value per activation.
 
 `ISymbolResolver.TryGetAddress` and `ISymbolResolver.TryAllocate` apply the same read-only SDK-interface /
 Runtime-implementation split to name resolution. `CallStackAwareSymbolResolver` and `RuntimeSymbolResolver`
-(RDCore.Runtime) are the only two resolvers with a real answer for either. Every compile-time-only resolver
+(RDCore.Runtime) are the only two resolvers that resolve an address for `TryGetAddress` and allocate storage for
+`TryAllocate`. Every compile-time-only resolver
 (`CompositeSymbolResolver`, `ScopeTreeSymbolResolver`, `IntrinsicSymbolResolver`) returns `false` for both.
 
-`ISymbolResolver.TryAllocate` genuinely mutates: it allocates a `Static` local's storage. The other `ICallStackFrame`
+`ISymbolResolver.TryAllocate` mutates state: it allocates a `Static` local's storage. The other `ICallStackFrame`
 and `ISymbolResolver` members listed on this page are read-only. `TryAllocate` is a mutating member of the SDK
-interface because allocating session-level storage was never something only the executor needed a hook for.
+interface because allocating session-level storage is not a hook that only the executor needs.
 
 ## Locals
 
 `VBProcedureMemberSymbol.Locals` and `VBReturningMemberSymbol.Locals` are in RDCore.SDK (MIT). A `Dim`, `Static`
-or `Const` local rides on its declaring procedure symbol, exactly like `Parameters`
+or `Const` local is carried on its declaring procedure symbol, as `Parameters` are
 ([**RD-VBAL §2.5.1** Runtime Entities](rd-vbal.2.5.1.runtime-entities.md)).
 
 |Consumer|Assembly|Uses `Locals` for|
@@ -86,7 +87,7 @@ or `Const` local rides on its declaring procedure symbol, exactly like `Paramete
 `IProcedureInvoker` and `CallableBindingHandle` are the call contract: given a procedure symbol, a resolver, and
 arguments, run the procedure. They live in RDCore.SDK (MIT).
 
-`RuntimeProcedureInvoker` is the call's real implementation: frame setup, `ByVal`/`ByRef` parameter binding,
+`RuntimeProcedureInvoker` is the concrete implementation of the call contract: frame setup, `ByVal`/`ByRef` parameter binding,
 function result values, and the call-depth guard. It is in RDCore.Runtime (GPLv3).
 
 The `IProcedureInvoker` / `RuntimeProcedureInvoker` split matches the SDK-contract / Runtime-implementation split

@@ -32,8 +32,8 @@ Lowering resolves each label in the list into `Instruction.Targets`
 
 ## Runtime Semantics
 
-`GoSubTable` performs exactly the same selector algorithm as `JumpTable`
-([**RD-VBAL §5.4.2.13** On...GoTo Statement](rd-vbal.5.4.2.13.on-goto-statement.md)), plus pushing a
+`GoSubTable` performs the same selector algorithm as `JumpTable`
+([**RD-VBAL §5.4.2.13** On...GoTo Statement](rd-vbal.5.4.2.13.on-goto-statement.md)), and in addition pushes a
 resumption point on a successful branch:
 
 1. The selector expression is evaluated once.
@@ -44,7 +44,7 @@ resumption point on a successful branch:
 5. Otherwise, the offset right after the `On…GoSub` is pushed onto the activation's GoSub Resumption List, and
    execution branches to the *n*'th label (1-based) in `Instruction.Targets`.
 
-The push in step 5 is identical to the push a bare `GoSub` performs
+The push in step 5 is the same push a bare `GoSub` performs
 ([**RD-VBAL §5.4.2.14** GoSub Statement](rd-vbal.5.4.2.14.gosub-statement.md)). A later `Return` pops it
 ([**RD-VBAL §5.4.2.15** Return Statement](rd-vbal.5.4.2.15.return-statement.md)).
 

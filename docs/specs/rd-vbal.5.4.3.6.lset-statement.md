@@ -49,14 +49,16 @@ from the same end.
 
 ### UDT form
 
-`LSet`'s other form is a byte copy between two UDT variables. `LSet` copies a UDT as bytes because that is how VBA
-fakes a union.
+`LSet`'s other form is a byte copy between two UDT variables. `LSet` copies a UDT as bytes because a byte copy
+between two UDTs is how VBA emulates a union.
 
 1. The source record is laid out through its own layout
    ([VBUserDefinedTypeLayout](../api/RDCore.SDK.Model.Types.VBUserDefinedTypeLayout.html)).
 2. Only the bytes both types have are copied.
-3. The copied bytes are read back through the destination's layout. A `Long` reinterprets as two `Integer`s.
-4. A destination field that the source's image does not reach keeps its default value, rather than half a value.
+3. The copied bytes are read back through the destination's layout. For example, a `Long` is reinterpreted as two
+   `Integer`s.
+4. A destination field that the source's image does not reach is set to its declared type's default value, rather
+   than being filled with half a value.
 
 A variable-length `String` member is not part of the byte image:
 

@@ -77,7 +77,7 @@ _Array types_ include the following implementations of `VBArrayType`:
 
 An array type does not encode any dimensions.
 
-The _value_ associated with an array type encodes the array dimensions; see [VBArrayValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBArrayValue.html) and its derived types, and [**RD-VBAL §2.5.2.1.2** Array Values](rd-vbal.2.5.2.1.2.array-values.md). `VBArrayType.CreateValue(IBindingHandle)` unboxes the array value back out unchanged on every subsequent read.
+The _value_ associated with an array type encodes the array dimensions; see [VBArrayValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBArrayValue.html) and its derived types, and [**RD-VBAL §2.5.2.1.2** Array Values](rd-vbal.2.5.2.1.2.array-values.md). On every read after the array value is stored, `VBArrayType.CreateValue(IBindingHandle)` unboxes it unchanged.
 
 ### Resizable Byte Arrays
 
@@ -107,7 +107,7 @@ The _declaration pass_ binds the _declared type_ of an array symbol from the _ar
 
 An omitted array _item type_ defaults to `Variant` ([**MS-VBAL §5.2.3.1** Module Variable Declaration Lists](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/0f9113df-fd9c-485a-9583-fdb0e9d68e1b)). This default is applied by a later normalization pass, not by the declaration pass.
 
-The declaration pass keeps each array bound verbatim, as declared. The following are the concern of the semantic pass that materializes the array value (**RD-VBAL §2.5.2.1.2**):
+The declaration pass keeps each array bound verbatim, as declared. The following are the concern of the semantic pass that materializes the array value ([**RD-VBAL §2.5.2.1.2** Array Values](rd-vbal.2.5.2.1.2.array-values.md)):
 
 - evaluating each bound to a `Long`;
 - resolving an omitted _lower bound_ against `Option Base` (see [**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md)).

@@ -39,8 +39,8 @@ statement kinds the `Simple` statement provider handles
 
 The `Set` statement performs Set-coercion through the same direct entry point that
 `RDCore.Runtime.Semantics.Statements.WithStatementRuntimeSemantics` uses for its own `With`-target coercion, not
-through the operator pipeline. Set-coercion has no per-destination-type strategy fan-out, so it does not need the
-operator pipeline. Let-assignment, by contrast, reuses the operator pipeline; see
+through the operator pipeline. Set-coercion does not select a strategy per destination type, so it does not need
+the operator pipeline. Let-assignment, by contrast, reuses the operator pipeline; see
 [**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.let-statement.md).
 
 ## Implementation

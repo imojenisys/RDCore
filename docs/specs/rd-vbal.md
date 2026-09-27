@@ -4,13 +4,13 @@
 > Cette section n'est disponible qu'en anglais.    
 > _This section is only available in English_.
 
-This specification describes the **RDCore Language Platform and SDK**; its inspirational source material is the [**MS-VBAL**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d5418146-0bd2-45eb-9c7a-fd9502722c74) Open Specification. The platform includes an implementation of the VBA programming language, **RD-VBA**, derivative of the MS-VBAL specification and entirely independent from the historical host environment of **MS-VBA**. See [**RD-VBAL §1.0** Introduction](rd-vbal.1.0.introduction.md).
+This specification describes the **RDCore Language Platform and SDK**; its inspirational source material is the [**MS-VBAL**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d5418146-0bd2-45eb-9c7a-fd9502722c74) Open Specification. See [**RD-VBAL §1.0** Introduction](rd-vbal.1.0.introduction.md).
 
-**RD-VBA** is an implementation of the **MS-VBAL specification** that is independent from its historical **MS-VBA** runtime host. **RD-VBAL** is the name of the specification/documentation of the _language server platform_, which _includes_ the **RD-VBA** _language core_ but is wider than the sole language specification.
+**RD-VBA** is an implementation of the **MS-VBAL specification** that is independent from its historical **MS-VBA** runtime host. **RD-VBAL** is the name of the specification and documentation of the _language server platform_. It _includes_ the **RD-VBA** _language core_, but covers more than the language specification alone.
 
 🎯 **The formalization of _RD-VBAL_ is a work in progress**.  
 
-This platform specification presents a similar _technical prose_ style as its inspirational _Open Spec_ source material.
+This specification follows the technical prose style of its inspirational Open Spec source material.
 
 ---
 ## Table of Contents

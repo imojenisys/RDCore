@@ -21,12 +21,12 @@
 |`Lock #1, To 5`|Records 1 through 5.|
 |`Lock #1, 2 To 5`|Records 2 through 5.|
 
-MS-VBAL says of an absent `start-record-number`: "the effect is as if it consisted of the integer number token 1".
-That is a runtime semantic, not something the program wrote: `FileLockStatementNode` leaves the start record
-absent, and `Lock #1, To 5` locks from record 1 when it runs.
+MS-VBAL says of an absent `start-record-number`: "the effect is as if `<start-record-number>` consisted of the
+integer number token 1". That is a runtime semantic, not something the program wrote: `FileLockStatementNode`
+leaves the start record absent, and `Lock #1, To 5` locks from record 1 when it runs.
 
 > [!NOTE]
-> **Not implemented.** `Lock` and `Unlock` do not apply a real OS-level lock. **MS-VBAL §5.4.5.4** leaves applying
+> **Not implemented.** `Lock` and `Unlock` do not apply an OS-level lock. **MS-VBAL §5.4.5.4** leaves applying
 > an OS-level lock implementation-defined.
 
 ## Implementation

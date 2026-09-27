@@ -4,13 +4,13 @@
 > This section describes the implementation of [**MS-VBAL §5.4.2** Control Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/70d423da-18b4-42d2-9897-9f0b8100786b).
 
 A control statement's effect on the flow of execution is carried by the instruction it lowers to. A statement's own
-runtime semantics stay pure: they evaluate operands and return a result, and never mutate control state. The
+runtime semantics are pure: they evaluate operands and return a result, and never mutate control state. The
 [InstructionKind](../api/RDCore.SDK.Semantics.Instructions.InstructionKind.html) and the pre-resolved offsets on
 [Instruction](../api/RDCore.SDK.Semantics.Instructions.Instruction.html) let the executor's fetch/decode loop decide
 whether to branch ([**RD-VBAL §3.5.2** Instruction](rd-vbal.3.5.2.instruction.md)).
 
-A block statement is kept structured. Its header(s) remain real instructions, and only the control effects between
-them (a branch's fall-through-versus-skip choice, a loop's back-edge) are pre-resolved offsets
+A block statement is kept structured. Each of its headers remains an instruction of its own, and only the control
+effects between them (a branch's fall-through-versus-skip choice, a loop's back-edge) are pre-resolved offsets
 ([**RD-VBAL §3.5.3** Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md)).
 
 ## Statements

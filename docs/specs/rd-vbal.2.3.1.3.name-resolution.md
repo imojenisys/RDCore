@@ -10,7 +10,7 @@ The name-resolution algorithm is a separate concern from the workspace's ordered
 
 ## ISymbolResolver
 
-The read face used by the static and runtime semantic layers is
+The static and runtime semantic layers read symbols through
 [ISymbolResolver](../api/RDCore.SDK.Runtime.Abstract.Execution.ISymbolResolver.html):
 
 |Member|Description|
@@ -28,20 +28,20 @@ The _handle_ `Uri` of a symbol is a semantic ID that uniquely identifies the sym
 
 `TryGetAddress` and `TryAllocate` apply the read-only SDK-interface / Runtime-implementation split to name
 resolution ([**RD-VBAL §3.5.5** Placement and Licensing](rd-vbal.3.5.5.placement-and-licensing.md)).
-`TryAllocate` genuinely mutates: it allocates a `Static` local's storage, unlike every other SDK-interface member
+`TryAllocate` mutates state: it allocates a `Static` local's storage, unlike every other SDK-interface member
 listed in §3.5.5.
 
 |Resolver|Kind|`TryGetAddress` / `TryAllocate`|
 |---|---|---|
-|`CallStackAwareSymbolResolver` (RDCore.Runtime)|Runtime|A real answer.|
-|`RuntimeSymbolResolver` (RDCore.Runtime)|Runtime|A real answer.|
+|`CallStackAwareSymbolResolver` (RDCore.Runtime)|Runtime|Resolves the address; allocates the storage.|
+|`RuntimeSymbolResolver` (RDCore.Runtime)|Runtime|Resolves the address; allocates the storage.|
 |[CompositeSymbolResolver](../api/RDCore.SDK.Model.Symbols.CompositeSymbolResolver.html)|Compile-time only|Returns `false` for both.|
 |[ScopeTreeSymbolResolver](../api/RDCore.SDK.Model.Symbols.ScopeTreeSymbolResolver.html)|Compile-time only|Returns `false` for both.|
 |`IntrinsicSymbolResolver`|Compile-time only|Returns `false` for both.|
 
-`CallStackAwareSymbolResolver` and `RuntimeSymbolResolver` are the only two resolvers with a real answer for
-`TryGetAddress` and `TryAllocate`. A compile-time-only resolver returning `false` for both mirrors its existing
-pattern for `TryRead`.
+`CallStackAwareSymbolResolver` and `RuntimeSymbolResolver` are the only two resolvers that resolve an address for
+`TryGetAddress` and allocate storage for `TryAllocate`. A compile-time-only resolver returns `false` for both, as it
+does for `TryRead`.
 
 ## Binding contexts
 
@@ -181,8 +181,8 @@ A public `Enum`, and a public user-defined type, declared in a class module reac
 
 ### Procedure locals
 
-A procedure's parameters and its own `Dim` / `Static` / `Const` locals ride on the member symbol, not as separate
-entries. This is a design principle of the scope tree:
+A procedure's parameters and its own `Dim` / `Static` / `Const` locals are carried on the member symbol, not
+registered as separate entries. This is a design principle of the scope tree:
 
 - `VBProcedureMemberSymbol.Locals` and `VBReturningMemberSymbol.Locals` list every `Dim`, `Static` and `Const`
   declared in the procedure body ([**RD-VBAL §5.4.3.1** Local Variable Declarations](rd-vbal.5.4.3.1.local-variable-declarations.md)).
@@ -195,18 +195,20 @@ entries. This is a design principle of the scope tree:
 Resolving a name from a scope walks `SelfAndAncestors()` outward. The first scope that declares the name binds it.
 
 A name declared more than once in a single scope is one of the error cases of
-[Duplicate and ambiguous names](#duplicate-and-ambiguous-names), below.
+[Duplicate and ambiguous names](#duplicate-and-ambiguous-names), below. The exception is a property's `Get` / `Let` /
+`Set` accessors: they share one name by design and resolve as a group, raising VBC09320 or VBC09321 only when they
+do not form a valid property (see [ScopeTreeSymbolResolver](#scopetreesymbolresolver)).
 
 ## Module directives
 
 A module's `LexicalScope` carries its [ModuleDirectives](../api/RDCore.SDK.Model.Symbols.ModuleDirectives.html).
 `ModuleDirectives` holds the module-level facts a static semantics rule needs:
 
-|Member|Records|
+|Member|Description|
 |---|---|
 |`Explicit`|Whether the module declares `Option Explicit` ([**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md)).|
 |`Compare`|The module's `Option Compare` mode.|
-|`Strict`|Whether the module carries RD-VBA's `'@OptionStrict` annotation.|
+|`Strict`|Reserved for RD-VBA's `'@OptionStrict` annotation. No symbol provider sets it, so it is always `false`.|
 
 `ModuleDirectives` is reachable from any scope nested under the module, via
 `LexicalScope.EnclosingModuleDirectives()`.
@@ -245,8 +247,8 @@ yields an `Error` carrying `AmbiguousName` or `DuplicateDeclaration`.
 
 When multiple symbols match a specified name within the _global_ scope, the name is disambiguated using the
 _reference priority_ order of the _referenced library_ each matching symbol is defined in. Name resolution across
-referenced projects and libraries consults the `IRuntimeSession.References` ordering to disambiguate a global-scope
-name ([**RD-VBAL §2.3.1.2** Session Services](rd-vbal.2.3.1.2.session-services.md)). A referenced library's own
+referenced projects and libraries shall consult the `IRuntimeSession.References` ordering to disambiguate a
+global-scope name ([**RD-VBAL §2.3.1.2** Session Services](rd-vbal.2.3.1.2.session-services.md)). A referenced library's own
 members are contributed by an `ISymbolProvider` and resolved through `ISymbolResolver`, not from that list.
 
 Reference priority is determined by the order in which project references appear in the `.rdproj` file of a
@@ -263,7 +265,8 @@ flags_ ([**RD-VBAL §1.1.3** Core Semantic Flags](rd-vbal.1.1.3.core-semantic-fl
 
 > [!NOTE]
 > **Not implemented.** Reference-priority ordering within the global scope is not implemented. The ordering is
-> carried on `IRuntimeSession.References`, but nothing consults it.
+> carried on `IRuntimeSession.References`, but nothing consults it. A name that matches symbols from more than one
+> reference is reported as **VBC09301** _Ambiguous name_ (see [Duplicate and ambiguous names](#duplicate-and-ambiguous-names)).
 
 ## Resolver implementations
 

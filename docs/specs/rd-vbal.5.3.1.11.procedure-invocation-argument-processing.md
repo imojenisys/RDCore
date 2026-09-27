@@ -9,7 +9,7 @@ Procedures are invoked through
 
 `IProcedureInvoker` and [CallableBindingHandle](../api/RDCore.SDK.Model.Values.Bindings.CallableBindingHandle.html)
 are the call contract: given a procedure symbol, a resolver, and arguments, run the procedure.
-`RuntimeProcedureInvoker` is the call's real implementation: frame setup, `ByVal`/`ByRef` parameter binding,
+`RuntimeProcedureInvoker` implements the call: frame setup, `ByVal`/`ByRef` parameter binding,
 function result values, and the call-depth guard. See
 [**RD-VBAL §3.5.5** Placement and Licensing](rd-vbal.3.5.5.placement-and-licensing.md).
 
@@ -23,7 +23,7 @@ Each of these invokes a procedure through `IProcedureInvoker`:
 |A bare reference to a `Sub`, `Function` or `Property Get`|[**RD-VBAL §5.6.10** Simple Name Expressions](rd-vbal.5.6.10.simple-name-expressions.md)|
 |An [IndexExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.IndexExpressionNode.html) whose `Callee` is a bare name resolving to a `Sub`, `Function` or `Property Get`|[**RD-VBAL §5.6.13** Index Expressions](rd-vbal.5.6.13.index-expressions.md)|
 
-An index expression whose `Callee` is a bare name is checked for a procedure before the usual recursive
+An index expression whose `Callee` is a bare name is checked for a procedure before the general recursive
 `Evaluate(Callee)`. An index expression with a procedure `Callee` is the only shape that recurses (e.g.
 `Foo(n - 1)`, even from within `Foo`'s own body).
 
@@ -33,8 +33,9 @@ Omitting an argument with a comma (`Foo(1, , 3)`) is legal MS-VBA for a paramete
 MS-VBA defers argument-type validation to run time: it never rejects an omitted argument at compile time.
 
 > [!NOTE]
-> **Not implemented.** RDCore does not flag `IsMissing` used on a non-`Variant` parameter, which always
-> returns `False`.
+> **Not implemented.** No diagnostic flags `IsMissing` used on a non-`Variant` parameter, for which MS-VBA's
+> `IsMissing` always returns `False`. RD-VBA's `IsMissing` has no runtime implementation; see
+> [**RD-VBAL §6.1.2.7** Information](rd-vbal.6.1.2.7.information.md).
 
 ## Runtime Semantics
 
@@ -60,9 +61,8 @@ A procedure invocation runs these steps:
 
 ### Argument Mapping
 
-Named arguments and `Optional` parameters follow **MS-VBAL §5.3.1.11**.
-`RuntimeExpressionEvaluator.MapArguments` maps named arguments and `Optional` parameters, and implements the
-two-pass argument-mapping algorithm of **MS-VBAL §5.3.1.11**:
+`RuntimeExpressionEvaluator.MapArguments` maps named arguments and `Optional` parameters by the two-pass
+argument-mapping algorithm of **MS-VBAL §5.3.1.11**:
 
 1. Each argument is mapped to a parameter:
    - Positional arguments map to parameters left to right.
@@ -70,7 +70,7 @@ two-pass argument-mapping algorithm of **MS-VBAL §5.3.1.11**:
      parameter by name.
    - A [MissingArgumentNode](../api/RDCore.SDK.Model.AST.Expressions.MissingArgumentNode.html) mapped to a
      non-`Optional` parameter raises error 448. Error 448 is checked during argument mapping, per
-     **MS-VBAL §5.3.1.11**; it is not folded into the general error-449 sweep afterwards.
+     **MS-VBAL §5.3.1.11**; it is not part of the general error-449 sweep that follows.
    - An extra positional argument beyond the parameter count raises error 450.
    - Positional arguments from a trailing `ParamArray` parameter's position onward are collected by that
      parameter (see [ParamArray](#paramarray)).
@@ -96,12 +96,13 @@ An unmapped `Optional` parameter's default is bound with no Let-coercion and no 
 
 ### Omitted Arguments and IsMissing
 
-In MS-VBA, what depends on an omitted argument's parameter being `Variant` is
-[**MS-VBAL §6.1.2.7.1.6** IsMissing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9ec6f6f1-14a6-458e-9024-05dd0d9afb26)
-(see [**RD-VBAL §6.1.2.7** Information](rd-vbal.6.1.2.7.information.md)):
+In MS-VBA, `IsMissing`
+([**MS-VBAL §6.1.2.7.1.6** IsMissing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/9ec6f6f1-14a6-458e-9024-05dd0d9afb26))
+depends on an omitted argument's parameter being `Variant` (see
+[**RD-VBAL §6.1.2.7** Information](rd-vbal.6.1.2.7.information.md)):
 
 - The value of an omitted argument is a `VT_ERROR` `Variant` carrying `DISP_E_PARAMNOTFOUND`.
-- `IsMissing` always returns `False` for a non-`Variant` parameter, silently, without an error. Only a `Variant`
+- `IsMissing` always returns `False` for a non-`Variant` parameter, without raising an error. Only a `Variant`
   can hold the `DISP_E_PARAMNOTFOUND` sentinel.
 
 ### ParamArray
@@ -133,7 +134,7 @@ storage is supported. See [**RD-VBAL §2.3.1.2** Session Services](rd-vbal.2.3.1
 `ByRef` parameter binding follows **MS-VBAL §5.3.1.11**. A parameter is bound `ByVal` unless both of these hold:
 
 1. the parameter is declared `ByRef`; and
-2. the argument-evaluation loop of `RuntimeExpressionEvaluator` resolves the argument to a real, addressable,
+2. the argument-evaluation loop of `RuntimeExpressionEvaluator` resolves the argument to an addressable,
    writable variable whose declared type exactly matches the parameter's declared type, or the parameter's
    declared type is `Variant`.
 
@@ -143,8 +144,8 @@ allows a plain reference binding for without a class/`Object` copy-back.
 |Parameter|Argument|Binding|
 |---|---|---|
 |`ByVal`|Any|A fresh, Let-coerced [ValueBindingHandle](../api/RDCore.SDK.Model.Values.Bindings.ValueBindingHandle.html), which never aliases the caller's storage.|
-|`ByRef`|A real, addressable, writable variable whose declared type exactly matches the parameter's|A reference binding.|
-|`ByRef`, declared `Variant`|A real, addressable, writable variable|A reference binding.|
+|`ByRef`|An addressable, writable variable whose declared type exactly matches the parameter's|A reference binding.|
+|`ByRef`, declared `Variant`|An addressable, writable variable|A reference binding.|
 |`ByRef`, declared as a class or `Object`|A variable of a different declared type|A `ByVal`-style copy: the class/`Object` copy-back is not modeled.|
 |`ByRef`|Not recognized as aliasable: an expression, a literal, a variable of mismatched declared type, a read-only target|The same `ByVal`-style Let-coerced copy: **MS-VBAL §5.3.1.11**'s "otherwise" case. Never an error.|
 |`Optional`|None (unmapped)|The default value; see [Optional Parameters](#optional-parameters).|
@@ -156,16 +157,16 @@ A reference binding is made as follows:
    [VBRuntimeReference](../api/RDCore.SDK.Model.Values.Runtime.VBRuntimeReference.html), which carries the
    variable's address itself.
 2. `RuntimeProcedureInvoker` binds the aliased `ByRef` parameter through `CallStackFrame.PushByRef`.
-3. `CallStackFrame.PushByRef` creates a real name-aliasing binding onto the same address as the caller's
+3. `CallStackFrame.PushByRef` creates a name-aliasing binding onto the same address as the caller's
    variable, not a copy.
 4. [ISymbolResolver](../api/RDCore.SDK.Runtime.Abstract.Execution.ISymbolResolver.html)`.TryGetAddress` and
    `ICallStackFrame.TryGetAddress` resolve the `ByRef`-aliased parameter to the aliased address. See
    [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md).
 
-A write to a `ByRef`-aliased parameter inside the callee is visible to the caller the instant it happens.
+A write to a `ByRef`-aliased parameter inside the callee is immediately visible to the caller.
 
-`CallStackFrame.ReleaseAll` never deallocates the address of a `ByRef` alias. The address belongs to whoever
-originally allocated it; the callee only borrows it.
+`CallStackFrame.ReleaseAll` never deallocates the address of a `ByRef` alias. The address belongs to its
+original allocator; the callee only borrows it.
 
 The `ByVal` and `ByRef`-fallback copy is made by a direct Let-coercion call, since there is no addressable
 symbol to Let-assign through. A Let-assignment to the function result variable makes the same lower-level call,
@@ -174,8 +175,7 @@ for the same reason; see [**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.l
 > [!NOTE]
 > **Not implemented.** The **MS-VBAL §5.3.1.11** class/`Object` copy-back for `ByRef` arguments is not modeled.
 > A `ByRef` parameter declared as a class or `Object`, whose argument is a variable of a different declared
-> type, falls through to a `ByVal`-style copy. This is a documented gap narrower than **MS-VBAL §5.3.1.11**,
-> not a wrong result.
+> type, falls through to a `ByVal`-style copy.
 
 > 👉 UDT values **must** be passed by reference (`ByRef`). See
 > [**RD-VBAL §2.5.2.1.3** User-Defined Type (UDT) Values](rd-vbal.2.5.2.1.3.udt-values.md).
@@ -187,7 +187,7 @@ for the same reason; see [**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.l
 - A standard library member's `Variant` parameter accepts its argument.
 
 > 👉 An external call carries runtime values rather than typed ones, so the declared type a member was called
-> with is recovered at the dispatch seam. See [**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standard-library.md)
+> with is recovered when the call is dispatched. See [**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standard-library.md)
 > and [**RD-VBAL §6.1.2.11** Strings](rd-vbal.6.1.2.11.strings.md) (`Len` / `LenB`).
 
 ### Frame Setup
@@ -205,8 +205,8 @@ for the same reason; see [**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.l
   [**RD-VBAL §5.3.1.6** Subroutine and Function Declarations](rd-vbal.5.3.1.6.subroutine-and-function-declarations.md).
 - **MS-VBAL** procedure invocation step 4 reads: "create the function result variable and any procedure extent
   local variables declared within the procedure". RD-VBA implements it for `Dim` and `Static` locals as well as
-  for the function result variable: `RuntimeProcedureInvoker.HoistLocals` walks the procedure's `Locals` right
-  after parameter binding, before the body runs. See
+  for the function result variable: `RuntimeProcedureInvoker.HoistLocals` walks the procedure's `Locals`
+  immediately after parameter binding, before the body runs. See
   [**RD-VBAL §5.4.3.1** Local Variable Declarations](rd-vbal.5.4.3.1.local-variable-declarations.md).
 - `RuntimeProcedureInvoker` always sets `RuntimeEvaluationContext.Scope` to the invoked procedure's own `Uri`
   for the whole activation.
@@ -233,7 +233,7 @@ The read-back happens however `ExitProcedure` was reached: an explicit
 [**RD-VBAL §5.4.2.19** Exit Property Statement](rd-vbal.5.4.2.19.exit-property-statement.md).
 
 The caller's own `ExecuteCall` turns a callee's `RuntimeSemanticsEvaluationResult` error back into an `Error`
-outcome. A nested call's runtime error therefore propagates exactly like any other runtime error; see
+outcome. A nested call's runtime error therefore propagates as any other runtime error does; see
 [**RD-VBAL §5.4.4.1** On Error Statement](rd-vbal.5.4.4.1.on-error-statement.md).
 
 ### Run-time Errors

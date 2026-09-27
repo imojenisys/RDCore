@@ -7,7 +7,7 @@ The RD-VBA type system defines a category of _deferred_ data types.
 
 Deferred types address late-bound and other cases where MS-VBA would fail to resolve a valid compile-time data type.
 
-Leveraging late binding and _duck typing_ to introduce and surface inherent deferred types to _design-time_ symbols is a valid _language core extension_. Surfacing deferred types to design-time symbols enables LSP-level enhanced capabilities, notably around auto-completion lists; see [**RD-VBAL §1.1.2** Language Core Extensions](rd-vbal.1.1.2.language-core-extensions.md).
+Using late binding and _duck typing_ to introduce and surface inherent deferred types to _design-time_ symbols is a valid _language core extension_. Surfacing deferred types to design-time symbols enables LSP-level enhanced capabilities, notably around auto-completion lists; see [**RD-VBAL §1.1.2** Language Core Extensions](rd-vbal.1.1.2.language-core-extensions.md).
 
 A _deferred type_ is a valid RD-VBA data type representing an _undefined_ type. An undefined type is a _workspace-defined_ data type that does not have any associated source code.
 
@@ -34,7 +34,7 @@ Deferred members resolve as follows:
 
 - Any two symbols should be resolved to the same deferred member if the resolved _qualifying module_ is the same for both symbols.
 - Without a qualifier, a deferred symbol is deemed to be an _undeclared local variable_, as per MS-VBAL scoping rules.
-- If a global-scope deferred symbol with the same identifier name exists, an unqualified deferred symbol (an undeclared local variable) should resolve to the global-scope deferred symbol (**RD-VBAL §2.3.1.3**).
+- If a global-scope deferred symbol with the same identifier name exists, an unqualified deferred symbol (an undeclared local variable) should resolve to the global-scope deferred symbol ([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)).
 
 Deferred parameters are also defined from _named arguments_:
 
@@ -70,7 +70,7 @@ Only one unnamed deferred module may be _semantically_ (but not _statically_) de
 
 A deferred class is semantically defined when an _unbound member call_ is made against an _object variable_ of a class type that may or may not be defined in the workspace source code.
 
-The default name of a deferred class is the word `Class` followed by as many numeric digits as needed to make the class name unique in the workspace, in numerical order. The default name of a deferred class type is `Class1`, unless a `Class1` module already exists in the workspace, in which case it is `Class2`, and so on until a unique, non-existing name is found.
+The default name of a deferred class is the word `Class` followed by a number, taken in numerical order until the class name is unique in the workspace: `Class1`, unless a `Class1` module already exists in the workspace, in which case `Class2`, and so on.
 
 > [!WARNING]
 > The names of any deferred type defined in workspace source code must be considered "in use" for all operations involving the naming of a module, including the addition of new (bound) modules to the workspace or project.

@@ -13,9 +13,6 @@
 
 - `On Error Resume Next` and `On Error GoTo` are parsed by the same grammar rule, disambiguated by the keyword that
   follows `On Error`.
-- `On Error GoTo 0` lowers as `OnErrorDisable`. The undocumented VBA6/VBA7 form `On Error GoTo -1` also lowers as
-  `OnErrorDisable`.
-- `OnErrorGoToStatementNode`'s doc comment anticipates the `On Error GoTo -1` form.
 - The `0` of `On Error GoTo 0` is the same
   [**MS-VBAL §5.4.4.2** Resume Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/00439540-cf97-451d-9f20-7856d4d98c9b)
   sentinel that `Resume 0` uses; see [**RD-VBAL §5.4.4.2** Resume Statement](rd-vbal.5.4.4.2.resume-statement.md).
@@ -31,7 +28,7 @@ See [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md) 
 
 `On Error GoTo 0` and `On Error GoTo -1` do not refer to a label. The `0` of `On Error GoTo 0` and the `-1` of
 `On Error GoTo -1` are never looked up as labels: `VBC09309` is not raised for them, whether or not the procedure
-happens to define a line `0`.
+defines a line `0`.
 
 ## Runtime Semantics
 
@@ -41,15 +38,16 @@ An `On Error` statement sets the error-handling policy of the current activation
 |Policy (`ErrorHandlingMode`)|Set by|When an error is raised|
 |---|---|---|
 |`Disabled` (the policy [**MS-VBAL §5.4.4** Error Handling Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/47b18690-3175-44d9-9de1-31629f0aacc7) calls *Default*)|`On Error GoTo 0`, `On Error GoTo -1`; an error caught under `GoTo`|The error is not caught: it propagates out of the activation (see [Propagation](#propagation)).|
-|`ResumeNext`|`On Error Resume Next`|The error is caught silently. Execution continues at the statement right after the one that raised the error. The policy is not reset: every later error in the same activation is caught the same way.|
+|`ResumeNext`|`On Error Resume Next`|The error is caught silently. Execution continues at the statement that follows the one that raised the error. The policy is not reset: every later error in the same activation is caught the same way.|
 |`GoTo`|`On Error GoTo <label>`|The error branches to the label. The policy is reset to disabled: a second, unhandled error inside the handler body propagates rather than re-entering the handler.|
 
-The asymmetry between `On Error Resume Next` (policy kept) and `On Error GoTo <label>` (policy reset to disabled) is
-MS-VBAL's own, not a simplification.
+The asymmetry between `On Error Resume Next` (policy kept) and `On Error GoTo <label>` (policy reset to disabled)
+follows MS-VBAL.
 
-`On Error GoTo 0` turns error handling off, and `On Error GoTo -1` clears the active error. `On Error GoTo 0` and
-`On Error GoTo -1` are treated identically: both lower as `OnErrorDisable`. MS-VBAL does not document
-`On Error GoTo -1` at all, so treating it identically to `On Error GoTo 0` does not diverge from the specification.
+In MS-VBA, `On Error GoTo 0` turns error handling off, and `On Error GoTo -1` clears the active error. RD-VBA treats
+the two identically: both lower as `OnErrorDisable`, which turns the activation's error handling off and clears any
+active error. MS-VBAL does not document `On Error GoTo -1`, so treating it as `On Error GoTo 0` does not diverge from
+the specification.
 
 ### Error interception
 
@@ -60,8 +58,8 @@ When a statement raises a run-time error:
 2. `InterceptError` applies the activation's error-handling policy, as the table above shows.
 3. When the policy does not catch the error, the error propagates out of the activation.
 
-Every runtime error the executor can raise — `TypeMismatch`, `SubscriptOutOfRange`, `ForLoopNotInitialized`, or any
-other, from any subsystem — is catchable by an error handler. See
+Every runtime error the executor can raise, from any subsystem, is catchable by an error handler: for example
+`TypeMismatch`, `SubscriptOutOfRange` and `ForLoopNotInitialized`. See
 [**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md) and
 [**RD-VBAL §2.6.3** Runtime Errors](rd-vbal.2.6.3.runtime-errors.md).
 
@@ -71,7 +69,7 @@ An error that propagates out of an activation (no handler caught it) is returned
 call's own return value.
 
 In a called procedure, that value reaches the caller as the result of the call. A nested call's runtime error
-propagates exactly like any other runtime error, so the caller's own error-handling policy applies to it. See
+propagates like any other runtime error, so the caller's own error-handling policy applies to it. See
 [**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md).
 
 ### Per-activation state

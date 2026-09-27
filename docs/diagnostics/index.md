@@ -15,15 +15,14 @@ for the pull pipeline.
 
 ## Stability
 
-A code gets a page here **the moment the platform can emit it**. The documentation grows at the same
-rate as the diagnostics.
+A code has a page here **as soon as the platform can emit it**.
 
 Once published, a code is **not renumbered and not retired**: a workspace built against an older
 release must still resolve its diagnostic links. The *content* of a page may evolve as the ideal set
 of codes is narrowed down; the code and its abstract meaning do not.
 
 Each page describes the condition in the abstract. The specifics of a particular occurrence (which
-token, which literal, which type) travel in the diagnostic's verbose detail, not in the code.
+token, which literal, which type) are carried in the diagnostic's verbose detail, not in the code.
 
 ## Published codes
 

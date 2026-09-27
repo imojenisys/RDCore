@@ -1,6 +1,6 @@
 # 2.6.4 Rubberduck Core Diagnostics
 
-**Rubberduck Core diagnostics** are the analyzer findings issued by the `RDCore.Diagnostics` analyzers. They cover implicit declarations, obsolete syntax and misleading constructs, and every inspection the legacy Rubberduck add-in shipped, and then some.
+**Rubberduck Core diagnostics** are the analyzer findings issued by the `RDCore.Diagnostics` analyzers. They cover implicit declarations, obsolete syntax, misleading constructs, every inspection that the legacy Rubberduck add-in shipped, and further inspections beyond those.
 
 |||
 |---|---|

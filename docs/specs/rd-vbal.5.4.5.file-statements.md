@@ -3,8 +3,8 @@
 > [!NOTE]
 > This section describes the implementation of [**MS-VBAL §5.4.5** File Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/2fd9c1be-0d9a-4b29-b5ac-c9d51ce483cf).
 
-MS-VBAL groups the file I/O statements under one umbrella section, **MS-VBAL §5.4.5**. RD-VBA executes every
-statement of that section.
+MS-VBAL describes the file I/O statements in one section, **MS-VBAL §5.4.5**. RD-VBA executes every statement of
+that section.
 
 |Statement|MS-VBAL|RD-VBAL|
 |---|---|---|
@@ -34,8 +34,7 @@ All file statements run through one session-level shim: the
 
 `IFileChannels` holds numbered channels. Each channel records the mode it was opened under.
 
-The shim is the seam at which an administrator can restrict or redirect file I/O. It is also the seam a test can
-replace with a fake.
+An administrator can restrict or redirect file I/O at the shim. A test can replace the shim with a fake.
 
 ## Statement, Mode and Access
 

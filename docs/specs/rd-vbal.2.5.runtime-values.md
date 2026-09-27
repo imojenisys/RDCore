@@ -3,9 +3,7 @@
 > [!NOTE]
 > This specification may be incomplete at this time.
 
-[VBType](../api/RDCore.SDK.Model.Types.Abstract.VBType.html) is at the core of RD-VBA _static semantics_; see [**RD-VBAL §2.4** Static Types](rd-vbal.2.4.static-types.md).
-
-[VBTypedValue](../api/RDCore.SDK.Model.Values.Abstract.VBTypedValue.html) is at the core of RD-VBA _runtime semantics_, as `VBType` is at the core of static semantics.
+[VBTypedValue](../api/RDCore.SDK.Model.Values.Abstract.VBTypedValue.html) is at the core of RD-VBA _runtime semantics_, as [VBType](../api/RDCore.SDK.Model.Types.Abstract.VBType.html) is at the core of RD-VBA _static semantics_; see [**RD-VBAL §2.4** Static Types](rd-vbal.2.4.static-types.md).
 
 ---
 ## In this section

@@ -11,8 +11,8 @@
 
 See [**RD-VBAL §3.0.2** Node Types](rd-vbal.3.0.2.node-types.md).
 
-The token that follows the `!` operator in a dictionary access expression represents a dictionary key. This is why
-the LSP `Key` symbol kind fits it. See [**RD-VBAL §2.5.1** Runtime Entities](rd-vbal.2.5.1.runtime-entities.md).
+The token that follows the `!` operator in a dictionary access expression represents a dictionary key, which the LSP
+`Key` symbol kind would fit. See [**RD-VBAL §2.5.1** Runtime Entities](rd-vbal.2.5.1.runtime-entities.md#symbol-kind).
 
 A `!member` expression with no owner, inside a `With` block, is a with-expression. See
 [**RD-VBAL §5.6.15** With Expressions](rd-vbal.5.6.15.with-expressions.md).

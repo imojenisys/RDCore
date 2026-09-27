@@ -42,13 +42,13 @@ Diagnostics contributed by other extensions must use their own prefix, distinct 
 
 ## Run-time and Application Errors
 
-A clean separation of *application-defined* errors from specified *semantic runtime errors* is compliant with MS-VBAL. The MS-VBA implementation weakly separates them using the `vbObjectError` constant. The proper use of this constant was historically misunderstood, and in MS-VBA the distinction between run-time and application errors does not really exist.
+A clean separation of *application-defined* errors from specified *semantic runtime errors* is compliant with MS-VBAL. The MS-VBA implementation weakly separates them using the `vbObjectError` constant. The proper use of this constant has historically been misunderstood, and MS-VBA makes no effective distinction between run-time errors and application errors.
 
 RDCore removes the need for the `vbObjectError` constant by internally representing run-time errors and application errors as different error metadata types: [VBRuntimeErrorInfo](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorInfo.html) and [VBApplicationErrorInfo](../api/RDCore.SDK.Model.Errors.VBApplicationErrorInfo.html). This clarifies their origin before they reach the runtime.
 
 ## Error Descriptions
 
-The description of compilation and run-time errors shall match *exactly* the corresponding MS-VBA descriptions.
+The description of a compilation or run-time error shall be identical to the corresponding MS-VBA description.
 
 All RD-VBA trace messages can include an optional *verbose* message. The platform shall use this verbose message to further explain the reason behind any error being raised. The verbose message is independent of, or *supplemental to*, any other verbose content, including but not limited to execution *stack traces*.
 

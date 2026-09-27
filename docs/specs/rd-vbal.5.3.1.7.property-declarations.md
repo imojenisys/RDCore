@@ -20,14 +20,14 @@ property. Two diagnostics report a property declaration that does not:
   **MS-VBAL §5.3.1.7** static-semantics bullets.
 - Implicit vs. explicit `ByRef` on a corresponding index parameter is not a difference: only the actual
   `ByRef`-vs-`ByVal` mechanism is compared. This matches **MS-VBAL §5.3.1.7**'s own exception for that case.
-- `Optional`/`ParamArray` index parameters are only ever legal on a single-accessor property.
+- `Optional`/`ParamArray` index parameters are legal only on a single-accessor property.
 - A `Property Get` needs no value parameter: it has no value being assigned to it, only (optionally) index
   parameters to read by. The `value-param` rule is described in
   [**RD-VBAL §5.3.1.5** Parameter Lists](rd-vbal.5.3.1.5.parameter-lists.md).
 
 ## Runtime Semantics
 
-- A `Property Get` has a function result variable, exactly like a `Function`: each invocation gets a fresh one,
+- A `Property Get` has a function result variable, as a `Function` does: each invocation gets a fresh one,
   modeled as [ICallStackFrame](../api/RDCore.SDK.Runtime.Abstract.Execution.ICallStackFrame.html)`.ReturnValue`.
   `Property Get` return values follow
   [**MS-VBAL §5.3.1** Procedure Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/227005ad-78fb-479f-8145-fa3b8b610386).

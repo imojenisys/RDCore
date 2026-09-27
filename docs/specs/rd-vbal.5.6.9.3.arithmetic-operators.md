@@ -20,7 +20,7 @@ Arithmetic runs in a _checked_ context. An integral or fixed-point result that d
 |An integral or fixed-point result does not fit the effective type.|6 — Overflow|
 
 Run-time error 6 is [VBRuntimeErrorId](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorId.html)`.Overflow`. For division
-by zero, see §5.6.9.3.6.
+by zero, see [**RD-VBAL §5.6.9.3.6** \ Operator and Mod Operator](#56936--operator-and-mod-operator).
 
 ## 5.6.9.3.1 Unary - Operator
 
@@ -34,12 +34,12 @@ This section corresponds to [**MS-VBAL §5.6.9.3.1** Unary - Operator](https://l
 > [!NOTE]
 > This section describes the implementation of [**MS-VBAL §5.6.9.3.2** + Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/91621d4b-3da3-4fe9-9581-adda857efe05).
 
-🧩 The explicit addition of runtime semantics for a unary `+` operator is a language core extension
+🧩 RD-VBA explicitly adds runtime semantics for a unary `+` operator, as a language core extension
 ([**RD-VBAL §1.1.2** Language Core Extensions](rd-vbal.1.1.2.language-core-extensions.md)).
 
 👉 A `For` loop's `ForNext` instruction adds `step` to the counter through the addition operator,
 `RDCore.Runtime.Semantics.Operators.Arithmetic.BinaryAdditionOperatorRuntimeSemantics`. The step addition is therefore
-an overflow-checked operation, not a bare CLR add
+an overflow-checked operation, not a plain CLR addition
 ([**RD-VBAL §5.4.2.3** For Statement](rd-vbal.5.4.2.3.for-statement.md)).
 
 ## 5.6.9.3.3 Binary - Operator
@@ -89,8 +89,8 @@ Run-time error 11 is `VBRuntimeErrorId.DivisionByZero`.
 > This section describes the implementation of [**MS-VBAL §5.6.9.3.7** ^ Operator](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c3f526af-9d58-47f9-a6be-22ab81e8747a).
 
 The `^` operator is the sole exception to computation in the effective type
-([**RD-VBAL §5.6.9.2** Simple Data Operators](rd-vbal.5.6.9.2.simple-data-operators.md)): its effective type is always
-`Double`. The `^` operator is evaluated as IEEE-754 exponentiation.
+([**RD-VBAL §5.6.9.2** Simple Data Operators](rd-vbal.5.6.9.2.simple-data-operators.md#computation-in-the-effective-type)):
+its effective type is always `Double`. The `^` operator is evaluated as IEEE-754 exponentiation.
 
 ---
 > ⏮️ [**RD-VBAL §5.6.9.2** Simple Data Operators](rd-vbal.5.6.9.2.simple-data-operators.md) | ⏭️ [**RD-VBAL §5.6.9.4** & Operator](rd-vbal.5.6.9.4.ampersand-operator.md)

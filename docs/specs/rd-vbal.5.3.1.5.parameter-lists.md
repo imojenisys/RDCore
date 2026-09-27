@@ -17,9 +17,9 @@ property-parameters = "(" [parameter-list ","] value-param ")"
 
 ## Static Semantics
 
-In the `property-parameters` rule, `value-param` is never bracketed, so it is always mandatory, index
-parameters or not. A `Property Let` or `Property Set` with no parameters has no value parameter to receive
-what is being assigned, and raises [VBC09321](../diagnostics/vbc09321.md). See also
+In the `property-parameters` rule, `value-param` is never bracketed, so it is always mandatory, whether or not
+there are index parameters. A `Property Let` or `Property Set` with no parameters has no value parameter to
+receive what is being assigned, and is reported as [VBC09321](../diagnostics/vbc09321.md). See also
 [**RD-VBAL §5.3.1.7** Property Declarations](rd-vbal.5.3.1.7.property-declarations.md).
 
 > 👉 UDT values **must** be passed by reference (`ByRef`). See

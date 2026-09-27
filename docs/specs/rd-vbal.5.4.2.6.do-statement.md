@@ -30,12 +30,12 @@ MS-VBAL models `…While` and `…Until` loops as the same construct with opposi
 
 |Form|Dispatch|
 |---|---|
-|Pre-test: `Do While`, `Do Until`|A `ConditionalBranch`, dispatched exactly like an `If` header ([**RD-VBAL §5.4.2.8** If Statement](rd-vbal.5.4.2.8.if-statement.md)). When the loop continues, execution falls through into the body; when it ends, it goes to the header's `Else` offset, right past the loop.|
+|Pre-test: `Do While`, `Do Until`|A `ConditionalBranch`, dispatched in the same way as an `If` header ([**RD-VBAL §5.4.2.8** If Statement](rd-vbal.5.4.2.8.if-statement.md)). When the loop continues, execution falls through into the body; when it ends, it goes to the header's `Else` offset, right past the loop.|
 |Post-test: `Do…Loop While`, `Do…Loop Until`|`LoopBack`: evaluate the condition; branch back to the body's first instruction ([Instruction](../api/RDCore.SDK.Semantics.Instructions.Instruction.html)`.Target`) when the loop continues, and fall through when it ends.|
 |Bare: `Do…Loop`|An unconditional `Jump` back to its own body. It needs no dispatch of its own.|
 
 The condition of a pre-test or post-test loop is a Boolean condition, evaluated by the same `ConditionEvaluator` an
-`If` uses. The condition is forced to `Boolean`
+`If` uses, and forced to `Boolean`
 ([**MS-VBAL §5.5.1.2.2** Let-coercion to and from Boolean](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/3a9f5227-5fd5-4240-949a-51ffc32e71a9)).
 
 |Loop|Exits when the condition is|

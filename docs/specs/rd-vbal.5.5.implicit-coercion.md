@@ -6,7 +6,7 @@
 **RDCore** implements the MS-VBAL type-coercion rules through _pattern-matching_ against its type system.
 
 The rules are implemented verbatim, except for the resolved specification errors noted in
-[**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md) (§5.5.1.2.1).
+[**RD-VBAL §5.5.1.2.1** Let-coercion between numeric types](rd-vbal.5.5.1.2.runtime-semantics.md#55121-let-coercion-between-numeric-types).
 
 ---
 ## In this section

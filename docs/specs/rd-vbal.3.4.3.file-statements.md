@@ -55,7 +55,7 @@ An absent `start-record-number` stays absent in `FileLockStatementNode`: the nod
 > In a parsed output list, a value and its trailing separator are always two separate, alternating `PrintOutputItemNode`s: one value-only, one separator-only. MS-VBAL's `outputItem` grammar rule admits combining a value and its separator into one output item, but the generated parser never takes that alternative. A consumer of `Items` should walk the alternating list rather than assume `(value, separator)` pairs.
 
 > [!NOTE]
-> **Not implemented.** The `?` shorthand for `Print` has no lexer or grammar token in the current grammar.
+> **Not implemented.** The `?` shorthand for `Print` has no lexer or grammar token.
 
 ---
 > ⏮️ [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md) | ⏭️ [**RD-VBAL §3.5.0** Instructions](rd-vbal.3.5.0.instructions.md)

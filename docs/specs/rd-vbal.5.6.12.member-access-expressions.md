@@ -14,11 +14,11 @@ See [**RD-VBAL §3.0.2** Node Types](rd-vbal.3.0.2.node-types.md).
 ## Static Semantics
 
 A member access reads the members of a class or user-defined type from the type's declaration, by the type's own
-identity. A class whose member is typed as the class itself therefore resolves through any number of member-access
-hops. See [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md#design-time-resolver-composition).
+identity. A class whose member is typed as the class itself therefore resolves through any number of chained member
+accesses. See [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md#design-time-resolver-composition).
 
 For a predeclared class `Widget`, `Widget.Size` is a member access on a variable of type `Widget`. See
-[**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md) (`VB_PredeclaredId`).
+[**RD-VBAL §3.1.1.6** `VB_PredeclaredId`](rd-vbal.3.1.1.attributes.md#3116-vb_predeclaredid).
 
 ## Runtime Semantics
 

@@ -11,8 +11,8 @@ Set-coercion is evaluated by `SetCoercionRuntimeSemantics`, through
 |`Set` statement|The same direct entry point that `WithStatementRuntimeSemantics` uses for its own `With`-target coercion, not the operator pipeline.|[**RD-VBAL §5.4.3.9** Set Statement](rd-vbal.5.4.3.9.set-statement.md)|
 |Class-valued `With` target|Set-assigned through `ISetCoercionRuntimeSemantics`.|[**RD-VBAL §5.4.2.21** With Statement](rd-vbal.5.4.2.21.with-statement.md)|
 
-Set-coercion has no per-destination-type strategy fan-out, so it does not need the operator pipeline. Let-coercion,
-by contrast, dispatches to a per-destination-type strategy; see
+Set-coercion does not dispatch to per-destination-type strategies, so it does not need the operator pipeline.
+Let-coercion, by contrast, dispatches to a per-destination-type strategy; see
 [**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md).
 
 
@@ -26,8 +26,9 @@ by contrast, dispatches to a per-destination-type strategy; see
 because a `Variant` may wrap another `Variant`.
 
 > 👉 A [VBVariantValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBVariantValue.html)'s `TypeInfo` mirrors its wrapped
-> value's, but the instance is still the `VBVariantValue`: without the unwrap, the pattern-match would see the box
-> instead of the object ([**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md), §5.5.1.2.12).
+> value's, but the instance remains a `VBVariantValue`: without the unwrap, the pattern-match would see the box
+> instead of the object
+> ([**RD-VBAL §5.5.1.2.12** Let-coercion to Variant](rd-vbal.5.5.1.2.runtime-semantics.md#551212-let-coercion-to-variant)).
 
 
 ## 5.5.2.2.2 Set-coercion to and from non-object types

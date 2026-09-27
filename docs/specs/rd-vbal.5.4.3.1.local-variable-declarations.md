@@ -23,13 +23,13 @@ them on the procedure symbol, as `Parameters` are carried.
 
 - `VBProcedureMemberSymbol.Locals` and `VBReturningMemberSymbol.Locals` list every `Dim`, `Static` and `Const`
   declared in the procedure body.
-- The `Locals` property of a procedure member symbol mirrors its `Parameters` property exactly.
+- The `Locals` property of a procedure member symbol mirrors its `Parameters` property.
 - [ScopeTreeBuilder](../api/RDCore.SDK.Model.Symbols.ScopeTreeBuilder.html) extracts a procedure symbol's `Locals`
   the same way it extracts its `Parameters`.
 
-The design principle is that "a procedure's parameters and its own Dim/Static/Const locals ride on the member
-symbol, not as separate entries". Because locals ride on the procedure member symbol, a local never needs a
-second, flat registration of its own to resolve by name. See
+By design, a procedure's parameters and its own `Dim` / `Static` / `Const` locals are carried on the member
+symbol, not registered as separate entries. A local therefore needs no second, flat registration of its own to
+resolve by name. See
 [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md).
 
 ### Array declarations
@@ -53,17 +53,17 @@ value of the appropriate array type in the scope of the declaration; see
 
 Hoisting of procedure-local variables is governed by
 [**MS-VBAL §5.4.3** Data Manipulation Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ee62ca0d-bf15-4679-8d11-6e411b37901b)
-([**RD-VBAL §5.4.3** Data Manipulation Statements](rd-vbal.5.4.3.data-manipulation-statements.md)). **MS-VBAL**
-procedure invocation step 4 reads: "create the function result variable and any procedure extent local variables
-declared within the procedure". RD-VBA implements procedure invocation step 4 for `Dim` and `Static` locals as
-well as for the function result variable.
+([**RD-VBAL §5.4.3** Data Manipulation Statements](rd-vbal.5.4.3.data-manipulation-statements.md)). Step 4 of
+MS-VBAL's procedure invocation reads: "create the function result variable and any procedure extent local variables
+declared within the procedure". RD-VBA implements step 4 for `Dim` and `Static` locals as well as for the function
+result variable.
 
 When a procedure is invoked
 ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)):
 
 1. The procedure's parameters are bound.
 2. `RuntimeProcedureInvoker.HoistLocals` hoists the procedure's `Dim` and `Static` locals: it walks the procedure's
-   `Locals` right after parameter binding, before the body runs.
+   `Locals` immediately after parameter binding, before the body runs.
 3. Each `Dim` local gets a fresh `CallStackFrame.Push`, seeded to its declared type's default value.
 4. Each `Static` local that has no allocated storage gets it from
    [ISymbolResolver](../api/RDCore.SDK.Runtime.Abstract.Execution.ISymbolResolver.html)`.TryAllocate` (see
@@ -83,11 +83,11 @@ the session's module-level heap. A `Static` local's storage lives in the same he
 
 - The one-time `TryAllocate` for a `Static` local is guarded by `TryGetAddress`, so only the first call allocates.
 - Every later call to the procedure sees whatever the previous call's body last wrote to a `Static` local.
-- A `Static` local's storage is deliberately not reserved through
+- By design, a `Static` local's storage is not reserved through
   [ISessionSymbols](../api/RDCore.SDK.Runtime.Abstract.Execution.ISessionSymbols.html)`.TryDefine`.
-  `ISessionSymbols.TryDefine`'s bucket-add would register a `Static` local's symbol a second time, since riding on
-  `Locals` already covers the name. Registering it a second time would be a real ambiguous-name risk, not just
-  redundant work.
+  `ISessionSymbols.TryDefine`'s bucket-add would register a `Static` local's symbol a second time, since the
+  procedure's `Locals` already carries the name. A second registration would risk an ambiguous name, not only
+  duplicate work.
 
 Reading a `Static` local needs no dedicated mechanism. `CallStackAwareSymbolResolver` falls through to
 session-level storage for any `Local`-scoped symbol that the current frame does not itself declare. A name that
@@ -99,8 +99,8 @@ mechanism for `Static` locals.
 
 > [!NOTE]
 > **Not implemented.** A whole procedure declared `Static` is not modeled: a local has module extent only when it
-> is declared with an explicit `Static` keyword. Without whole-procedure `Static`, RD-VBA's `Static` handling is
-> narrower than MS-VBAL but not wrong for what it covers. See
+> is declared with an explicit `Static` keyword. RD-VBA's `Static` handling is therefore narrower than MS-VBAL's.
+> See
 > [**RD-VBAL §5.3.1.2** Static Procedures](rd-vbal.5.3.1.2.static-procedures.md).
 
 ## Implementation

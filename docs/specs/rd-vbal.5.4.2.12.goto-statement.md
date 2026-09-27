@@ -15,7 +15,7 @@ or [LineNumberNode](../api/RDCore.SDK.Model.AST.Abstract.LineNumberNode.html) it
 ([**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md)).
 
 A bare line-number target in a single-line `If` branch (`If x Then 100`) is not modelled as its own shape. The
-parser synthesizes a real `GoToStatementNode` as that branch's (typically only) statement
+parser synthesizes a `GoToStatementNode` as that branch's statement, typically its only one
 ([**RD-VBAL §5.4.2.9** Single-line If Statement](rd-vbal.5.4.2.9.single-line-if-statement.md)).
 
 `GoTo` lowers to the [InstructionKind](../api/RDCore.SDK.Semantics.Instructions.InstructionKind.html) `Jump`
@@ -26,7 +26,7 @@ parser synthesizes a real `GoToStatementNode` as that branch's (typically only) 
 Lowering resolves the target label to an offset
 ([**RD-VBAL §3.5.3** Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md)). A label is scoped
 to the whole procedure, so a `GoTo` from anywhere in the procedure into the middle of a loop body or an `If`
-body resolves exactly like any other jump
+body resolves in the same way as any other jump
 ([**RD-VBAL §5.4.1.1** Statement Labels](rd-vbal.5.4.1.1.statement-labels.md)).
 
 |Condition|Result|

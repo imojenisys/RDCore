@@ -18,7 +18,7 @@ This section corresponds to [**MS-VBAL §5.6.2.1** Evaluation to a data value](h
 > This section describes the implementation of [**MS-VBAL §5.6.2.2** Evaluation to a simple data value](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f1cc9a8d-e681-4e20-9c5e-e3385545440e).
 
 The _default member_ of a class type can be implicitly invoked through _let-coercion_, yielding the _data value_ of
-the object. See [**RD-VBAL §2.4.2** Non-intrinsic Types](rd-vbal.2.4.2.non-intrinsic-types.md) (Default Member) and
+the object. See [**RD-VBAL §2.4.2.2.2** Default Member](rd-vbal.2.4.2.non-intrinsic-types.md#24222-default-member) and
 [**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md).
 
 

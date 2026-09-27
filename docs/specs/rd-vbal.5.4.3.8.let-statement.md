@@ -46,7 +46,7 @@ A Let-assignment to a bare reference to a procedure's own name, from within its 
   `RuntimeEvaluationContext.Scope`. `StatementRuntimeSemanticsProvider.ExecuteLetAssignment` reaches it through
   `LetAssignmentEvaluator.Assign`.
 - A bare reference to the function result variable never goes through `"__let_op"`. The function result variable
-  is not a real addressable `Symbol` with an
+  is not an addressable `Symbol` with an
   [IBindingHandle](../api/RDCore.SDK.Model.Values.Bindings.IBindingHandle.html).
 - The self-reference branch of `LetAssignmentEvaluator.Assign` Let-coerces the assigned value directly.
 - That direct Let-coercion is the same lower-level call that `ByVal` and `ByRef`-fallback parameter passing make,
@@ -56,8 +56,7 @@ A Let-assignment to a bare reference to a procedure's own name, from within its 
 ### UDT fields
 
 A Let statement assigns a UDT field by Let-coercing the value to the field's own declared type and writing the
-field's cell. A UDT field is not an addressable symbol the way a variable is, which is why a Let assignment to a
-UDT field writes the field's cell.
+field's cell. It writes the cell because a UDT field is not an addressable symbol the way a variable is.
 
 A UDT field is reachable from source code in both directions: a member access reads one, and a Let statement
 assigns one. See [**RD-VBAL §5.6.12** Member Access Expressions](rd-vbal.5.6.12.member-access-expressions.md).

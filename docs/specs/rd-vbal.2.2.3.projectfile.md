@@ -47,7 +47,7 @@ RD-VBA discovers a _file system folder_ as a _workspace folder_ when the folder 
 > [!IMPORTANT]
 > The `Name` of a project **must** be a valid _identifier name_. It **should not** be `VBA`, or any other _reserved identifier_ name.
 
-The rule is worded "should not" because whether a _source project_ can reference a _different project_ that has the same name is explicitly specified as _host-dependent_ behavior. An RD-VBA _host environment_ **should** very explicitly deny the addition of any such ambiguous project reference.
+The rule is worded "should not" because whether a _source project_ can reference a _different project_ that has the same name is explicitly specified as _host-dependent_ behavior. An RD-VBA _host environment_ **should** explicitly deny the addition of any such ambiguous project reference.
 
 The _standard library_ symbols are present in a project whether or not its `.rdproj` mentions the library at all (see [**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standard-library.md)).
 
@@ -128,13 +128,13 @@ Rubberduck (the VBE add-in) exported document modules with a `.doccls` extension
 RD-VBA can load the necessary symbols for document module interfaces, but their implementation belongs to their respective _host application_.
 
 > [!NOTE]
-> RD-VBA cannot create a `Workbook` host document, nor a `Worksheet` module in its `Sheets` collection, because that is the job of _Microsoft Excel_.
+> RD-VBA cannot create a `Workbook` host document, nor a `Worksheet` module in its `Sheets` collection, because that is the responsibility of _Microsoft Excel_.
 
 Instead, RD-VBA identifies the interfaces a document module requires using the `DocClassType` enum. This allows _static semantics_ to correctly identify all the members and available events of a document module.
 
-Workspace source code that is directly dependent on a _host document_ necessarily requires an appropriate _host_ to evaluate correctly. In such cases, the RD-VBA runtime implementation is free to fire up an _automation host_ process as needed, if such a host exists in the runtime environment.
+Workspace source code that is directly dependent on a _host document_ necessarily requires an appropriate _host_ to evaluate correctly. In such cases, the RD-VBA runtime implementation may start an _automation host_ process as needed, if such a host exists in the runtime environment.
 
-> 🎯 A more portable approach is to refactor MS-VBA legacy code so that any host-dependent calls are decoupled from the logic. RDCore semantic analysis capabilities should provide ample support for all the diagnostics and refactoring tools needed to do this.
+> 🎯 A more portable approach is to refactor MS-VBA legacy code so that any host-dependent calls are decoupled from the logic. RDCore semantic analysis capabilities should support all the diagnostics and refactoring tools needed to do this.
 
 ## 2.2.3.4 RDCoreFile
 

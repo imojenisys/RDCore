@@ -18,7 +18,7 @@ See also [**RD-VBAL §5.6.4** Expression Binding Contexts](rd-vbal.5.6.4.express
 [SimpleNameExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.SimpleNameExpressionNode.html)
 ([**RD-VBAL §5.6.10** Simple Name Expressions](rd-vbal.5.6.10.simple-name-expressions.md)).
 
-✅ The binding context is chosen by the node being evaluated, never by a parameter:
+The binding context is chosen by the node being evaluated, never by a parameter:
 
 |Node|Binding context|Lookup|
 |---|---|---|
@@ -36,10 +36,10 @@ The [ISymbolResolver](../api/RDCore.SDK.Runtime.Abstract.Execution.ISymbolResolv
 record describes and encapsulates either the evaluation result or runtime error metadata
 ([**RD-VBAL §5.0** Semantics](rd-vbal.5.0.semantics.md)).
 
-The **RD-VBA** type system includes and leverages _meta-types_ such as
+The **RD-VBA** type system includes and uses _meta-types_ such as
 [VBTypeDescValue](../api/RDCore.SDK.Model.Values.Meta.VBTypeDescValue.html)
 ([**RD-VBAL §2.4.3** Meta and Advanced Types](rd-vbal.2.4.3.meta-and-advanced-types.md)). Because of this, the
-binding context is easily inferred from the managed type of a provided value.
+binding context can be inferred from the managed type of a provided value.
 
 > [!WARNING]
 > A `VBTypeDescValue` is a _data value_ that represents a _data type_. The implementation of both static and
@@ -79,7 +79,7 @@ Read literally,
 [**MS-VBAL §5.6.12** Member Access Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/af3a4059-3059-4e79-8aa5-685324fb266a)
 does not say which binding context the left-hand side of a member access under the _type binding context_ is bound
 in. Applied literally, the first-match rule of **MS-VBAL §5.6.10** would select the `Type` `MyProject`, which no
-member access could then qualify. The positional rule is the one that fits what the compilers were observed to do:
+member access could then qualify. The positional rule matches the observed behaviour of the VBA and VB6 compilers:
 
 |Source|VBA compiler (VBE)|VB6 compiler|
 |---|---|---|
@@ -87,8 +87,8 @@ member access could then qualify. The positional rule is the one that fits what 
 |`Dim c As MyProject.Class`|Not verified.|Names the class.|
 |`Dim u As MyProject`|Not verified.|Finds the `Type` `MyProject`.|
 
-The VBA compiler was verified for the `New MyProject.Class` form only. The `As New` form follows from the positional
-rule, without having been checked separately against a compiler.
+Only the `New MyProject.Class` form is verified against the VBA compiler. The `As New` form follows from the positional
+rule, and is not verified against a compiler.
 
 Whether a class named by `New` is _creatable_ is not a name-lookup concern. See
 [**RD-VBAL §5.6.8** New Expressions](rd-vbal.5.6.8.new-expressions.md).

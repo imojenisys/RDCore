@@ -5,9 +5,9 @@ _Meta types_ are _introspective_ data types that can _reflectively_ describe the
 > [!WARNING]
 > Meta types must not be exposed directly to RD-VBA source code. Doing so would break the language on a fundamental level.
 
-> 🧩 Meta types provide extremely powerful _language-level extension_ possibilities.
+> 🧩 Meta types provide _language-level extension_ possibilities.
 
-The type system includes and leverages meta types, such as `VBTypeDescValue`; see [**RD-VBAL §3.0.3** Binding Contexts](rd-vbal.3.0.3.binding-contexts.md).
+The type system includes and uses meta types, such as `VBTypeDescValue`; see [**RD-VBAL §3.0.3** Binding Contexts](rd-vbal.3.0.3.binding-contexts.md).
 
 The meta types are:
 
@@ -29,7 +29,7 @@ The meta types are:
 Both use a `VBTypeDescValue` because their semantics demand knowledge of a _data type_ where a _value_ is normally required.
 
 > [!WARNING]
-> Because a `VBTypeDescValue` is a data value that represents a data type, the implementation of both static and runtime semantics must be mindful of the possibility of accidentally pattern-matching such a _type descriptor_.
+> Because a `VBTypeDescValue` is a data value that represents a data type, the implementation of both static and runtime semantics must account for the possibility of pattern-matching such a _type descriptor_ by accident.
 
 > [!NOTE]
 > **Not implemented.** None of the descriptor types other than `VBTypeDesc` are in use.

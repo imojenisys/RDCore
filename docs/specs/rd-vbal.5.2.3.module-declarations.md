@@ -13,8 +13,8 @@ without qualification ([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.n
 > [!NOTE]
 > This section describes the implementation of [**MS-VBAL §5.2.3.1** Module Variable Declaration Lists](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/0f9113df-fd9c-485a-9583-fdb0e9d68e1b).
 
-👉 An omitted array _item type_ defaults to `Variant`: if no item type is specified in an array declaration, the
-declared item type of the array is `Variant` ([**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md);
+👉 When an array declaration specifies no _item type_, the declared item type of the array is `Variant`
+([**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md);
 [**RD-VBAL §2.5.2.1.2** Array Values](rd-vbal.2.5.2.1.2.array-values.md)).
 
 ### 5.2.3.1.1 Variable Declarations

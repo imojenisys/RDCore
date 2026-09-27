@@ -12,11 +12,11 @@ All platform extensions must *gracefully* handle being denied their extended cap
 - responding to an LSP `shutdown` request;
 - cleanly terminating upon an LSP `exit` notification from the environment host.
 
-An abstract server application in the SDK, [RDCoreServerApp](../api/RDCore.SDK.Server.RDCoreServerApp.html), should already handle these lifecycle events correctly, without needing any further configuration.
+An abstract server application in the SDK, [RDCoreServerApp](../api/RDCore.SDK.Server.RDCoreServerApp.html), should handle these lifecycle events correctly, without further configuration.
 
 |Capability registration|Outcome|
 |---|---|
-|The extension successfully registers **any** capability.|Its process continues to run, and may handle a reduced set of LSP requests and notifications.|
+|The extension registers at least one capability.|Its process continues to run, and may handle a reduced set of LSP requests and notifications.|
 |The extension registers no capability.|The environment host requests the termination of the extension server process.|
 
 ## RDCore Platform Cloud Infrastructure

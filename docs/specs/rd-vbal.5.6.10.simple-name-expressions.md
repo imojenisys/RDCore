@@ -18,8 +18,8 @@ _default binding context_. See [**RD-VBAL §3.0.3** Binding Contexts](rd-vbal.3.
 The declared type of a simple name expression is the declared type of the entity its identifier resolves to. The
 identifier resolves per the ordered lookup of [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md).
 
-How a simple name expression's declared type is determined from a `ResolveValue` outcome is specified in this
-section. [SimpleNameExpressionStaticSemantics](../api/RDCore.SDK.Semantics.Static.Expressions.SimpleNameExpressionStaticSemantics.html)
+This section specifies how a simple name expression's declared type is determined from a `ResolveValue` outcome.
+[SimpleNameExpressionStaticSemantics](../api/RDCore.SDK.Semantics.Static.Expressions.SimpleNameExpressionStaticSemantics.html)
 implements it.
 
 ### Candidates
@@ -32,7 +32,7 @@ bound by `ResolveValue`:
 |A variable, constant, Enum type or Enum member, property, function, subroutine, procedural module or project.|A user-defined type or a class module.|
 
 The name of a class that is not predeclared, used in an expression, is an undefined variable. See
-[**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md) (`VB_PredeclaredId`) and
+[**RD-VBAL §3.1.1.6** `VB_PredeclaredId`](rd-vbal.3.1.1.attributes.md#3116-vb_predeclaredid) and
 [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md#candidates).
 
 ### Declared Type
@@ -50,7 +50,8 @@ The name of a class that is not predeclared, used in an expression, is an undefi
 
 ### Resolution Outcomes
 
-Three static-semantics outcomes of a simple name expression fork on the resolver's result. Each outcome is a
+The static semantics of a simple name expression have three outcomes, depending on the resolver's result. Each
+outcome is a
 [StaticSemanticsEvaluationResult](../api/RDCore.SDK.Semantics.Static.Abstract.StaticSemanticsEvaluationResult.html):
 
 |Resolver result|Outcome|
@@ -72,7 +73,7 @@ compile-time error. See [**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.op
 
 MS-VBA permits an implicit `Variant` declaration for an unresolved name (without `Option Explicit`).
 
-RD-VBA defers the actual type guess for an unresolved name to a later type-inference pass
+RD-VBA defers inferring the type of an unresolved name to a later type-inference pass
 ([IVBInferableType](../api/RDCore.SDK.Model.Types.Complex.IVBInferableType.html)), rather than deciding it in the
 simple-name-expression rule. See [**RD-VBAL §2.4.4** Deferred Types](rd-vbal.2.4.4.deferred-types.md).
 
@@ -103,8 +104,8 @@ check their shared base type,
 `EnumConst`, module-level and instance fields, and UDT fields share this base type with `Function` and `Property Get`
 symbols. See [**RD-VBAL §2.5.1** Runtime Entities](rd-vbal.2.5.1.runtime-entities.md).
 
-An index expression whose `Callee` is a bare name resolving to a `Sub`, `Function` or `Property Get` is checked for
-that before the usual recursive `Evaluate(Callee)`. Otherwise, the bare-name `Callee` would already have been
+For an index expression, whether its `Callee` is a bare name resolving to a `Sub`, `Function` or `Property Get` is
+checked before the usual recursive `Evaluate(Callee)`. Otherwise, the bare-name `Callee` would already have been
 auto-invoked with zero arguments by `SimpleName`'s own dispatch, before the index expression could supply its
 arguments. See [**RD-VBAL §5.6.13** Index Expressions](rd-vbal.5.6.13.index-expressions.md).
 
@@ -125,8 +126,8 @@ resolved symbol's `Uri` against `RuntimeEvaluationContext.Scope`. `RuntimeProced
 
 ### Arrays
 
-Reading a plain array-typed variable back as an expression (`SimpleNameExpressionNode`, the ordinary shape of `arr`
-in `For Each item In arr`) round-trips correctly. See
+A plain array-typed variable read back as an expression (`SimpleNameExpressionNode`, the ordinary shape of `arr` in
+`For Each item In arr`) yields the array value stored in it. See
 [**RD-VBAL §2.5.2.1.2** Array Values](rd-vbal.2.5.2.1.2.array-values.md) and
 [**RD-VBAL §5.4.2.4** For Each Statement](rd-vbal.5.4.2.4.for-each-statement.md).
 

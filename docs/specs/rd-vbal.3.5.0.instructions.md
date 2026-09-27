@@ -1,23 +1,23 @@
 # 3.5.0 Instructions
 
 An *instruction* is the unit the interpreter's program counter fetches. A procedure body has one instruction
-per executable [StatementNode](../api/RDCore.SDK.Model.AST.Abstract.StatementNode.html), plus a handful of
+per executable [StatementNode](../api/RDCore.SDK.Model.AST.Abstract.StatementNode.html), plus the
 synthesized instructions that a block statement needs but has no source node for. Instructions are ordered in
 the order execution would normally reach them.
 
-[**RD-VBAL §3.4** Statements](rd-vbal.3.4.0.statements.md) catalogs the statement tree the parser produces.
+[**RD-VBAL §3.4.0** Statements](rd-vbal.3.4.0.statements.md) catalogs the statement tree the parser produces.
 This section catalogs the flat, offset-addressable
 [InstructionList](../api/RDCore.SDK.Semantics.Instructions.InstructionList.html) that
 [InstructionListLowering](../api/RDCore.SDK.Semantics.Instructions.InstructionListLowering.html) produces from
-that tree. Executing it is what [**RD-VBAL §2.3.1** Composition Root](rd-vbal.2.3.1.composition-root.md)
-describes as the evaluation engine's job: "sequentially evaluate each instruction in the frame."
+that tree. Executing it is the role that [**RD-VBAL §2.3.1** Composition Root](rd-vbal.2.3.1.composition-root.md)
+gives the evaluation engine: "sequentially evaluate each instruction in the frame."
 
 ## Why a flat list
 
 `GoTo`, `GoSub`, `On…GoTo`, `On…GoSub` and `Resume` can jump to any statement in the procedure. A recursive
 tree walk cannot express an arbitrary jump, which is why statements are lowered to a flat instruction list.
 
-A tree is still the right shape for expressions, because expressions contain no jumps. Lowering therefore only
+Expressions keep their tree shape, because expressions contain no jumps. Lowering therefore only
 flattens the statement tree; it never flattens the expression trees held in each statement's `Inputs`.
 
 ---

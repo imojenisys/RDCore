@@ -26,7 +26,7 @@ For an **RD-VBA** project without any modules, the host cannot exit design mode 
 Provided that the _host application_ is able to respond to keyboard inputs, execution in _running mode_ may be
 suspended at any point to enter _break mode_.
 
-In the _Microsoft Visual Basic Editor_, this has traditionally been done with the
+In the _Microsoft Visual Basic Editor_, a manual break is entered with the
 <kbd>Ctrl</kbd>+<kbd>Pause|Break</kbd> keyboard shortcut. The platform considers this keyboard shortcut an
 implementation detail of the _environment host_.
 

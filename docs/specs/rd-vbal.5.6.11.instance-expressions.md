@@ -19,9 +19,9 @@ An _instance expression_ is the keyword `Me`.
 At run time, an instance expression (`Me`) represents the _current instance_ of the type defined by the enclosing
 class module, and has this type as its _value type_ (**MS-VBAL §5.6.11**).
 
-RD-VBA implements `Me` not as an expression as such, but as a simple runtime artifact: the _current object_. This is
-aligned with **MS-VBAL §5.6.11**. The current object is a common concept in many programming languages, often
-expressed with the token `this`.
+In line with **MS-VBAL §5.6.11**, RD-VBA implements `Me` as a simple runtime artifact, the _current object_, rather
+than as an expression. The current object is a common concept in many programming languages, where it is often
+written with the token `this`.
 
 - The runtime injects an implicit `Me` (`ByVal`) parameter into all _instance member calls_, pointed at the current
   object.

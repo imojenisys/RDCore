@@ -15,12 +15,12 @@ declared in the procedure body; see
 
 ## Runtime Semantics
 
-In MS-VBAL, a local `Const`'s value is a compile-time substitution, never a runtime address.
+In MS-VBAL, a local `Const`'s value is substituted at compile time; it has no run-time address.
 
 > [!NOTE]
-> **Not implemented.** A local `Const` is not modeled at run time. Nothing threads a local `Const`'s initializer
-> expression to where the runtime could evaluate it. Reading a local `Const` at run time resolves to
-> `InternalError`, not a silent misread.
+> **Not implemented.** A local `Const` is not modeled at run time: a local `Const`'s initializer expression is not
+> passed to any point where the runtime could evaluate it. Reading a local `Const` at run time resolves to
+> `InternalError`, rather than silently reading a wrong value.
 
 ## Implementation
 

@@ -9,7 +9,7 @@ An _execution session_'s services are rooted at an
 
 |Exposes|Description|
 |---|---|
-|`Environment.Is64Bit`|The environment bitness, on the session's [IRuntimeEnvironmentProfile](../api/RDCore.SDK.Runtime.Abstract.Execution.IRuntimeEnvironmentProfile.html). It also determines the value of the `#If Win64` pre-compiler directive. `#If VBA7` does not depend on it: the environment host defines `VBA7` as true in either bitness.|
+|`Environment.Is64Bit`|The environment bitness, on the session's [IRuntimeEnvironmentProfile](../api/RDCore.SDK.Runtime.Abstract.Execution.IRuntimeEnvironmentProfile.html). It also sets the default value of the `#If Win64` pre-compiler constant. `#If VBA7` does not depend on it: the environment host defaults `VBA7` to true in either bitness. A `.rdproj` `#Const` or a `--define` argument overrides these defaults.|
 |`References`|The workspace's project and library references ([References](#references), below).|
 |The three session services|`ISessionMemoryAllocator`, `ISessionSymbols` and `ISessionObjects` ([Services](#services), below).|
 
@@ -21,8 +21,8 @@ An _execution session_'s services are rooted at an
 |[ISessionSymbols](../api/RDCore.SDK.Runtime.Abstract.Execution.ISessionSymbols.html)|The session's symbol table.|`TryDefine` defines a [Symbol](../api/RDCore.SDK.Model.Symbols.Abstract.Symbol.html) in a scope. `TryResolveValue` resolves a name visible from a scope; `TryResolveType` is its type binding context counterpart. `Resolver` is the session's symbol resolver.|
 |[ISessionObjects](../api/RDCore.SDK.Runtime.Abstract.Execution.ISessionObjects.html)|Object lifetime.|`CreateObject`; `AddRef` / `RemoveRef` (reference counting); `TryRemoveObject` removes an instance whose reference count has reached zero.|
 
-`ISessionMemoryAllocator` is an _accounting_ layer: it tracks sizes and addresses, MSVBVM-style. It does not hold
-the values themselves.
+`ISessionMemoryAllocator` is an _accounting_ layer: it tracks sizes and addresses, in the manner of MSVBVM. It does
+not hold the values themselves.
 
 `ISessionSymbols` mirrors the `ISymbolResolver.ResolveValue` / `ResolveType` pair as `TryResolveValue` and
 `TryResolveType`. `ISessionSymbols.Resolver` is a `ScopeTreeSymbolResolver` over the session's own symbols, rebuilt
@@ -45,20 +45,22 @@ Each [ReferencePriorityInfo](../api/RDCore.SDK.Model.Symbols.ReferencePriorityIn
 |`Priority`|The reference's rank in the `IRuntimeSession.References` list.|
 
 The list is the _reference priority_ order defined for global-scope name resolution
-([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)). It preserves that order exactly as the
-language server provides it.
+([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)). It keeps the order in which the
+language server provides the references.
 
 A referenced library's own members are not taken from this list: they are contributed by an
 [ISymbolProvider](../api/RDCore.SDK.Runtime.Abstract.Execution.ISymbolProvider.html) (see [below](#isymbolprovider))
 and resolved through `ISymbolResolver`.
 
-Name resolution across referenced projects and libraries consults the ordering to disambiguate a global-scope name.
-The name-resolution algorithm itself is a separate concern from the list
+Name resolution across referenced projects and libraries shall consult the ordering to disambiguate a global-scope
+name. The name-resolution algorithm itself is a separate concern from the list
 ([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)).
 
 > [!NOTE]
 > **Not implemented.** Reference-priority ordering within the global scope is not implemented. The ordering is
-> carried on `IRuntimeSession.References`, but nothing consults it.
+> carried on `IRuntimeSession.References`, but nothing consults it. A name that matches symbols from more than one
+> reference is reported as **VBC09301** _Ambiguous name_ (see
+> [Duplicate and ambiguous names](rd-vbal.2.3.1.3.name-resolution.md#duplicate-and-ambiguous-names)).
 
 ## ISymbolProvider
 
@@ -93,7 +95,7 @@ structures:
 |_Symbol table_|A map of a `Uri` to its associated `Symbol`.|
 |_Name table_|The current representation (casing) of all loaded symbols.|
 
-A `Symbol`'s scope kind determines exactly how, and whether, the symbol is allocated in memory: a
+A `Symbol`'s scope kind determines how, and whether, the symbol is allocated in memory: a
 `ScopeKind.Global` symbol lives in the globals heap, a `ScopeKind.Module` symbol in the workspace statics heap, and
 a `ScopeKind.Instance` symbol in the object heap. A `Static` local's storage lives in the same heap tier a module
 field uses ([**RD-VBAL §5.4.3.1** Local Variable Declarations](rd-vbal.5.4.3.1.local-variable-declarations.md)).
@@ -132,12 +134,11 @@ share ([**RD-VBAL §2.5.2.1.2** Array Values](rd-vbal.2.5.2.1.2.array-values.md)
 
 ### Zero-size storage
 
-`ISessionMemoryAllocator` refuses a zero-size allocation; this is a hardened invariant. A 0-byte
+`ISessionMemoryAllocator` refuses a zero-size allocation, as an enforced invariant: a 0-byte
 bump-pointer/free-list allocation would hand the same address to the next caller.
 
-`SessionStorage.TryAllocate` mints its own address for a non-positive size, instead of passing the request to the
-session memory allocator: the allocator is never reached for a non-positive size. The following values have a
-non-positive storage size, and all of them take this path alike:
+For a non-positive size, `SessionStorage.TryAllocate` mints its own address and never passes the request to the
+session memory allocator. The following values have a non-positive storage size, and all of them take this path:
 
 |Value with a non-positive storage size|
 |---|
@@ -147,12 +148,12 @@ non-positive storage size, and all of them take this path alike:
 |An uninitialized array|
 |An empty `ParamArray` array|
 
-Such a value still gets a binding resolvable by name, but never real memory.
+Such a value still gets a binding that resolves by name, but never gets memory from the session memory allocator.
 
 The addresses `SessionStorage.TryAllocate` mints for non-positive sizes are negative, so that they can never collide
 with, or be mistaken for, an allocator address.
 
-Zero-size storage is supported because a `ParamArray` call with nothing left over is the single most common
+Zero-size storage is supported because a `ParamArray` call with nothing left over is the most common
 `ParamArray` call shape: `Call Callee(100)` against a `ParamArray rest()` parameter with no arguments left over
 collects an empty array whose `Size` is 0
 ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).
@@ -161,8 +162,8 @@ collects an empty array whose `Size` is 0
 
 The session's call stack, `RuntimeCallStack`, enforces a call-depth limit, in `OnBeforeTryPush`
 ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).
-Of the GoSub Resumption List, the SDK interface `ICallStackFrame` exposes only `GoSubDepth`, a count of its entries, and not the push/pop mutators
-([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
+Of the GoSub Resumption List, the SDK interface `ICallStackFrame` exposes only `GoSubDepth`, the number of its
+entries; it does not expose the list's push/pop mutators ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
 
 All file statements run through one session-level shim, the
 [IFileChannels](../api/RDCore.SDK.Runtime.Abstract.Execution.IFileChannels.html) /

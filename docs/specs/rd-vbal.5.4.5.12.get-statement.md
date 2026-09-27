@@ -28,9 +28,9 @@ Variant type descriptors and binary widths. The format is a wire format rather t
 MS-VBA's so that a file RD-VBA writes is a file MS-VBA reads. See
 [**RD-VBAL §5.4.5.11** Put Statement](rd-vbal.5.4.5.11.put-statement.md) for the format.
 
-`Get` reads each member of a UDT in declaration order, recursively through a nested UDT. The serialized size of a
-UDT is what `Get` moves. `Put #1, , myRecord` and `Get #1, , myRecord` are a one-line binary serialization of a
-whole UDT.
+`Get` reads each member of a UDT in declaration order, recursively through a nested UDT. `Get` moves the
+serialized size of a UDT. `Put #1, , myRecord` and `Get #1, , myRecord` serialize and deserialize a whole UDT in
+one statement.
 
 ### Record Positioning
 

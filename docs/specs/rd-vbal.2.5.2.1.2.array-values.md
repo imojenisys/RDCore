@@ -21,7 +21,7 @@ Array declarations are described in [**RD-VBAL §5.2.3** Module Declarations](rd
 ## Dimensions and Bounds
 
 - An array declaration provides the number of dimensions of the array, and the size of each dimension.
-- An array has up to **60** dimensions.
+- An array has up to 60 dimensions.
 - Each dimension records only its _lower bound_ and _upper bound_. These are the operands of `LBound` and `UBound`.
 
 The value associated with an array type encodes the array dimensions. Evaluating each bound to a `Long`, and resolving an omitted lower bound against `Option Base`, is the concern of the semantic pass that materializes the array value; see [**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md).
@@ -48,7 +48,7 @@ The elements of an array value are held in a single flat block (store):
 - Element storage is mutable.
 
 > [!NOTE]
-> **Not implemented.** The element block is not held in the environment host session's addressable storage. It is a value-model detail: it lives in the value model, on the `VBArrayValue` object.
+> **Not implemented.** The element block is not held in the environment host session's addressable storage. It lives in the value model instead, on the `VBArrayValue` object.
 
 ## Location Identity
 
@@ -62,7 +62,7 @@ Storage keeps the array value itself:
 2. For an array symbol, `SymbolAddressTable` boxes the array value itself, not a derived scalar, into the handle it allocates. It boxes the array value via [VBRuntimeArrayValue](../api/RDCore.SDK.Model.Values.Runtime.VBRuntimeArrayValue.html).
 3. On every subsequent read, [VBArrayType](../api/RDCore.SDK.Model.Types.VBArrayType.html)`.CreateValue(`[IBindingHandle](../api/RDCore.SDK.Model.Values.Bindings.IBindingHandle.html)`)` unboxes the array value back out unchanged. It does not attempt to reconstruct an array value from a bare handle.
 
-👉 Array values therefore round-trip through storage. Reading a plain array-typed variable back as an expression ([SimpleNameExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.SimpleNameExpressionNode.html), the ordinary shape of `arr` in `For Each item In arr`) round-trips correctly: `VBArrayType.CreateValue` unboxes the `VBRuntimeArrayValue` and returns the exact same instance, with its cells intact. See [**RD-VBAL §5.6.10** Simple Name Expressions](rd-vbal.5.6.10.simple-name-expressions.md).
+👉 Array values therefore round-trip through storage. When a plain array-typed variable is read back as an expression ([SimpleNameExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.SimpleNameExpressionNode.html), the ordinary shape of `arr` in `For Each item In arr`), `VBArrayType.CreateValue` unboxes the `VBRuntimeArrayValue` and returns the same instance, with its cells intact. See [**RD-VBAL §5.6.10** Simple Name Expressions](rd-vbal.5.6.10.simple-name-expressions.md).
 
 `VBRuntimeArrayValue` is a plain (non-`record`) wrapper. Boxing the array through a structurally-equatable type would make comparing two array-typed `VBTypedValue`s recurse back into the array's own equality, through the same boxed value.
 

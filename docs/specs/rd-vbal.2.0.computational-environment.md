@@ -11,7 +11,7 @@
 👉 An RD-VBA program runs inside a _host_, but that host is `rdc.exe` rather than a _Microsoft Office_ application. This should not affect general _semantic compatibility_.
 
 > [!NOTE]
-> Hosting RD-VBA programs in `rdc.exe` rather than a _Microsoft Office_ application has unresolved implications with regards to _run-time interoperability_.
+> Hosting RD-VBA programs in `rdc.exe` rather than a _Microsoft Office_ application has unresolved implications with regard to _run-time interoperability_.
 
 > 🎯 `rdc.exe` is a command-line interface (CLI) application whose role is to **assemble and host** the _library_ that is defined by the source code in a _workspace program_.
 

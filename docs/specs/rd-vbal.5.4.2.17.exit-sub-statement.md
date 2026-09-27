@@ -17,7 +17,7 @@
 
 The executor dispatches the `ExitProcedure` instruction, which completes the current activation.
 
-Falling off the end of the instruction list completes the activation "as if execution had reached the end of the
+Reaching the end of the instruction list completes the activation "as if execution had reached the end of the
 body" (the wording of **MS-VBAL §5.4.2.17**). This is the same outcome as an explicit `Exit`
 ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
 

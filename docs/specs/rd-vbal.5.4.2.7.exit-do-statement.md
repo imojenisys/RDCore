@@ -20,7 +20,7 @@ loop of that kind.
 
 A `While…Wend` loop does not satisfy `Exit Do`: MS-VBAL gives `While…Wend` no exit statement of its own
 ([**RD-VBAL §5.4.2.2** While Statement](rd-vbal.5.4.2.2.while-statement.md)). An `Exit Do` written inside a
-`While…Wend` is not consumed by it; it resolves against whatever `Do` loop already encloses the `While…Wend`.
+`While…Wend` is not consumed by it; it resolves against the `Do` loop that encloses the `While…Wend`.
 
 > [!NOTE]
 > **Not implemented.** No diagnostic is reported for an `Exit Do` that has no enclosing `Do` loop, including an
@@ -31,7 +31,7 @@ A `While…Wend` loop does not satisfy `Exit Do`: MS-VBAL gives `While…Wend` n
 ## Runtime Semantics
 
 1. `ExitLoop` branches to [Instruction](../api/RDCore.SDK.Semantics.Instructions.Instruction.html)`.Target`,
-   exactly like `Jump` ([**RD-VBAL §5.4.2.12** GoTo Statement](rd-vbal.5.4.2.12.goto-statement.md)).
+   in the same way as `Jump` ([**RD-VBAL §5.4.2.12** GoTo Statement](rd-vbal.5.4.2.12.goto-statement.md)).
 2. No runtime search is needed: lowering has already resolved `Target` to the offset right past the innermost
    enclosing loop of the matching kind.
 

@@ -11,7 +11,7 @@
 |[GoToStatementNode](../api/RDCore.SDK.Model.AST.Statements.GoToStatementNode.html) (synthesized by the parser)|`Jump`|A bare line-number target in either branch, e.g. `If x Then 100`.|
 
 A bare line-number target in either branch is not modelled as its own AST shape. MS-VBAL specifies such a target as
-equivalent to a `GoTo` statement targeting that line, so the parser synthesizes a real `GoToStatementNode` as that
+equivalent to a `GoTo` statement targeting that line, so the parser synthesizes a `GoToStatementNode` as that
 branch's statement, typically its only one
 ([**RD-VBAL §5.4.2.12** GoTo Statement](rd-vbal.5.4.2.12.goto-statement.md)).
 

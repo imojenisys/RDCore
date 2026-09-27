@@ -11,11 +11,11 @@
 |`Owner.Print`|[ObjectPrintExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.ObjectPrintExpressionNode.html)|—|The object-qualified form.|
 |`Debug.Print`|[DebugPrintStatementNode](../api/RDCore.SDK.Model.AST.Statements.DebugPrintStatementNode.html)|`Simple`|The object-qualified form whose owner is `Debug`.|
 
-The output list these nodes carry is described in **5.4.5.8.1 Output Lists** below. See
+The output list these nodes carry is described in [5.4.5.8.1 Output Lists](#54581-output-lists) below. See
 [**RD-VBAL §3.4.3** File Statements](rd-vbal.3.4.3.file-statements.md).
 
 > [!NOTE]
-> **Not implemented.** The `?` shorthand for `Print` has no lexer or grammar token in the current grammar.
+> **Not implemented.** The `?` shorthand for `Print` has no lexer or grammar token.
 
 ## Static Semantics
 

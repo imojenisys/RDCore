@@ -24,8 +24,8 @@ Therefore:
 
 Attributes in the _header_ section of a module determine the _static semantics_ of that module.
 
-MS-VBA attribute semantics are severely truncated, compared with their original **VB6** intent. 🎯 RD-VBA honors
-attribute semantics according to their original VB6 intent: RD-VBA has no reason not to.
+MS-VBA attribute semantics are much reduced compared with their original **VB6** intent. 🎯 RD-VBA honors
+attribute semantics according to their original VB6 intent, because nothing in RD-VBA calls for the MS-VBA reduction.
 
 |Section|Attribute|Determines|
 |---|---|---|
@@ -151,7 +151,7 @@ The "Id" refers to an internal _unique semantic identifier_ given to every objec
 
 ### Static Semantics
 
-✅ The static semantics of `VB_PredeclaredId`
+The static semantics of `VB_PredeclaredId`
 ([**MS-VBAL §5.2.4.1.2** Default Instance Variables Static Semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/189fb41b-cc3a-4999-a6d2-ba89f72d2870))
 are modeled.
 
@@ -209,17 +209,17 @@ class `Widget`:
 - Setting an auto-object (a predeclared instance) to `Nothing` destroys its internal state.
 - _Semantic flags_ should identify whether a predeclared class module is _stateful_ or not
   ([**RD-VBAL §1.1.3** Core Semantic Flags](rd-vbal.1.1.3.core-semantic-flags.md)).
-- An auto-object reference is re-created immediately as soon as it is referred to, including within an
+- An auto-object reference is re-created as soon as it is referred to, including within an
   `Is Nothing` reference check.
 - An `Is Nothing` check on an auto-object is therefore _statically constant_ (`False`)
   ([**RD-VBAL §5.6.9.7** Is Operator](rd-vbal.5.6.9.7.is-operator.md)).
 
 ## 3.1.1.7 VB_Description
 
-`VB_Description` holds a short _documentation string_ that IDE tooling can use to supply helpful tooltips.
+`VB_Description` holds a short _documentation string_ that IDE tooling can use to supply tooltips.
 
 Surfacing attributes does not necessarily make `@Description` annotations obsolete
-([**RD-VBAL §3.0.1.1** Comment Annotations Syntax](rd-vbal.3.0.1.token-semantics.md)): hiding `Attribute`
+([**RD-VBAL §3.0.1.1** Comment Annotations Syntax](rd-vbal.3.0.1.token-semantics.md#3011-comment-annotations-syntax)): hiding `Attribute`
 directives may or may not be a capability that an LSP client supports.
 
 ---

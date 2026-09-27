@@ -30,8 +30,8 @@ Nested `GoSub`s unwind in LIFO order: the innermost `Return` is taken first.
 `Return`'s runtime semantics resolve no target label at execution time: the offset it branches to is the one
 the matching `GoSub` pushed.
 
-The GoSub Resumption List is a plain stack because nothing about which `GoSub` pushed an entry matters to
-`Return`; only the order of the entries matters.
+The GoSub Resumption List is a plain stack because `Return` depends only on the order of its entries, not on which
+`GoSub` pushed each one.
 
 ## Implementation
 

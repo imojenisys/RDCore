@@ -58,18 +58,18 @@ The _environment host_ must ultimately be able to:
 - **attach** to an _external process_ that hosts an **MS-VBA** _VBA environment_;
 - _externally address_ the host memory space, to enable automation through COM and .NET interoperability.
 
-External addressing of the host process memory technically allows a
+In principle, external addressing of the host process memory allows a
 [VBVariantValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBVariantValue.html) to _wrap_ an externally-defined
 object reference ([**RD-VBAL §2.5.2.1.5** Variant Values](rd-vbal.2.5.2.1.5.variant-values.md)).
 
 > [!NOTE]
-> For _Microsoft Office Automation_, the _attach to host process_ feature positions the **RDCore** platform in a
-> similar technical spot as _Microsoft VSTO_ did: **automating COM from the sidelines** rather than from within the
-> host.
+> For _Microsoft Office Automation_, the _attach to host process_ feature places the **RDCore** platform in a
+> technical position similar to that of _Microsoft VSTO_: automating COM from outside the host rather than from
+> within it.
 >
-> The comparison with _Microsoft VSTO_ stops at automating COM from the sidelines: _a fully-realized RDCore
-> platform_ could technically run **RD-VBA CI/CD pipelines** and **integrate Enterprise software development
-> lifecycles**.
+> The comparison with _Microsoft VSTO_ extends no further than automating COM from outside the host: a complete
+> **RDCore** platform could also run RD-VBA CI/CD pipelines and integrate with enterprise software development
+> lifecycles.
 
 The _lightweight VBIDE add-in_ that launches an environment host attached to a host process is specified in
 [**RD-VBAL §4.1** VBIDE Synchronization](rd-vbal.4.1.vbide-synchronization.md).

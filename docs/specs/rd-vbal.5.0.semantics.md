@@ -3,7 +3,7 @@
 The role of _semantics_ is to encode the _meaning_ of the language into a set of deterministic rules and specified
 sequences of operations.
 
-**RDCore.SDK** explicitly defines two types of _abstract semantics_:
+**RDCore.SDK** defines two types of _abstract semantics_:
 
 |Semantics|Defined by|Availability to the _semantic analysis layer_|
 |---|---|---|
@@ -52,9 +52,10 @@ Module-level facts a static semantics rule needs are not parameters of the `Stat
 `LexicalScope.EnclosingModuleDirectives()`.
 
 The module-level fact a static semantics rule needs is whether the enclosing module declares `Option Explicit`
-([**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md)). `ModuleDirectives` also records the
-module's `Option Compare` mode and RD-VBA's `'@OptionStrict` annotation
-([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)).
+([**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md)). `ModuleDirectives` also carries the
+module's `Option Compare` mode, and a `Strict` member reserved for RD-VBA's `'@OptionStrict` annotation
+([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)). No symbol provider sets `Strict`, so
+it is always `false`, and nothing reads it.
 
 Keeping module-level facts on `ModuleDirectives` rather than on `StaticEvaluationContext` keeps the context's shape
 stable as the directive surface that MS-VBAL and RD-VBA both define (`Option Compare`, `Attribute` declarations, …)
@@ -151,7 +152,7 @@ The language core features an analytical pipeline that attaches detailed _semant
 > 👉 The role of the `Analyze` method at this level is to report the _semantic facts_ of an operation. These facts
 > usually cannot be inferred from the operands or _effective type_ alone.
 
-**Semantic flags are pure _facts_, not _opinions_.**
+Semantic flags are _facts_, not _opinions_.
 
 ### Diagnostics
 
@@ -162,10 +163,10 @@ The language core features an analytical pipeline that attaches detailed _semant
 |---|---|
 |**Error**|Reserved for coded _syntax/compilation_ and _runtime/application_ errors.|
 |**Warning**|Used carefully: for flagging _potential bugs_ or logical errors causing unexpected or unintended behavior, or _severe_ performance issues.|
-|**Hint** or **suggestion**|Can be as opinionated as needed.|
+|**Hint** or **suggestion**|May be as opinionated as needed.|
 
-When choosing a warning severity, always consider the possibility of a _treat warnings as errors_ host environment
-configuration setting. If a diagnostic is not worth _breaking a build over_, it is not a _warning_
+A warning severity must account for a _treat warnings as errors_ host environment configuration setting: a
+diagnostic that should not break a build is not a _warning_
 ([**RD-VBAL §2.6** Diagnostics](rd-vbal.2.6.diagnostics.md)).
 
 ### Type coercion

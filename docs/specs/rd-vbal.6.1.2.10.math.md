@@ -6,8 +6,8 @@
 The `Math` module is represented in the SDK by the interface
 [IStdMathModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdMathModule.html).
 
-The `Math` module's declarations follow the specification's own _Function Declaration_ blocks, declaration by
-declaration, including their return types and their `Optional` parameters.
+The `Math` module's declarations follow MS-VBAL's own _Function Declaration_ blocks (**MS-VBAL §6.1.2.10**),
+declaration by declaration, including their return types and their `Optional` parameters.
 
 
 ## 6.1.2.10.1 Public Functions

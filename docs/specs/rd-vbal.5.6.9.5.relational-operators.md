@@ -31,8 +31,7 @@ Run-time error 6 is [VBRuntimeErrorId](../api/RDCore.SDK.Model.Errors.VBRuntimeE
 
 ### Variant String/Numeric comparison
 
-The `Variant` String/Numeric comparison exception implements **MS-VBAL §5.6.9.5**. RD-VBA implements it as run-time
-behaviour.
+RD-VBA implements the `Variant` String/Numeric comparison exception of **MS-VBAL §5.6.9.5** as run-time behaviour.
 
 The exception applies when both relational operands are `Variant`, one originally holding a `String` value and the
 other a numeric value:
@@ -41,7 +40,7 @@ other a numeric value:
 - RD-VBA never attempts to coerce the `String` operand to a number. Depending on its content, that coercion would
   fail, or succeed incorrectly.
 
-`BinaryRelationalOperatorRuntimeSemantics` short-circuits the exception before normal coercion runs:
+`BinaryRelationalOperatorRuntimeSemantics` handles the exception as a short-circuit:
 
 1. It detects the `Variant` String/Numeric case before normal effective-type determination and coercion run.
 2. It reduces the case to a synthetic `Integer` rank for each operand (table below).
@@ -53,8 +52,8 @@ other a numeric value:
 |The `String`-holding `Variant`|`1`|
 
 The short-circuit runs before normal coercion because normal coercion would otherwise try, and fail, to coerce the
-`String` to a number. The synthetic-rank reduction means no bespoke evaluation path is needed for the `Variant`
-String/Numeric case.
+`String` to a number. Because the case is reduced to synthetic ranks, the `Variant` String/Numeric case needs no
+separate evaluation path.
 
 ## 5.6.9.5.1 = Operator
 

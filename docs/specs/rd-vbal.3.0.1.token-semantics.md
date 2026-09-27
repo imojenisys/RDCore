@@ -21,7 +21,7 @@ extensions ([**RD-VBAL §1.1.1** Platform Extensions](rd-vbal.1.1.1.platform-ext
 
 The requirements of the token semantics provider are as follows:
 
-- The provider accepts a base type from `Antlr4.Runtime`.
+- The provider accepts a base type from `Antlr4.Runtime`. The specific base type is not specified.
 
 ## 3.0.1.1 Comment Annotations Syntax
 
@@ -49,9 +49,9 @@ The rules of annotation binding differ depending on the annotation's intended _t
 > the module, instead of the module itself, when there is no vertical empty space (blank line) between them.
 > This edge case is why the module and member binding rules are explicitly disambiguated.
 
-Exactly which annotations are supported or semantically meaningful is _implementation-dependent_.
+Which annotations are supported or semantically meaningful is _implementation-dependent_.
 Surfacing `Attribute` statements does not necessarily make `@Description` annotations obsolete
-([**RD-VBAL §3.1.1.7** VB_Description](rd-vbal.3.1.1.attributes.md)).
+([**RD-VBAL §3.1.1.7** VB_Description](rd-vbal.3.1.1.attributes.md#3117-vb_description)).
 
 ### 3.0.1.1.1 Annotation List
 

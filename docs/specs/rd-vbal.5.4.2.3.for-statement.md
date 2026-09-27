@@ -24,7 +24,7 @@ of a `For...Next` loop ([**RD-VBAL §2.4.2** Non-intrinsic Types](rd-vbal.2.4.2.
 
 ## Runtime Semantics
 
-A `For` loop needs per-activation state. Its opener stashes a
+A `For` loop needs per-activation state. Its opener stores a
 [ForLoopState](../api/RDCore.SDK.Runtime.Shared.ForLoopState.html) on the activation, and its closer reads it back.
 
 ### ForOpener
@@ -33,24 +33,24 @@ A `For` loop needs per-activation state. Its opener stashes a
    defaults to the integer value `1`; that default is never itself evaluated as a source expression.
 2. Let-assign the counter to `start-value`, through the same Let-assignment machinery a `Let` statement uses
    ([**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.let-statement.md)).
-3. Stash `end` and `step`, together with the counter symbol and the counter's own expression node, as a
+3. Store `end` and `step`, together with the counter symbol and the counter's own expression node, as a
    `ForLoopState`, for every later step to reuse.
 4. Check steps 1 and 2 of the **MS-VBAL §5.4.2.3** algorithm immediately: "if step is zero or positive and the
    counter already exceeds end", and "if step is negative and the counter already falls short".
-5. When the counter is already out of range, skip straight to
+5. When the counter is already out of range, branch to
    [Instruction](../api/RDCore.SDK.Semantics.Instructions.Instruction.html)`.End`, right past the loop. Otherwise, fall
    through into the body.
 
 ### ForNext
 
-1. Read the stashed `ForLoopState` back via `Instruction.Matching`.
+1. Read the stored `ForLoopState` back via `Instruction.Matching`.
 2. Read the counter's current value. The body may have reassigned the counter directly.
 3. Add `step` to it through the addition operator
    ([**MS-VBAL §5.6.9.3** Arithmetic Operators](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e070115f-8d40-40cf-ac6d-ab18b9c6c906);
    [**RD-VBAL §5.6.9.3** Arithmetic Operators](rd-vbal.5.6.9.3.arithmetic-operators.md)). The addition is an
-   overflow-checked operation, not a bare CLR add.
+   overflow-checked operation, not an unchecked CLR addition.
 4. Let-assign the sum back to the counter.
-5. Re-test the counter the same way `ForOpener` did: branch back to the body (`Instruction.Target`) while the counter
+5. Re-test the counter in the same way as `ForOpener`: branch back to the body (`Instruction.Target`) while the counter
    is still in range, and fall through past the loop otherwise.
 
 ### Range Test
@@ -58,11 +58,11 @@ A `For` loop needs per-activation state. Its opener stashes a
 The range checks of `ForOpener` and `ForNext` use the relational operators `>` and `<`
 ([**MS-VBAL §5.6.9.5** Relational Operators](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f8acd631-55c1-4199-bc1e-022aaab6d9c8);
 [**RD-VBAL §5.6.9.5** Relational Operators](rd-vbal.5.6.9.5.relational-operators.md)), not a raw numeric
-comparison. The counter's declared type (`Currency`, `Decimal`, `Date` as `Double`, …) has spec-mandated comparison
-semantics that a plain CLR `>`/`<` would get wrong.
+comparison. The counter's declared type (`Currency`, `Decimal`, `Date` as `Double`, …) has comparison semantics
+specified by MS-VBAL, which a CLR `>` or `<` comparison does not implement.
 
-Only the sign of `step` is read directly off its numeric magnitude. The **MS-VBAL §5.4.2.3** algorithm frames the
-step's sign as a plain classification, not as a VBA-visible comparison expression.
+Only the sign of `step` is read directly from its numeric value. The **MS-VBAL §5.4.2.3** algorithm treats the
+step's sign as a classification, not as a VBA-visible comparison expression.
 
 |Step|Out of range when|
 |---|---|
@@ -72,12 +72,12 @@ step's sign as a plain classification, not as a VBA-visible comparison expressio
 ### Errors
 
 A label is scoped to the whole procedure, so a `GoTo` can land directly on the `Next` closer
-([**RD-VBAL §5.4.1.1** Statement Labels](rd-vbal.5.4.1.1.statement-labels.md)). When `ForNext` finds no stashed
+([**RD-VBAL §5.4.1.1** Statement Labels](rd-vbal.5.4.1.1.statement-labels.md)). When `ForNext` finds no stored
 state for its `Matching` offset, its `ForOpener` never ran in this activation.
 
 |Condition|Run-time error|
 |---|---|
-|`ForNext` finds no stashed `ForLoopState` for its `Matching` offset (a `GoTo` landed directly on the closer).|92 — For loop not initialized|
+|`ForNext` finds no stored `ForLoopState` for its `Matching` offset (a `GoTo` landed directly on the closer).|92 — For loop not initialized|
 |The addition of `step` to the counter overflows.|6 — Overflow|
 
 Run-time error 92 is [VBRuntimeErrorId](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorId.html)`.ForLoopNotInitialized`
@@ -88,11 +88,11 @@ Run-time error 92 is [VBRuntimeErrorId](../api/RDCore.SDK.Model.Errors.VBRuntime
 - `ProcedureExecutor` dispatches `ForOpener` and `ForNext`.
 - The `Next` closer increments and tests the counter, so lowering synthesizes an instruction (`Node = null`) to hold
   that work ([**RD-VBAL §3.5.3** Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md)).
-- `ForOpener` stashes `end`, `step`, the counter symbol and the counter's own expression node as a
+- `ForOpener` stores `end`, `step`, the counter symbol and the counter's own expression node as a
   `RDCore.SDK.Runtime.Shared.ForLoopState`. The state is read back via
   [ICallStackFrame](../api/RDCore.SDK.Runtime.Abstract.Execution.ICallStackFrame.html)`.TryGetForLoopState`, and
   written via `CallStackFrame.SetForLoopState`.
-- A `For` loop's state is richer than a single value: counter symbol, counter expression, end and step. It therefore
+- A `For` loop's state holds more than a single value: counter symbol, counter expression, end and step. It therefore
   has its own SDK type, `ForLoopState`, rather than the single block-state value that `With` and `Select Case` use
   ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
 - `ForNext` uses the same `Instruction.Matching` field that a `Case` header uses for its back-reference to its
@@ -100,13 +100,13 @@ Run-time error 92 is [VBRuntimeErrorId](../api/RDCore.SDK.Model.Errors.VBRuntime
 - The range test uses `RDCore.Runtime.Semantics.Operators.Relational.BinaryGtRelationalOperatorRuntimeSemantics` and
   `BinaryLtRelationalOperatorRuntimeSemantics`. The increment uses
   `RDCore.Runtime.Semantics.Operators.Arithmetic.BinaryAdditionOperatorRuntimeSemantics`.
-- Every location-bearing node passed to the loop's operator calls is a real node the loop already has: the counter's
-  own expression or, for the very first assignment, the loop's start expression. It is never a synthetic stand-in.
-  The same rule applies to `Case` clause matching, which relies on the operator node parameter being widened to
+- Every location-bearing node passed to the loop's operator calls is a node the loop already has, never a synthesized
+  one: the counter's own expression or, for the first assignment, the loop's start expression.
+  The same rule applies to `Case` clause matching, which relies on the operator node parameter being typed
   [ExpressionNode](../api/RDCore.SDK.Model.AST.Abstract.ExpressionNode.html)
   ([**RD-VBAL §5.4.2.10** Select Case Statement](rd-vbal.5.4.2.10.select-case-statement.md)).
-- The message of `ForLoopNotInitialized` is the resx entry `VBForLoopNotInitialized_Verbose`, provided in both
-  languages.
+- The verbose message of `ForLoopNotInitialized`, when a `Next` closer runs without its opener, is the resx entry
+  `VBForLoopNotInitialized_Verbose`, provided in both languages.
 
 ---
 > ⏮️ [**RD-VBAL §5.4.2.2** While Statement](rd-vbal.5.4.2.2.while-statement.md) | ⏭️ [**RD-VBAL §5.4.2.4** For Each Statement](rd-vbal.5.4.2.4.for-each-statement.md)

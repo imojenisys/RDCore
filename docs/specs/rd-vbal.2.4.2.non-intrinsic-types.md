@@ -1,6 +1,6 @@
 # 2.4.2 Non-intrinsic Types
 
-_Non-intrinsic types_ are additional RD-VBA internal data types. They are not exposed to, or directly usable in, _workspace source code_. They help complete the modelization of the system.
+_Non-intrinsic types_ are additional RD-VBA internal data types. They are not exposed to, or directly usable in, _workspace source code_. They complete the model of the system.
 
 The non-intrinsic types are:
 
@@ -52,7 +52,7 @@ For example, RD-VBA code that depends on the Microsoft Excel type library requir
 
 MS-VBA does not strictly enforce this rule. In MS-VBA, an `Implements` directive in an extensible module can cause host application instabilities, source project corruption, and host application crashes.
 
-Such a directive should be statically caught early, as a normal _compile-time_ error.
+Such a directive should be detected statically, as an ordinary _compile-time_ error.
 
 ### 2.4.2.2.2 Default Member
 
@@ -105,7 +105,7 @@ The types inherited from `VBProjectType` correspond to the _project types_ defin
 
 A `VBLibraryProjectType` project is defined in an implementation-defined manner. It exposes the types and members of the library to RD-VBA source code through the means available to any other VBA source code.
 
-Exposing the library through these means makes it feel as though workspace source code is manipulating objects and members defined in VBA source code. The library itself may or may not have been compiled from VBA source code.
+Through these means, workspace source code manipulates the library's objects and members as if they were defined in VBA source code. The library itself may or may not have been compiled from VBA source code.
 
 ### 2.4.2.4.3 VBHostProjectType
 
@@ -122,7 +122,7 @@ Additional workspace source code may be added to a host project if it is _open_ 
 > [!WARNING]
 > An unknown type represents a _compile-time binding failure_, and should raise compile error [VBC09311](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html) `UserDefinedTypeNotDefined`; see [**RD-VBAL §2.6.2** Semantic Compilation Errors](rd-vbal.2.6.2.semantic-compilation-errors.md).
 
-The `UserDefinedTypeNotDefined` wording is arguably confusing when raised for an unknown type. Verbose diagnostic messages should help clarify its meaning in that case.
+The `UserDefinedTypeNotDefined` wording can be confusing when it is raised for an unknown type. Verbose diagnostic messages should clarify its meaning in that case.
 
 ## 2.4.2.6 VBVoidType
 

@@ -14,8 +14,8 @@ See [**RD-VBAL §3.4.3** File Statements](rd-vbal.3.4.3.file-statements.md).
 ## Runtime Semantics
 
 `Put` writes through the record surface of a file channel, which it shares with `Get`
-([**RD-VBAL §5.4.5** File Statements](rd-vbal.5.4.5.file-statements.md)). This page describes the record format
-and record positioning of both statements; see also
+([**RD-VBAL §5.4.5** File Statements](rd-vbal.5.4.5.file-statements.md)). This section describes the record
+format and record positioning of both statements; see also
 [**RD-VBAL §5.4.5.12** Get Statement](rd-vbal.5.4.5.12.get-statement.md).
 
 ### Record Format
@@ -31,7 +31,7 @@ The record format follows MS-VBA's, so that a file RD-VBA writes is a file MS-VB
 |`String`, in `Random` mode|Carries a two-byte length prefix.|
 |`String`, in `Binary` mode|Carries no length prefix.|
 |`Variant`|Preceded by its two-byte type descriptor.|
-|A UDT|Each member of the UDT, in declaration order, recursively through a nested UDT (see **User-Defined Types**).|
+|A UDT|Each member of the UDT, in declaration order, recursively through a nested UDT (see [User-Defined Types](#user-defined-types)).|
 
 ### User-Defined Types
 
@@ -44,11 +44,9 @@ UDT.
 UDT field declaration order is the order `Put` writes a record in
 ([**RD-VBAL §2.5.2.1.3** User-Defined Type (UDT) Values](rd-vbal.2.5.2.1.3.udt-values.md)).
 
-`Put #1, , myRecord` and `Get #1, , myRecord` are a one-line binary serialization of a whole UDT: the purpose the
-`Put`/`Get` pair exists for.
+`Put #1, , myRecord` and `Get #1, , myRecord` serialize and deserialize a whole UDT in one statement.
 
-The serialized size of a UDT is what `Put` and `Get` move. The serialized size is the fields concatenated, with no
-padding at all.
+`Put` and `Get` move the serialized size of a UDT: its fields concatenated, with no padding.
 
 > 👉 Memory widths of UDT fields are not file widths. See
 > [**RD-VBAL §2.5.2.1.3** User-Defined Type (UDT) Values](rd-vbal.2.5.2.1.3.udt-values.md) for the in-memory side.
@@ -75,7 +73,7 @@ constrains the `Len` clause but does not say what an absent `Len` clause means.
 **Record 1.** **MS-VBAL §5.4.5.11** says the file position becomes "exactly `<record-number>` number of bytes
 from the start". It also defaults the `Put` record number to the current file-pointer-position, which
 [**MS-VBAL §5.4.5.3** Seek Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fec0271d-31ed-4e3d-bff4-13f3b7f09f3b)
-(`Seek`) counts from 1.
+counts from 1.
 
 The record number and the file-pointer-position are one quantity, and `Seek` and `Get` must agree on it. That is
 why record number 1 is byte 0 of the file

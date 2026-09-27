@@ -18,7 +18,7 @@ The executor dispatches the `Halt` instruction for `End`
 ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
 
 👉 The static execution context retains the state of immediate commands until an `End` command resets the
-execution context back to its initial state
+execution context to its initial state
 ([**RD-VBAL §4.0** Program Structure and Organization](rd-vbal.4.0.program-structure.md)).
 
 ## Implementation

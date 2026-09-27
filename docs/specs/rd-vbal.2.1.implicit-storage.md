@@ -13,23 +13,23 @@ MS-VBAL addresses legitimate **application configuration** concerns through a _g
 |`GetAllSettings`|[**MS-VBAL §6.1.2.8.1.7** GetAllSettings](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a2b5707d-9a11-4cca-9920-3a2b7e7ff518)|[`IStdInteractionModule.StdInteraction__GetAllSettings`](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInteractionModule.html#RDCore_SDK_Runtime_Abstract_StdLib_IStdInteractionModule_StdInteraction__GetAllSettings_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_)|
 |`GetSetting`|[**MS-VBAL §6.1.2.8.1.10** GetSetting](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7e55c0a6-2fc2-425c-9f4c-be88cff4f629)|[`IStdInteractionModule.StdInteraction__GetSetting`](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInteractionModule.html#RDCore_SDK_Runtime_Abstract_StdLib_IStdInteractionModule_StdInteraction__GetSetting_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBVariantValue_)|
 
-RD-VBA keeps backward compatibility by keeping an implementation of this API backed by the _Windows Registry_. RD-VBA application settings are not inherently constrained to the _Windows Registry_, however.
+RD-VBA maintains backward compatibility with an implementation of this API backed by the _Windows Registry_. RD-VBA application settings are not inherently constrained to the _Windows Registry_, however.
 
 RD-VBA therefore adds functions managing _workspace application settings_, using a similar API:
 
 |Function|Specification|SDK member|
 |---|---|---|
-|🧩 `GetJsonSettings`|**RD-VBAL §6.1.2.8.1.7.1** (see [**RD-VBAL §6.1.2.8** Interaction](rd-vbal.6.1.2.8.interaction.md))|[`IStdInteractionModule.StdInteraction__GetJsonSettings`](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInteractionModule.html#RDCore_SDK_Runtime_Abstract_StdLib_IStdInteractionModule_StdInteraction__GetJsonSettings_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_)|
-|🧩 `GetJsonSetting`|**RD-VBAL §6.1.2.8.1.10.1** (see [**RD-VBAL §6.1.2.8** Interaction](rd-vbal.6.1.2.8.interaction.md))|[`IStdInteractionModule.StdInteraction__GetJsonSetting`](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInteractionModule.html#RDCore_SDK_Runtime_Abstract_StdLib_IStdInteractionModule_StdInteraction__GetJsonSetting_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBVariantValue_)|
+|🧩 `GetJsonSettings`|[**RD-VBAL §6.1.2.8.1.7.1** GetJsonSettings](rd-vbal.6.1.2.8.interaction.md#61281-public-functions)|[`IStdInteractionModule.StdInteraction__GetJsonSettings`](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInteractionModule.html#RDCore_SDK_Runtime_Abstract_StdLib_IStdInteractionModule_StdInteraction__GetJsonSettings_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_)|
+|🧩 `GetJsonSetting`|[**RD-VBAL §6.1.2.8.1.10.1** GetJsonSetting](rd-vbal.6.1.2.8.interaction.md#61281-public-functions)|[`IStdInteractionModule.StdInteraction__GetJsonSetting`](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInteractionModule.html#RDCore_SDK_Runtime_Abstract_StdLib_IStdInteractionModule_StdInteraction__GetJsonSetting_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBStringValue_RDCore_SDK_Model_Values_Intrinsic_VBVariantValue_)|
 
-Whether **any** _standard library_ calls implicate actual or simulated _Windows Registry_ reads is entirely **implementation-dependent**. Such calls may behave differently on different platforms. This remains entirely compliant with the relevant MS-VBAL sections as specified.
+Whether any _standard library_ calls implicate actual or simulated _Windows Registry_ reads is **implementation-dependent**. Such calls may behave differently on different platforms. This remains compliant with the relevant MS-VBAL sections as specified.
 
 > [!IMPORTANT]
-> The _host environment_ **may** expose configuration settings that set the implicit storage of `GetAllSettings` and `GetSetting` to _workspace application settings_. These functions then work exactly as if they were invoking `GetJsonSettings` and `GetJsonSetting`, respectively.
+> The _host environment_ **may** expose configuration settings that set the implicit storage of `GetAllSettings` and `GetSetting` to _workspace application settings_. These functions then behave identically to `GetJsonSettings` and `GetJsonSetting`, respectively.
 
 ### 2.1.1.1 Workspace Application Settings
 
-The MS-VBAL-specified settings API (`GetSetting`, `GetAllSettings`) would work perfectly fine as-is for workspace application settings. Distinctly separate functions (`GetJsonSettings`, `GetJsonSetting`) were nevertheless introduced in RD-VBAL, to maintain backward compatibility without modifying any existing signatures.
+The MS-VBAL-specified settings API (`GetSetting`, `GetAllSettings`) could serve workspace application settings unchanged. RD-VBAL nevertheless defines separate functions (`GetJsonSettings`, `GetJsonSetting`), to maintain backward compatibility without modifying any existing signature.
 
 As a result:
 
@@ -42,9 +42,9 @@ As a result:
 |File name|A configuration file may be named differently: `appsettings.json` is a language platform default, and this default is configurable.|
 |Binding|The _application host_ (`rdc.exe`) is responsible for binding the workspace configuration as the application is _composed_, before it starts executing.|
 
-Workspace application settings have the full power and flexibility of a .NET managed `IConfigurationBuilder` underneath.
+Workspace application settings are built on a .NET managed `IConfigurationBuilder`, and have all of its capabilities.
 
-The `ErlLineNumbering` environment setting is bound from `appsettings.json`, with the rest of the runtime profile (see **RD-VBAL §6.1.2.7.1.14** `Erl`, in [**RD-VBAL §6.1.2.7** Information](rd-vbal.6.1.2.7.information.md)).
+The `ErlLineNumbering` environment setting is bound from `appsettings.json`, with the rest of the runtime profile (see [**RD-VBAL §6.1.2.7.1.14** Erl](rd-vbal.6.1.2.7.information.md#6127114-erl)).
 
 ---
 > ⏮️ [**RD-VBAL §2.0.2** Client/Server Capabilities](rd-vbal.2.0.2.client-server-capabilities.md) | ⏭️ [**RD-VBAL §2.2** RDPROJ Structure](rd-vbal.2.2.rdproj-structure.md)

@@ -19,8 +19,8 @@ or numbering a label, with no static link to the label node
 A procedure declaration must contain exactly one definition of each label value it declares
 (**MS-VBAL §5.4.1.1**). A procedure that jumps to a label must contain exactly one definition of that label.
 
-A label belongs to its procedure, not to the block it is written in, however deeply nested. A label defined inside a
-nested block (`If`, `Do`, `For`, `Select Case`, `With`) is defined for the whole procedure.
+A label belongs to its procedure, not to the block it is written in. A label defined inside a nested block (`If`,
+`Do`, `For`, `Select Case`, `With`), however deeply nested, is defined for the whole procedure.
 
 Label names are looked up case-insensitively, like every VBA identifier. Two labels differing only by case, such as
 `Top:` and `TOP:`, are the same label.
@@ -46,8 +46,8 @@ line label or line number name to its offset
 A label with nothing after it resolves to offset `Items.Length`. Execution there completes as if it had reached the
 end of the procedure body.
 
-A `GoTo` from anywhere in the procedure into the middle of a loop body or an `If` body resolves exactly like any other
-jump ([**RD-VBAL §5.4.2.12** GoTo Statement](rd-vbal.5.4.2.12.goto-statement.md)).
+A `GoTo` from anywhere in the procedure into the middle of a loop body or an `If` body resolves in the same way as any
+other jump ([**RD-VBAL §5.4.2.12** GoTo Statement](rd-vbal.5.4.2.12.goto-statement.md)).
 
 > 👉 Jumping into the middle of a loop body has a consequence for the loop's hidden per-activation state. A `Next`
 > closer reached without its opener having run in the activation raises run-time error 92

@@ -42,11 +42,11 @@ For example, a diagnostic titled "Run-time error" has the description "Division 
 |Runtime errors (`VBA`)|_Application error_|
 |Rubberduck Core diagnostics|per finding|
 
-The title is localized. The description of compilation and run-time errors shall match exactly the corresponding MS-VBA descriptions; see [**RD-VBAL §1.1.4** Core Diagnostics](rd-vbal.1.1.4.core-diagnostics.md).
+The title is localized. The description of compilation and run-time errors shall exactly match the corresponding MS-VBA descriptions; see [**RD-VBAL §1.1.4** Core Diagnostics](rd-vbal.1.1.4.core-diagnostics.md).
 
 A diagnostic's title is derived rather than stored, because the two `VBC` categories (syntax errors and semantic compilation errors) share one family and nothing but the numeric portion separates them. [VBCompileErrorId](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html) reserves the range `[9300..]` for semantic compilation errors. Every `VBCompileErrorId` value below 9300 belongs to the parser (syntax errors).
 
-The title derivation ([VBErrorExtensions](../api/RDCore.SDK.Model.Errors.Abstract.VBErrorExtensions.html)) switches on the error's runtime type. An error carrier declared more generally therefore cannot make it answer for the wrong family.
+The title derivation ([VBErrorExtensions](../api/RDCore.SDK.Model.Errors.Abstract.VBErrorExtensions.html)) switches on the error's runtime type. An error held through a more general declared type therefore still takes the title of its own family.
 
 ## Codes and Help URLs
 
@@ -58,7 +58,7 @@ Every emitted diagnostic points to its code's help page through the LSP `codeDes
 
 ## Publication
 
-A diagnostic code's page is published **the moment the platform can emit that code**. The diagnostics documentation grows at the same rate as the diagnostics.
+A diagnostic code's page is published as soon as the platform can emit that code. The diagnostics documentation grows at the same rate as the diagnostics.
 
 A published diagnostic code is **not renumbered** and **not retired**, so that older builds' diagnostic links keep resolving. The code and its abstract meaning do not change.
 
@@ -72,7 +72,7 @@ The prose of a code's page may evolve as the ideal set of codes is narrowed down
 |Warning|Flags potential bugs or logical errors causing unexpected or unintended behavior, or severe performance issues. Warning diagnostics should be used carefully.|
 |Hint, suggestion|Can be as opinionated as needed.|
 
-When choosing a warning severity, always consider the possibility of a "treat warnings as errors" host environment configuration setting. If a diagnostic is not worth breaking a build over, it is not a warning. See [**RD-VBAL §5.0** Semantics](rd-vbal.5.0.semantics.md).
+The choice of a warning severity should take into account that a host environment can be configured to "treat warnings as errors". If a diagnostic is not worth breaking a build over, it is not a warning. See [**RD-VBAL §5.0** Semantics](rd-vbal.5.0.semantics.md).
 
 ---
 > ⏮️ [**RD-VBAL §2.5.2.1.5** Variant Values](rd-vbal.2.5.2.1.5.variant-values.md) | ⏭️ [**RD-VBAL §2.6.1** Syntax Errors](rd-vbal.2.6.1.syntax-errors.md)

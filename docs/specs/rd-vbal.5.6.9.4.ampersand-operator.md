@@ -13,10 +13,10 @@ The `&` (concatenation) operator is a simple data operator: it validates its ope
 ([VBVariantValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBVariantValue.html)) before matching a wrapped `Byte`
 array.
 
-> 👉 `v1 & v2` works on `Variant`s holding arrays the same as on declared arrays.
+> 👉 `v1 & v2` evaluates `Variant`s holding arrays the same as declared arrays.
 
-See [**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md) (§5.5.1.2.12 Let-coercion to
-Variant) for why a `Variant` operand must be unwrapped before it is matched against a concrete value type.
+See [**RD-VBAL §5.5.1.2.12** Let-coercion to Variant](rd-vbal.5.5.1.2.runtime-semantics.md#551212-let-coercion-to-variant)
+for why a `Variant` operand must be unwrapped before it is matched against a concrete value type.
 
 ---
 > ⏮️ [**RD-VBAL §5.6.9.3** Arithmetic Operators](rd-vbal.5.6.9.3.arithmetic-operators.md) | ⏭️ [**RD-VBAL §5.6.9.5** Relational Operators](rd-vbal.5.6.9.5.relational-operators.md)

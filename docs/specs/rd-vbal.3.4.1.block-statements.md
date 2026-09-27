@@ -51,7 +51,7 @@ Following MS-VBAL, `Next`, `Loop` and `Wend` have no AST node of their own. The 
 `InlineIfStatementNode`'s `ThenBody` and `ElseBody` may each hold several colon-separated statements instead of a full `block` (**MS-VBAL §5.4.2.9**).
 
 > [!TIP]
-> A bare line-number target in either branch (`If x Then 100`) is not modelled as its own AST shape. MS-VBAL specifies such a target as equivalent to a `GoTo` statement targeting that line. The parser therefore synthesizes a real [GoToStatementNode](../api/RDCore.SDK.Model.AST.Statements.GoToStatementNode.html) as that branch's statement, typically its only one.
+> A bare line-number target in either branch (`If x Then 100`) is not modelled as its own AST shape. MS-VBAL specifies such a target as equivalent to a `GoTo` statement targeting that line. The parser therefore synthesizes a [GoToStatementNode](../api/RDCore.SDK.Model.AST.Statements.GoToStatementNode.html) as that branch's statement, typically its only one.
 
 ## Case Clauses
 

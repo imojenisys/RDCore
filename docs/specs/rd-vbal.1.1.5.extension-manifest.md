@@ -20,7 +20,7 @@ By default, the environment host may restrict capabilities requested by **unsign
     "PublisherWebUrl": "url-string",
     "Description": "string",
     "Signature": "string",
-    "Capabilities": [ { "Name": "string" } ]
+    "Capabilities": [ { "Name": "string", "IsSupported": true } ]
 }
 ```
 
@@ -32,8 +32,8 @@ By default, the environment host may restrict capabilities requested by **unsign
 |`Publisher`|The name of the publisher (copyright holder) of the extension.|
 |`PublisherWebUrl`|A reasonably short website URL provided by the publisher.|
 |`Description`|A short description of the extension.|
-|`Signature`|The Base64-encoded `SHA512` file-hash signature of the extension executable (.exe) file. It **must** match *exactly* the file hash of the discovered extension executable (.exe).|
-|`Capabilities`|The platform capabilities the extension advertises, recorded by `rdc.exe describe-ext`.|
+|`Signature`|The Base64-encoded `SHA512` file-hash signature of the extension executable (.exe) file. It **must** be identical to the file hash of the discovered extension executable (.exe).|
+|`Capabilities`|The platform capabilities the extension advertises, recorded by `rdc.exe describe-ext`. Each entry names a capability (`Name`) and whether it is supported (`IsSupported`, `true` by default). The host ignores an entry whose `IsSupported` is `false`.|
 
 An extension declares a capability so that `rdc.exe describe-ext` records it in the extension's manifest:
 

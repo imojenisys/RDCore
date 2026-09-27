@@ -35,9 +35,9 @@ See [**RD-VBAL §2.3.1.2** Session Services](rd-vbal.2.3.1.2.session-services.md
 ## Expression evaluator wiring
 
 `RuntimeExpressionEvaluator.ProcedureInvoker` and `RuntimeExpressionEvaluator.LetCoercionProvider` are settable
-properties, not constructor parameters. They are wired after every other collaborator is composed.
+properties, not constructor parameters. They are assigned after every other collaborator is composed.
 
-The evaluator must exist before its invoker can be built: `RuntimeProcedureInvoker` needs a `ProcedureExecutor`,
+The evaluator exists before its invoker is built, because `RuntimeProcedureInvoker` needs a `ProcedureExecutor`,
 built from a `StatementRuntimeSemanticsProvider`, which is itself built from the same `RuntimeExpressionEvaluator`.
 See [**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)
 for procedure invocation.

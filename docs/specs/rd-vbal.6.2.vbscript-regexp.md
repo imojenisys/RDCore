@@ -4,8 +4,8 @@
 > This section is RD-VBAL's own. MS-VBAL has no section for the VBScript RegExp 5.5 library, and there is no
 > MS-VBAL §6.2.1.
 
-The **VBScript RegExp 5.5** regular expressions library was folded, as-is, into the **MS-VBA** _VBA Standard Library_.
-The folded VBScript library does not appear to be officially documented by its publisher.
+The **MS-VBA** _VBA Standard Library_ includes the **VBScript RegExp 5.5** regular expressions library, unchanged.
+Its publisher does not appear to document the library as part of the VBA Standard Library.
 
 The SDK defines the four VBScript RegExp 5.5 class modules:
 

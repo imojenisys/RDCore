@@ -21,7 +21,7 @@ Lowering records the enclosing `With` block on every instruction inside it
 
 - Every instruction lexically inside a `With` block, however deeply nested (through an `If` or a loop), carries
   `Instruction.EnclosingWith` set to that `With`'s opener offset.
-- When lowering leaves a `With` block, `EnclosingWith` is restored to whatever it was before the block.
+- When lowering leaves a `With` block, `EnclosingWith` is restored to its value before the block.
 - `EnclosingWith` is computed once, at lowering time. It is not tracked as a runtime stack the interpreter
   pushes and pops.
 
@@ -39,14 +39,14 @@ The executor runs the `With` instruction as follows:
      ([**RD-VBAL §5.5.2.2** Runtime semantics](rd-vbal.5.5.2.2.runtime-semantics.md));
    - a UDT-valued target is Let-assigned through `ILetCoercionRuntimeSemanticsProvider.EvaluateLetCoercionSemantics`
      directly.
-3. The result is stashed on the activation, keyed by the `With` instruction's own offset.
+3. The result is stored on the activation, keyed by the `With` instruction's own offset.
 4. Execution falls through into the body.
 
-The `With` block has no separate closer instruction to pop the stashed target on exit.
+The `With` block has no separate closer instruction to pop the stored target on exit.
 
-Every `Simple` and `ConditionalBranch` instruction's `RuntimeEvaluationContext` is recomputed fresh before
+Every `Simple` and `ConditionalBranch` instruction's `RuntimeEvaluationContext` is recomputed before each
 dispatch, from `Instruction.EnclosingWith` ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)). A
-`.Member` or `!member` with-expression then resolves against the innermost enclosing `With`'s stashed target,
+`.Member` or `!member` with-expression then resolves against the innermost enclosing `With`'s stored target,
 however control reached the instruction, including via `GoTo`
 ([**RD-VBAL §5.6.15** With Expressions](rd-vbal.5.6.15.with-expressions.md)).
 
@@ -55,9 +55,9 @@ however control reached the instruction, including via `GoTo`
 - `RDCore.Runtime.Execution.ProcedureExecutor` dispatches `With` instructions.
 - `RDCore.Runtime.Semantics.Statements.WithStatementRuntimeSemantics` performs the Set-coercion or Let-coercion
   of step 2.
-- The target is stashed through `CallStackFrame.SetBlockState` and read back through
+- The target is stored through `CallStackFrame.SetBlockState` and read back through
   [ICallStackFrame](../api/RDCore.SDK.Runtime.Abstract.Execution.ICallStackFrame.html)`.TryGetBlockState`,
-  keyed by the opener's offset. `Select Case` stashes its selector the same way
+  keyed by the opener's offset. `Select Case` stores its selector the same way
   ([**RD-VBAL §5.4.2.10** Select Case Statement](rd-vbal.5.4.2.10.select-case-statement.md)); a single
   block-state value is enough for either.
 - `RuntimeExpressionEvaluator` resolves the with-expression target through its `EnclosingWithTarget`

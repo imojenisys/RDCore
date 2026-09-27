@@ -2,7 +2,7 @@
 
 > 🧩 RDCore operates on a **capability-driven host model**: extended features may or may not be available, depending on the execution environment. Extensions must be resilient to partial capability availability.
 
-The *platform* is intended to be massively extended through first-party and third-party extensions. The capabilities of platform extensions are negotiated with the *RD-VBA environment host*; see [**RD-VBAL §2.0.2** Client/Server Capabilities](rd-vbal.2.0.2.client-server-capabilities.md).
+The *platform* is intended to be extended extensively through first-party and third-party extensions. The capabilities of platform extensions are negotiated with the *RD-VBA environment host*; see [**RD-VBAL §2.0.2** Client/Server Capabilities](rd-vbal.2.0.2.client-server-capabilities.md).
 
 > [!NOTE]
 > In the RDCore ecosystem, the default RD-VBA environment host is `rdc.exe` (see [**RD-VBAL §2.0** RD-VBA Computational Environment](rd-vbal.2.0.computational-environment.md)). An LSP client other than `rdc.exe` acting as an RD-VBA environment host would be packaged separately from the RDCore language platform.

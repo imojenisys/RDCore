@@ -32,7 +32,7 @@ These extensions do not *alter* the language; they *reveal* it.
 
 **Deferred execution.** MS-VBAL explicitly specifies every `Variant` input in the [**MS-VBAL §6** VBA Standard Library](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c645c903-9bd4-4849-8735-3136e867536a) as an *expression to be evaluated*. Building on this to introduce *deferred execution semantics* to the language (leveraging meta-types to introduce new semantics) is an invalid language core extension.
 
-Deferred execution semantics would effectively make *functions* a first-class RD-VBA *runtime entity* that can be passed around as *values*. Making functions first-class values should not be done without careful and thorough consideration of the implications on the rest of the semantic model.
+Deferred execution semantics would effectively make *functions* a first-class RD-VBA *runtime entity* that can be passed around as *values*. Functions should not be made first-class values without thorough consideration of the implications for the rest of the semantic model.
 
 ## Platform-level Extensions
 

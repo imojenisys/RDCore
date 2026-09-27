@@ -5,7 +5,7 @@
 
 RD-VBA implements all sixteen **MS-VBAL §6.1.1** predefined enums. The SDK defines all sixteen, and the standard
 library's symbols are read off those SDK declarations
-([**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standard-library.md), §6.0.1 Symbol Injection).
+([**RD-VBAL §6.0.1** Symbol Injection](rd-vbal.6.0.standard-library.md#601-symbol-injection)).
 
 |§|Enum|SDK declaration|Notes|
 |---|---|---|---|
@@ -30,7 +30,7 @@ The other enum names follow the naming convention: the SDK enum `VBDayOfWeek` is
 member `VBSunday` is the constant `vbSunday`.
 
 Because an enum member is placed through its enum, an enum member such as `vbSunday` is a name on its own, resolvable
-without qualification ([**RD-VBAL §5.2.3** Module Declarations](rd-vbal.5.2.3.module-declarations.md), §5.2.3.4).
+without qualification ([**RD-VBAL §5.2.3.4** Enum Declarations](rd-vbal.5.2.3.module-declarations.md#5234-enum-declarations)).
 
 
 ## 6.1.1.16 VbVarType
@@ -43,7 +43,7 @@ without qualification ([**RD-VBAL §5.2.3** Module Declarations](rd-vbal.5.2.3.m
 The `VbVarType` tag space is COM `VARENUM`-compatible. It is declared in the core value model as
 [VBVarType](../api/RDCore.SDK.Model.Values.Runtime.VBVarType.html) (`RDCore.SDK.Model.Values.Runtime.VBVarType`).
 
-A `Variant`'s own COM `VARENUM`-compatible tag is `VBVarType`. `VBVarType` has the same numeric values that
+A `Variant`'s own tag is a `VBVarType`. `VBVarType` has the same numeric values that
 `VarType()` reports ([**RD-VBAL §6.1.2.7** Information](rd-vbal.6.1.2.7.information.md)), and the same numeric values
 that OLE Automation marshals a `VARIANT` against.
 
@@ -59,14 +59,13 @@ that OLE Automation marshals a `VARIANT` against.
 |A generic [VBObjectType](../api/RDCore.SDK.Model.Types.VBObjectType.html) reference|`VT_DISPATCH` (the `Dispatch` tag), by default.|
 
 A generic `VBObjectType` reference defaults to `VT_DISPATCH` because a live object's concrete class is only knowable
-by looking up the actual instance, which the `VarType` mapping has no access to. `VT_DISPATCH` is the only sound
-default absent that lookup.
+by looking up the actual instance, which the `VarType` mapping has no access to. Without that lookup, `VT_DISPATCH`
+is the only sound default.
 
 ### Variant Values
 
-A `Variant`'s `VBVarType` tag is computed from the wrapped value's declared type by `VBVarTypeExtensions.VarType`.
 [VBVariantValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBVariantValue.html) computes its `VarType`, its
-`VBVarType` tag, on construction, via the `VBType`-to-`VBVarType` mapping.
+`VBVarType` tag, on construction: `VBVarTypeExtensions.VarType` maps the wrapped value's declared type to the tag.
 
 A `Variant`'s `VBVarType` tag is carried on its
 [VBRuntimeVariantValue](../api/RDCore.SDK.Model.Values.Runtime.VBRuntimeVariantValue.html) box. The tag round-trips
@@ -89,8 +88,8 @@ class module is known.
 ([**RD-VBAL §5.2.4** Class Module Declarations](rd-vbal.5.2.4.class-module-declarations.md)).
 
 > [!NOTE]
-> **Not implemented.** No `IUnknown`-only class module exists: nothing in RD-VBA constructs a class module whose
-> `AutomationKind` is `Unknown`. Every class module is `Dispatch`.
+> **Not implemented.** An `IUnknown`-only class module. Nothing in RD-VBA constructs a class module whose
+> `AutomationKind` is `Unknown`, so every class module is `Dispatch`.
 
 ---
 > ⏮️ [**RD-VBAL §6.1** VBA Project](rd-vbal.6.1.vba-project.md) | ⏭️ [**RD-VBAL §6.1.2** Predefined Procedural Modules](rd-vbal.6.1.2.predefined-procedural-modules.md)

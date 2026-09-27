@@ -48,9 +48,9 @@ declaration by declaration, including their return types and their `Optional` pa
 pointer width. `LongPtr` is a different type in each pointer width
 ([**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md)).
 
-The pointer width belongs to the environment.
-[StdLibSymbolProvider](../api/RDCore.SDK.Runtime.StdLib.StdLibSymbolProvider.html) is told the pointer width
-([**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standard-library.md), §6.0.1 Symbol Injection).
+The pointer width belongs to the environment, and is passed to
+[StdLibSymbolProvider](../api/RDCore.SDK.Runtime.StdLib.StdLibSymbolProvider.html)
+([**RD-VBAL §6.0.1** Symbol Injection](rd-vbal.6.0.standard-library.md#601-symbol-injection)).
 
 ---
 > ⏮️ [**RD-VBAL §6.1.2.2** Constants Module](rd-vbal.6.1.2.2.constants-module.md) | ⏭️ [**RD-VBAL §6.1.2.4** DateTime Module](rd-vbal.6.1.2.4.datetime-module.md)

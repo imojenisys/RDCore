@@ -19,7 +19,7 @@ each carry one expression. See [**RD-VBAL §3.4.3** File Statements](rd-vbal.3.4
 [**RD-VBAL §5.4.5.4** Lock Statement](rd-vbal.5.4.5.4.lock-statement.md).
 
 > [!NOTE]
-> **Not implemented.** `Lock` and `Unlock` do not apply a real OS-level lock.
+> **Not implemented.** `Lock` and `Unlock` do not apply an OS-level lock.
 > [**MS-VBAL §5.4.5.4** Lock Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/5ff8a0e5-4e44-45a3-92a6-3c77cea3e3c5)
 > leaves applying an OS-level lock implementation-defined.
 

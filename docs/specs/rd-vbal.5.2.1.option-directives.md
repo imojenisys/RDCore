@@ -17,11 +17,11 @@ A module's [LexicalScope](../api/RDCore.SDK.Model.Symbols.LexicalScope.html) car
 [ModuleDirectives](../api/RDCore.SDK.Model.Symbols.ModuleDirectives.html)
 ([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)):
 
-|Member|Records|
+|Member|Description|
 |---|---|
 |`Explicit`|Whether the module declares `Option Explicit`.|
 |`Compare`|The module's `Option Compare` mode.|
-|`Strict`|Whether the module carries RD-VBA's `'@OptionStrict` annotation.|
+|`Strict`|Reserved for RD-VBA's `'@OptionStrict` annotation. No symbol provider sets it, so it is always `false`, and nothing reads it.|
 
 `ModuleDirectives` is reachable from any scope nested under the module, via
 `LexicalScope.EnclosingModuleDirectives()`.

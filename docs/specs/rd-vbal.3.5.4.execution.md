@@ -16,7 +16,7 @@ below. This page describes the loop, how it dispatches, and the state it keeps p
 
 1. Reads the instruction at the activation's program counter, `ICallStackFrame.Pc`.
 2. Dispatches the instruction by its [InstructionKind](../api/RDCore.SDK.Semantics.Instructions.InstructionKind.html)
-   (see **Dispatch by instruction kind**).
+   (see [Dispatch by instruction kind](#dispatch-by-instruction-kind)).
 3. Reacts to what running the instruction produced: it continues at the next offset, branches, or stops.
 4. Repeats from step 1.
 
@@ -42,19 +42,19 @@ Whether to refuse to run a body that lowered with errors is a decision for the e
 
 |InstructionKind|Executor action|Semantics|
 |---|---|---|
-|`Simple`|Dispatches the statement by its own type (see **Simple**).|The statement's own page (see **Simple**).|
+|`Simple`|Dispatches the statement by its own type (see [Simple](#simple)).|The statement's own page (see [Simple](#simple)).|
 |`Jump`|Branches unconditionally to `Target`.|[**RD-VBAL §5.4.2.12** GoTo Statement](rd-vbal.5.4.2.12.goto-statement.md)|
-|`ExitLoop`|Branches to `Target`, exactly like `Jump`: the executor uses the same `case` arm for both.|[**RD-VBAL §5.4.2.5** Exit For Statement](rd-vbal.5.4.2.5.exit-for-statement.md), [**RD-VBAL §5.4.2.7** Exit Do Statement](rd-vbal.5.4.2.7.exit-do-statement.md)|
+|`ExitLoop`|Branches to `Target`, in the same way as `Jump`: the executor uses the same `case` arm for both.|[**RD-VBAL §5.4.2.5** Exit For Statement](rd-vbal.5.4.2.5.exit-for-statement.md), [**RD-VBAL §5.4.2.7** Exit Do Statement](rd-vbal.5.4.2.7.exit-do-statement.md)|
 |`JumpTable`|Evaluates the selector through `RDCore.Runtime.Execution.JumpTableEvaluator`, then branches to one of `Targets` or falls through.|[**RD-VBAL §5.4.2.13** On...GoTo Statement](rd-vbal.5.4.2.13.on-goto-statement.md)|
 |`GoSubTable`|As `JumpTable`, plus a push onto the GoSub Resumption List on a successful branch.|[**RD-VBAL §5.4.2.16** On...GoSub Statement](rd-vbal.5.4.2.16.on-gosub-statement.md)|
 |`GoSub`|Pushes onto the GoSub Resumption List, then branches to `Target`.|[**RD-VBAL §5.4.2.14** GoSub Statement](rd-vbal.5.4.2.14.gosub-statement.md)|
 |`Return`|Pops the GoSub Resumption List and branches there.|[**RD-VBAL §5.4.2.15** Return Statement](rd-vbal.5.4.2.15.return-statement.md)|
-|`ConditionalBranch`|An `If`/`ElseIf` header, a single-line `If`, or a pre-test loop header: evaluates a Boolean condition (see **ConditionalBranch**). A `Case` header (`Instruction.Matching` set instead of a Boolean condition): matches against the enclosing `Select`'s stashed selector, through `RDCore.Runtime.Execution.CaseMatchEvaluator`. Falls through on true or match; otherwise branches to `Else`.|[**RD-VBAL §5.4.2.8** If Statement](rd-vbal.5.4.2.8.if-statement.md), [**RD-VBAL §5.4.2.9** Single-line If Statement](rd-vbal.5.4.2.9.single-line-if-statement.md), [**RD-VBAL §5.4.2.2** While Statement](rd-vbal.5.4.2.2.while-statement.md), [**RD-VBAL §5.4.2.6** Do Statement](rd-vbal.5.4.2.6.do-statement.md), [**RD-VBAL §5.4.2.10** Select Case Statement](rd-vbal.5.4.2.10.select-case-statement.md)|
+|`ConditionalBranch`|An `If`/`ElseIf` header, a single-line `If`, or a pre-test loop header: evaluates a Boolean condition (see [ConditionalBranch](#conditionalbranch)). A `Case` header (`Instruction.Matching` set instead of a Boolean condition): matches against the selector that the enclosing `Select` stored as block state, through `RDCore.Runtime.Execution.CaseMatchEvaluator`. Falls through on true or match; otherwise branches to `Else`.|[**RD-VBAL §5.4.2.8** If Statement](rd-vbal.5.4.2.8.if-statement.md), [**RD-VBAL §5.4.2.9** Single-line If Statement](rd-vbal.5.4.2.9.single-line-if-statement.md), [**RD-VBAL §5.4.2.2** While Statement](rd-vbal.5.4.2.2.while-statement.md), [**RD-VBAL §5.4.2.6** Do Statement](rd-vbal.5.4.2.6.do-statement.md), [**RD-VBAL §5.4.2.10** Select Case Statement](rd-vbal.5.4.2.10.select-case-statement.md)|
 |`LoopBack`|Evaluates the condition; branches back to `Target` when the loop continues, and falls through when it ends.|[**RD-VBAL §5.4.2.6** Do Statement](rd-vbal.5.4.2.6.do-statement.md)|
 |`ForOpener`, `ForNext`|Opens and advances a `For` loop, through the `For` loop state.|[**RD-VBAL §5.4.2.3** For Statement](rd-vbal.5.4.2.3.for-statement.md)|
 |`ForEachOpener`, `ForEachNext`|Opens and advances a `For Each` loop, through the `For Each` state.|[**RD-VBAL §5.4.2.4** For Each Statement](rd-vbal.5.4.2.4.for-each-statement.md)|
-|`With`|Stashes the `With` target as block state, then falls through into the body.|[**RD-VBAL §5.4.2.21** With Statement](rd-vbal.5.4.2.21.with-statement.md)|
-|`Select`|Stashes the selector as block state, then falls through.|[**RD-VBAL §5.4.2.10** Select Case Statement](rd-vbal.5.4.2.10.select-case-statement.md)|
+|`With`|Stores the `With` target as block state, then falls through into the body.|[**RD-VBAL §5.4.2.21** With Statement](rd-vbal.5.4.2.21.with-statement.md)|
+|`Select`|Stores the selector as block state, then falls through.|[**RD-VBAL §5.4.2.10** Select Case Statement](rd-vbal.5.4.2.10.select-case-statement.md)|
 |`OnErrorGoTo`, `OnErrorDisable`, `OnErrorResumeNext`|Sets the activation's error-handler state.|[**RD-VBAL §5.4.4.1** On Error Statement](rd-vbal.5.4.4.1.on-error-statement.md)|
 |`ResumeCurrentStatement`, `ResumeNext`, `ResumeLabel`|Resumes from the activation's active error.|[**RD-VBAL §5.4.4.2** Resume Statement](rd-vbal.5.4.4.2.resume-statement.md)|
 |`RaiseError`|Raises a run-time error.|[**RD-VBAL §5.4.4.3** Error Statement](rd-vbal.5.4.4.3.error-statement.md)|
@@ -90,7 +90,7 @@ statements, among others, to their statement runtime semantics:
 
 A statement that the statement provider does not recognize reports `InternalError`, and the run stops.
 
-`InternalError` is never reported for a well-formed program that hits a genuine language-level condition; such a
+`InternalError` is never reported for a language-level condition that a well-formed program meets; such a
 condition raises a run-time error ([**RD-VBAL §2.6.3** Runtime Errors](rd-vbal.2.6.3.runtime-errors.md)).
 
 ### ConditionalBranch
@@ -109,8 +109,8 @@ A plain condition's truth test never writes parentheses around the coerced expre
 pipeline entirely: the condition passes its own expression through to the Boolean let-coercion strategy, with no
 synthetic node standing in for an operator that is not present in source.
 
-`JumpTableEvaluator` uses the same bypass-the-provider pattern, a direct call to the let-coercion strategy, to
-coerce the `On…GoTo`/`On…GoSub` selector.
+`JumpTableEvaluator` coerces the `On…GoTo`/`On…GoSub` selector in the same way: it calls the let-coercion strategy
+directly, rather than through the provider.
 
 ## Per-activation state
 
@@ -130,10 +130,10 @@ The executor keeps the following state on each activation. Each item is read thr
 ### Block state
 
 `TryGetBlockState` holds a single hidden value per block-opening instruction, keyed by that instruction's offset.
-A single value is enough for `With`'s target and `Select Case`'s selector, which are stashed through
+A single value is enough for `With`'s target and `Select Case`'s selector, which are held through
 `ICallStackFrame.TryGetBlockState` / `CallStackFrame.SetBlockState`.
 
-Neither `Select` nor `With` has a separate closer instruction to pop the stashed state on exit.
+Neither `Select` nor `With` has a separate closer instruction to remove the stored state on exit.
 
 ### Loop state
 
@@ -144,8 +144,8 @@ alongside `TryGetBlockState`, with its own SDK type, `RDCore.SDK.Runtime.Shared.
 A `For Each` loop's state is an enumeration cursor (control symbol/expression, the array, a flat index), with its
 own type, `ForEachState`.
 
-`For` and `For Each` state each get their own parallel `TryGetXState`/`SetXState` pair, rather than stretching
-`TryGetBlockState`'s single-value shape to fit all three.
+`For` and `For Each` state each get their own parallel `TryGetXState`/`SetXState` pair, rather than extending
+`TryGetBlockState`'s single-value shape to hold all three.
 
 ### GoSub Resumption List
 
@@ -172,7 +172,7 @@ block ([**RD-VBAL §5.4.4.1** On Error Statement](rd-vbal.5.4.4.1.on-error-state
 
 ## Evaluation context
 
-Every `Simple` and `ConditionalBranch` instruction's `RuntimeEvaluationContext` is recomputed fresh before
+Every `Simple` and `ConditionalBranch` instruction's `RuntimeEvaluationContext` is computed anew before
 dispatch, from `Instruction.EnclosingWith`. `EnclosingWith` is a purely lexical fact about the instruction, not
 state carried over from whichever `With` last ran
 ([**RD-VBAL §3.5.3** Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md)).
@@ -190,7 +190,7 @@ activation ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd
 not by dedicated per-error branch logic:
 
 1. Every executor dispatch that can yield an `Error` outcome routes it through `ProcedureExecutor.InterceptError`,
-   before the loop decides whether to actually stop.
+   before the loop decides whether to stop.
 2. `InterceptError` is the one place every run-time error passes through, and the point at which every run-time
    error reaches the session's error state. The line number `Erl` reports and the error's stack trace are captured
    there ([**RD-VBAL §6.1.2.7** Information](rd-vbal.6.1.2.7.information.md),
@@ -198,18 +198,18 @@ not by dedicated per-error branch logic:
 3. When the activation's error handler catches the error, execution continues where the handler says
    ([**RD-VBAL §5.4.4.1** On Error Statement](rd-vbal.5.4.4.1.on-error-statement.md)). Otherwise the loop stops.
 
-Because every error passes through this point, runtime errors are catchable with no change needed at any
-individual error-raising site. Every runtime error the executor can raise (`TypeMismatch`, `SubscriptOutOfRange`,
-`ForLoopNotInitialized`, or any other, from any subsystem) is catchable by an error handler.
+Because every error passes through this point, every runtime error the executor can raise (`TypeMismatch`,
+`SubscriptOutOfRange`, `ForLoopNotInitialized`, or any other, from any subsystem) is catchable by an error handler,
+with no change needed at any individual error-raising site.
 
 An error that propagates out of an activation (no handler caught it) is returned as the `ProcedureExecutor.Run`
 call's own return value. In a called procedure, that value reaches the caller as the result of the call, and
-propagates in the caller exactly like any other runtime error
+propagates in the caller in the same way as any other runtime error
 ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).
 
 ## Procedure invocation
 
-A called procedure runs through the same `ProcedureExecutor`, in a fresh activation. The mechanics are described
+A called procedure runs through the same `ProcedureExecutor`, in a new activation. The mechanics are described
 on the pages below.
 
 |Topic|See|

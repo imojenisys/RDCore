@@ -21,7 +21,7 @@ The type system defines abstractions that formalize the implicit type classifica
 |[IFixedPointNumericType](../api/RDCore.SDK.Model.Types.Abstract.IFixedPointNumericType.html)|Marker interface|Fixed-point numeric types|[**RD-VBAL §2.4.1.1** VBNumericType](rd-vbal.2.4.1.intrinsic-types.md#2411-vbnumerictype)|
 |[IFloatingPointNumericType](../api/RDCore.SDK.Model.Types.Abstract.IFloatingPointNumericType.html)|Marker interface|Floating-point numeric types|[**RD-VBAL §2.4.1.1** VBNumericType](rd-vbal.2.4.1.intrinsic-types.md#2411-vbnumerictype)|
 
-These abstract types and interfaces are useful for pattern-matching types and values, in both static-semantics and runtime-semantics implementations.
+These abstract types and interfaces support pattern-matching of types and values, in both static-semantics and runtime-semantics implementations.
 
 ---
 ## In this section

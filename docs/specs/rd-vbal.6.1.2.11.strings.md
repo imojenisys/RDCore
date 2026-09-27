@@ -84,7 +84,7 @@ MS-VBAL says the pair returns "the number of characters in a string or the numbe
 variable on the current platform". It says `LenB` "will return the same value as `Len`, except for strings or UDTs":
 one function with two exceptions (strings and UDTs), rather than two functions.
 
-`Len` and `LenB` are therefore implemented as one measurement, with one dial that selects between them.
+`Len` and `LenB` are therefore implemented as one measurement, with one option that selects between them.
 
 |Expression|`Len`|`LenB`|
 |---|---|---|
@@ -109,18 +109,18 @@ not be able to determine the actual number of storage bytes required when used w
 user-defined data types". For such a record, `Len` counts the characters the member currently holds and `LenB` counts
 the pointer, so the two move independently of each other.
 
-#### Declared types at the dispatch seam
+#### Declared types at external dispatch
 
-> 👉 An external call carries _runtime_ values rather than _typed_ ones, so the declared type a member was called with
-> is recovered at the dispatch seam
-> ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).
-> The declared type survives there because each intrinsic stores its own exact managed type: a `short` for `Integer`
-> and an `int` for `Long`, not one integer type for both
-> ([**RD-VBAL §2.5.2.1.1** Numeric Values](rd-vbal.2.5.2.1.1.numeric-values.md)).
->
-> 👉 This is what lets `Len` answer "the number of bytes required to store a variable" for the variable it was given,
-> rather than guess. `Date` and `Double` are indistinguishable at the dispatch seam, and need not be distinguished,
-> because they are the same width.
+👉 An external call carries _runtime_ values rather than _typed_ ones, so the declared type of the value a member was
+called with is recovered at external dispatch
+([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).
+The declared type survives external dispatch because each intrinsic stores its own exact managed type: a `short` for
+`Integer` and an `int` for `Long`, not one integer type for both
+([**RD-VBAL §2.5.2.1.1** Numeric Values](rd-vbal.2.5.2.1.1.numeric-values.md)).
+
+👉 This is what lets `Len` return "the number of bytes required to store a variable" for the variable it is given.
+`Date` and `Double` are indistinguishable at external dispatch, and need not be distinguished, because they have the
+same width.
 
 ---
 > ⏮️ [**RD-VBAL §6.1.2.10** Math](rd-vbal.6.1.2.10.math.md) | ⏭️ [**RD-VBAL §6.1.2.12** SystemColorConstants](rd-vbal.6.1.2.12.systemcolorconstants.md)

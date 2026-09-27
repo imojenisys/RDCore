@@ -15,11 +15,11 @@
 
 ## Runtime Semantics
 
-The executor dispatches the `ExitProcedure` instruction, exactly as for `Exit Sub`
+The executor dispatches the `ExitProcedure` instruction, as for `Exit Sub`
 ([**RD-VBAL §5.4.2.17** Exit Sub Statement](rd-vbal.5.4.2.17.exit-sub-statement.md)).
 
 For a `Property Get`, the function result variable is read back however `ExitProcedure` was reached: an
-explicit `Exit Property`, or falling off the end of the body. The value read back is the call's result
+explicit `Exit Property`, or reaching the end of the body. The value read back is the call's result
 ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).
 
 ## Implementation

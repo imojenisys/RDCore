@@ -12,7 +12,7 @@ A block statement's nested statements are held in a [StatementBlock](../api/RDCo
 
 ## Statement Node Families
 
-This section catalogues the statement AST node families in three groups:
+This section catalogs the statement AST node families in three groups:
 
 |Group|Section|MS-VBAL|
 |---|---|---|

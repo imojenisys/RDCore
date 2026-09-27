@@ -14,7 +14,8 @@ See [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md) 
 
 ## Runtime Semantics
 
-A `Call` statement or a bare-call statement invokes its callee through a callable binding
+A `Call` statement or a bare-call statement whose callee is a bare name (`Foo`, `Foo(...)`, `Call Foo(...)`) invokes
+it through a callable binding
 ([ICallableBindingFactory](../api/RDCore.SDK.Model.Values.Bindings.ICallableBindingFactory.html)):
 
 |Callee|Invoked through|
@@ -22,13 +23,17 @@ A `Call` statement or a bare-call statement invokes its callee through a callabl
 |A procedure of the workspace|[IProcedureInvoker](../api/RDCore.SDK.Runtime.Abstract.Execution.IProcedureInvoker.html)|
 |A member with an external target (a standard-library member)|[IExternalDispatcher](../api/RDCore.SDK.Runtime.Abstract.Execution.IExternalDispatcher.html) ([**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standard-library.md))|
 
+> [!NOTE]
+> **Not implemented.** The bare, unparenthesized argument form of a bare-call statement (`Foo 1, 2`), and a callee
+> reached through a member access (`obj.Foo`, `Call obj.Foo(1)`). Both report `InternalError`.
+
 A bare reference to a `Sub`, `Function` or `Property Get` invokes a procedure the same way
 ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md),
 [**RD-VBAL §5.6.10** Simple Name Expressions](rd-vbal.5.6.10.simple-name-expressions.md)).
 
 A callee's run-time error propagates like any other run-time error. The callee's error result
 ([RuntimeSemanticsEvaluationResult](../api/RDCore.SDK.Runtime.Shared.RuntimeSemanticsEvaluationResult.html)) is
-turned back into an `Error` outcome by the caller's `ExecuteCall`.
+converted back into an `Error` outcome by the caller's `ExecuteCall`.
 
 ## Implementation
 

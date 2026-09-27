@@ -37,8 +37,8 @@ A condition is not coerced through an operator node, because a condition has no 
 - `RDCore.Runtime.Execution.ConditionEvaluator` forces the condition to `Boolean`. It calls
   `VBBooleanLetCoercionRuntimeSemantics` directly, rather than through an operator node
   ([**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md)).
-- An `If` block needs no synthesized closer: falling out of the last branch, or out of the `Else` branch, already
-  lands where the construct's own `End`/`Else` chaining says it should.
+- An `If` block needs no synthesized closer: leaving the last branch, or the `Else` branch, already reaches the
+  offset that the construct's own `End`/`Else` chaining designates.
 - After every branch's body, lowering emits a synthesized, unconditional `Jump` to right past the whole construct,
   even for the last branch ([**RD-VBAL §3.5.3** Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md)).
 
