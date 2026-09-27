@@ -4,33 +4,145 @@
 > Cette section n'est disponible qu'en anglais.    
 > _This section is only available in English_.
 
----
-## Table of Contents
+This specification describes the **RDCore Language Platform and SDK**; its inspirational source material is the [**MS-VBAL**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d5418146-0bd2-45eb-9c7a-fd9502722c74) Open Specification. See [**RD-VBAL §1.0** Introduction](rd-vbal.1.0.introduction.md).
 
-- 1. [Introduction](rd-vbal.1.0.introduction.html)
-  - 1.1. [Philosophy](rd-vbal.1.1.philosophy.html)
-- 2. [RD-VBA Computational Environment](rd-vbal.2.0.computational-environment.html)
-  - 2.1. [Implicit Storage](rd-vbal.2.1.implicit-storage.html)
-  - 2.2. [Project Structure](rd-vbal.2.2.rdproj-structure.html)
-  - 2.3. [Application Host](rd-vbal.2.3.application-host.html)
-  - 2.4. [Static Types](rd-vbal.2.4.static-types.html)
-  - 2.5. [Runtime Values](rd-vbal.2.5.runtime-values.html)
-  - 2.6. [Diagnostics](rd-vbal.2.6.diagnostics.html)
-- 3. [Abstract Syntax Tree](rd-vbal.3.0.syntax-tree.html)
-  - 3.1. [Attributes and Directives](rd-vbal.3.1.attributes-directives.html)
-  - 3.2. [Literal Expressions](rd-vbal.3.2.0.literals.html)
-  - 3.3. [Operators](rd-vbal.3.3.0.operators.html)
-  - 3.4. [Statements](rd-vbal.3.4.0.statements.html)
-  - 3.5. [Instructions](rd-vbal.3.5.0.instructions.html)
-- 4. [Program Structure](rd-vbal.4.0.program-structure.html)
-- 5. [Semantics](rd-vbal.5.0.semantics.html)
-- 6. [Standard Library](rd-vbal.6.0.standard-library.html)
-
-**RD-VBA** is an implementation of the **MS-VBAL specification** that is independent from its historical **MS-VBA** runtime host. **RD-VBAL** is the name of the specification/documentation of the _language server platform_, which _includes_ the **RD-VBA** _language core_ but is wider than the sole language specification.
+**RD-VBA** is an implementation of the **MS-VBAL specification** that is independent from its historical **MS-VBA** runtime host. **RD-VBAL** is the name of the specification and documentation of the _language server platform_. It _includes_ the **RD-VBA** _language core_, but covers more than the language specification alone.
 
 🎯 **The formalization of _RD-VBAL_ is a work in progress**.  
 
-This platform specification presents a similar _technical prose_ style as its inspirational _Open Spec_ source material.
+This specification follows the technical prose style of its inspirational Open Spec source material.
+
+---
+## Table of Contents
+
+- 1.0 [Introduction](rd-vbal.1.0.introduction.md)
+  - 1.1 [Design and Extension Philosophy](rd-vbal.1.1.philosophy.md)
+    - 1.1.1 [Platform Extensions](rd-vbal.1.1.1.platform-extensions.md)
+    - 1.1.2 [Language Core Extensions](rd-vbal.1.1.2.language-core-extensions.md)
+    - 1.1.3 [Core Semantic Flags](rd-vbal.1.1.3.core-semantic-flags.md)
+    - 1.1.4 [Core Diagnostics](rd-vbal.1.1.4.core-diagnostics.md)
+    - 1.1.5 [Extension Manifest](rd-vbal.1.1.5.extension-manifest.md)
+    - 1.1.6 [Capabilities Provider](rd-vbal.1.1.6.capabilities-provider.md)
+- 2.0 [RD-VBA Computational Environment](rd-vbal.2.0.computational-environment.md)
+  - 2.0.1 [Supported Languages](rd-vbal.2.0.1.supported-languages.md)
+  - 2.0.2 [Client/Server Capabilities](rd-vbal.2.0.2.client-server-capabilities.md)
+  - 2.1 [Implicit Storage](rd-vbal.2.1.implicit-storage.md)
+  - 2.2 [RDPROJ Structure](rd-vbal.2.2.rdproj-structure.md)
+    - 2.2.1 [Conventions](rd-vbal.2.2.1.conventions.md)
+    - 2.2.2 [WorkspaceFile](rd-vbal.2.2.2.workspacefile.md)
+    - 2.2.3 [ProjectFile](rd-vbal.2.2.3.projectfile.md)
+  - 2.3 [Application Host](rd-vbal.2.3.application-host.md)
+    - 2.3.1 [Composition Root](rd-vbal.2.3.1.composition-root.md)
+    - 2.3.2 [Mode / State](rd-vbal.2.3.2.mode-state.md)
+  - 2.4 [Static Types](rd-vbal.2.4.static-types.md)
+    - 2.4.1 [Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md)
+    - 2.4.2 [Non-intrinsic Types](rd-vbal.2.4.2.non-intrinsic-types.md)
+    - 2.4.3 [Meta and Advanced Types](rd-vbal.2.4.3.meta-and-advanced-types.md)
+    - 2.4.4 [Deferred Types](rd-vbal.2.4.4.deferred-types.md)
+  - 2.5 [Runtime Values](rd-vbal.2.5.runtime-values.md)
+    - 2.5.1 [Runtime Entities](rd-vbal.2.5.1.runtime-entities.md)
+    - 2.5.2 [VBTypedValue](rd-vbal.2.5.2.vbtypedvalue.md)
+  - 2.6 [Diagnostics](rd-vbal.2.6.diagnostics.md)
+    - 2.6.1 [Syntax Errors](rd-vbal.2.6.1.syntax-errors.md)
+    - 2.6.2 [Semantic Compilation Errors](rd-vbal.2.6.2.semantic-compilation-errors.md)
+    - 2.6.3 [Runtime Errors](rd-vbal.2.6.3.runtime-errors.md)
+    - 2.6.4 [Rubberduck Core Diagnostics](rd-vbal.2.6.4.rubberduck-core-diagnostics.md)
+    - 2.6.5 [Diagnostics Pipeline](rd-vbal.2.6.5.diagnostics-pipeline.md)
+- 3.0 [Abstract Syntax Tree](rd-vbal.3.0.syntax-tree.md)
+  - 3.0.1 [Token Semantics](rd-vbal.3.0.1.token-semantics.md)
+  - 3.0.2 [Node Types](rd-vbal.3.0.2.node-types.md)
+  - 3.0.3 [Binding Contexts](rd-vbal.3.0.3.binding-contexts.md)
+  - 3.1 [Attributes and Directives](rd-vbal.3.1.attributes-directives.md)
+    - 3.1.1 [Attributes](rd-vbal.3.1.1.attributes.md)
+  - 3.2.0 [Literal Expressions](rd-vbal.3.2.0.literals.md)
+  - 3.3.0 [Operator Expressions](rd-vbal.3.3.0.operators.md)
+    - 3.3.1 [Unary Operators](rd-vbal.3.3.1.unary-operators.md)
+    - 3.3.2 [Arithmetic Operators](rd-vbal.3.3.2.arithmetic-operators.md) — *reserved*
+    - 3.3.3 [Logical (Bitwise) Operators](rd-vbal.3.3.3.logical-operators.md) — *reserved*
+    - 3.3.4 [Relational (Comparison) Operators](rd-vbal.3.3.4.relational-operators.md) — *reserved*
+  - 3.4.0 [Statements](rd-vbal.3.4.0.statements.md)
+    - 3.4.1 [Block Statements](rd-vbal.3.4.1.block-statements.md)
+    - 3.4.2 [Simple Statements](rd-vbal.3.4.2.simple-statements.md)
+    - 3.4.3 [File Statements](rd-vbal.3.4.3.file-statements.md)
+  - 3.5.0 [Instructions](rd-vbal.3.5.0.instructions.md)
+    - 3.5.1 [InstructionList](rd-vbal.3.5.1.instructionlist.md)
+    - 3.5.2 [Instruction](rd-vbal.3.5.2.instruction.md)
+    - 3.5.3 [Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md)
+    - 3.5.4 [Execution](rd-vbal.3.5.4.execution.md)
+    - 3.5.5 [Placement and Licensing](rd-vbal.3.5.5.placement-and-licensing.md)
+- 4.0 [Program Structure and Organization](rd-vbal.4.0.program-structure.md)
+  - 4.1 [VBIDE Synchronization](rd-vbal.4.1.vbide-synchronization.md)
+- 5.0 [Semantics](rd-vbal.5.0.semantics.md)
+  - 5.1 [Module Body Structure](rd-vbal.5.1.module-body-structure.md) — *reserved*
+  - 5.2 [Module Declaration Section Structure](rd-vbal.5.2.module-declaration-section-structure.md) — *reserved*
+    - 5.2.1 [Option Directives](rd-vbal.5.2.1.option-directives.md)
+    - 5.2.2 [Implicit Definition Directives](rd-vbal.5.2.2.implicit-definition-directives.md)
+    - 5.2.3 [Module Declarations](rd-vbal.5.2.3.module-declarations.md)
+    - 5.2.4 [Class Module Declarations](rd-vbal.5.2.4.class-module-declarations.md)
+  - 5.3 [Module Code Section Structure](rd-vbal.5.3.module-code-section-structure.md) — *reserved*
+    - 5.3.1 [Procedure Declarations](rd-vbal.5.3.1.procedure-declarations.md) — *reserved*
+  - 5.4 [Procedure Bodies and Statements](rd-vbal.5.4.procedure-bodies-and-statements.md)
+    - 5.4.1 [Statement Blocks](rd-vbal.5.4.1.statement-blocks.md) — *reserved*
+    - 5.4.2 [Control Statements](rd-vbal.5.4.2.control-statements.md)
+    - 5.4.3 [Data Manipulation Statements](rd-vbal.5.4.3.data-manipulation-statements.md)
+    - 5.4.4 [Error Handling Statements](rd-vbal.5.4.4.error-handling-statements.md)
+    - 5.4.5 [File Statements](rd-vbal.5.4.5.file-statements.md)
+  - 5.5 [Implicit coercion](rd-vbal.5.5.implicit-coercion.md)
+    - 5.5.1 [Let-coercion](rd-vbal.5.5.1.let-coercion.md)
+    - 5.5.2 [Set-coercion](rd-vbal.5.5.2.set-coercion.md) — *reserved*
+  - 5.6 [Expressions](rd-vbal.5.6.expressions.md) — *reserved*
+    - 5.6.1 [Expression Classifications](rd-vbal.5.6.1.expression-classifications.md) — *reserved*
+    - 5.6.2 [Expression Evaluation](rd-vbal.5.6.2.expression-evaluation.md)
+    - 5.6.3 [Member Resolution](rd-vbal.5.6.3.member-resolution.md) — *reserved*
+    - 5.6.4 [Expression Binding Contexts](rd-vbal.5.6.4.expression-binding-contexts.md) — *reserved*
+    - 5.6.5 [Literal Expressions](rd-vbal.5.6.5.literal-expressions.md) — *reserved*
+    - 5.6.6 [Parenthesized Expressions](rd-vbal.5.6.6.parenthesized-expressions.md)
+    - 5.6.7 [TypeOf...Is Expressions](rd-vbal.5.6.7.typeof-is-expressions.md)
+    - 5.6.8 [New Expressions](rd-vbal.5.6.8.new-expressions.md)
+    - 5.6.9 [Operator Expressions](rd-vbal.5.6.9.operator-expressions.md)
+    - 5.6.10 [Simple Name Expressions](rd-vbal.5.6.10.simple-name-expressions.md)
+    - 5.6.11 [Instance Expressions](rd-vbal.5.6.11.instance-expressions.md)
+    - 5.6.12 [Member Access Expressions](rd-vbal.5.6.12.member-access-expressions.md)
+    - 5.6.13 [Index Expressions](rd-vbal.5.6.13.index-expressions.md)
+    - 5.6.14 [Dictionary Access Expressions](rd-vbal.5.6.14.dictionary-access-expressions.md)
+    - 5.6.15 [With Expressions](rd-vbal.5.6.15.with-expressions.md)
+    - 5.6.16 [Constrained Expressions](rd-vbal.5.6.16.constrained-expressions.md)
+- 6.0 [Standard Library](rd-vbal.6.0.standard-library.md)
+  - 6.1 [VBA Project](rd-vbal.6.1.vba-project.md)
+    - 6.1.1 [Predefined Enums](rd-vbal.6.1.1.predefined-enums.md)
+    - 6.1.2 [Predefined Procedural Modules](rd-vbal.6.1.2.predefined-procedural-modules.md)
+    - 6.1.3 [Predefined Class Modules](rd-vbal.6.1.3.predefined-class-modules.md)
+  - 6.2 [VBScript Regular Expressions](rd-vbal.6.2.vbscript-regexp.md)
+
+---
+## Conventions
+
+### Section numbers
+
+|Sections|Numbering|
+|---|---|
+|Chapters 1–4; the overview sections 5.0 and 6.0; section 6.2|RD-VBAL's own numbering.|
+|Chapters 5 and 6, except 5.0, 6.0 and 6.2|Mirrors MS-VBAL: RD-VBAL §N is about MS-VBAL §N.|
+|An RD-VBA addition that is a variant of an MS-VBAL member|A child number of that member. `GetJsonSettings` is [§6.1.2.8.1.7.1](rd-vbal.6.1.2.8.interaction.md), a variant of `GetAllSettings` (§6.1.2.8.1.7).|
+|An RD-VBA addition with no MS-VBAL counterpart|The next number after the last MS-VBAL sibling, marked 🧩. Several such additions are numbered in alphabetical order. `Erl` is [§6.1.2.7.1.14](rd-vbal.6.1.2.7.information.md) and the `Err` function is §6.1.2.7.1.15 (Information module); `ErrObject.StackTrace` is [§6.1.3.2.2.7](rd-vbal.6.1.3.2.err-class.md) (Err class properties).|
+|A section number without a prefix|An RD-VBAL section. An MS-VBAL section is always written with the `MS-VBAL` prefix, as in **MS-VBAL §5.4.2.3**.|
+
+### Notes
+
+|Note|Meaning|
+|---|---|
+|Reserved. This section has no content yet.|The section only reserves its number. In chapters 5 and 6, a reserved page still names the MS-VBAL section it corresponds to. When the content lives on another page, a `See …` line after the note links that page.|
+|**Not implemented.** …|A limitation: what RD-VBA does not implement, and what happens instead when that is known.|
+
+### Markers
+
+|Marker|Meaning|
+|---|---|
+|🎯|An RD-VBA objective, or a deliberate RD-VBA departure from MS-VBA.|
+|🧩|An extension point, or an RD-VBA addition to MS-VBAL.|
+|👉|A consequence worth calling out.|
+|✅|Valid.|
+|❌|Invalid.|
 
 ---
 ## Intellectual Property Rights Notice for Open Specifications Documentation
@@ -52,12 +164,59 @@ The publisher of the **RDCore** platform project and of _this present documentat
 |Date|Version|Description|
 |---|---|---|
 |2026-06-25|1.0|Initial public version|
-|2026-09-06|1.1|§2.3.1.2 session services (`IRuntimeSession` root; `IVirtualHeap` removed); §2.5.2.1.2 array values are a flat column-major store; §3.2.0.1 numeric literal types (type-declaration characters); §5.0.2.1 results are computed in the effective type; §5.0.2.2 let-coercion provider/strategy dispatch and the MS-VBAL-divergence principle; §2.5.2.1.3 UDT values are addressable IDs|
-|2026-09-09|1.2|§2.6 Diagnostics — the `VBC`/`VBR`/`VBA`/`RDC` code families, help-URL convention, and the LSP-pull provider pipeline (`textDocument/diagnostic`; the `DiagnoseDocument` provider capability; result identity and the version staleness gate)|
-|2026-09-13|1.3|§3.4 Statements — block/simple/file statement node families, each cross-referenced to its MS-VBAL section|
-|2026-09-23|1.4|§3.5 Instructions — the `InstructionList`/`Instruction` model, lowering, and execution (`ProcedureExecutor`'s fetch/decode loop, `ICallStackFrame.Pc`, Let/Set-assignment statement dispatch)|
-|2026-09-24|1.5|§3.5.4/§3.5.5 — procedure invocation (`IProcedureInvoker`/`RuntimeProcedureInvoker`, `Call`/bare-call/bare-`Sub`/`Function`/`Property Get`), `ByRef` parameter binding (`CallStackFrame.PushByRef`, `ISymbolResolver.TryGetAddress`), `Function`/`Property Get` return values (`ICallStackFrame.ReturnValue`, the function result variable), hoisted `Dim`/`Static` locals (`VBProcedureMemberSymbol.Locals`/`VBReturningMemberSymbol.Locals` riding on the procedure symbol like `Parameters`, `RuntimeProcedureInvoker.HoistLocals`, `ISymbolResolver.TryAllocate` for a `Static` local's own module-extent storage), and named arguments/`Optional` parameters (`RuntimeExpressionEvaluator.MapArguments`, `VBParameterSymbol.DefaultValue`, errors 448/449/450)|
-|2026-09-25|1.6|§3.5.4 — `ParamArray` (`RuntimeExpressionEvaluator.CollectParamArrayArguments`, a fresh 0-based `Variant` array), closing two root-caused prerequisite gaps: zero-size storage (`SessionStorage.TryAllocate` mints its own address for a non-positive size instead of ever reaching the allocator — `Nothing`/`Null`/`Empty`/an uninitialized array/an empty `ParamArray` alike) and `Variant` handle handling (`VBRuntimeVariantValue` now boxes the wrapped `VBTypedValue` itself, `VBVariantValue`'s own constructor self-binds to it, `SymbolAddressTable.FreshBinding` re-boxes it fresh on every store, and `LetCoercionRuntimeSemanticsProvider.EvaluateLetCoercionSemantics` unwraps a `Variant` source before dispatch so every strategy's own direct cast sees the real wrapped value). Follow-up Variant-hardening pass, same root cause (a `VBVariantValue`'s own `TypeInfo` mirrors its wrapped value's, so a direct cast/pattern-match downstream breaks the instant the operand is a real, non-default `Variant`): fixed in the arithmetic/relational/concat operators' own operand validation (`OperatorRuntimeSemantics.LetCoerceNonNullOperand`'s TypeInfo-equality short-circuit never skips a `VBVariantValue` operand anymore), in `SetCoercionRuntimeSemantics` (a `Variant` wrapping an object now unwraps before the `VBObjectValue` pattern-match), and in three more array-holding sites (`RuntimeExpressionEvaluator.EvaluateIndex`, `ProcedureExecutor.ExecuteForEachOpener`, `BinaryConcatOperatorRuntimeSemantics.IsByteArray`) so `v(0)`/`For Each x In v`/`v1 & v2` all work on a `Variant` holding an array the same as on a declared one. Also implemented MS-VBAL §5.6.9.5's own Variant String/Numeric comparison exception for real (previously a dead, never-firing analysis flag and no actual runtime behavior): a numeric-holding `Variant` compared against a String-holding `Variant` is always considered less than it, regardless of actual values, short-circuited in `BinaryRelationalOperatorRuntimeSemantics` before normal coercion would otherwise try (and fail) to coerce the String to a number. §6.1.1.16 — `VbVarType`'s own COM `VARENUM`-compatible tag space moved from a stdlib-only declaration to `RDCore.SDK.Model.Values.Runtime.VBVarType`, the core value model, with a real `VBType`→`VBVarType` mapping (`VBVarTypeExtensions.VarType`, including an array's own tag combined with its element type's, recursively) that `VBVariantValue` now actually computes on construction (previously always hardcoded to `Empty`, a real bug: `VBVariantValue.Value` was a separately-settable property the constructors never touched, now computed straight from `Handle`, the single source of truth). Groundwork for `IDispatch`/COM interop: `VBClassModuleSymbol.AutomationKind` (default `Dispatch`, every RD-VBA class module today) distinguishes an Automation-capable (`VT_DISPATCH`) class from a future `IUnknown`-only (`VT_DISPATCH`'s `vbDataObject` sibling, tag 13) one nothing constructs yet — `VarType` consults it for any `VBClassType` with a known class; a generic `VBObjectType` reference (a live object's concrete class is only known by looking up the instance) still defaults to `VT_DISPATCH`, the only sound default absent that lookup. Closed the suite's last two pre-existing `[Ignore]`d gaps: §5.4.2.10 — `ExecuteCaseHeader`'s own Null-selector short-circuit unwraps a `Variant` selector first (a `Null` can only ever reach `Select Case` through one — a directly Long-declared local can never hold it), the same fix pattern as this row's other array/object-holding sites; and §5.5.1.2.1 — a `Date` source coerced to a numeric or `Boolean` destination now actually reports `ConversionSemanticFlags.DateSerial` (`VBNumericLetCoercionTypeRuntimeSemantics.DateSerialFlagsOf`, reused by `VBBooleanLetCoercionRuntimeSemantics`): the flag existed only in `VBDateLetCoercionRuntimeSemantics`'s own dead code, unreachable since the provider dispatches by destination type and that strategy only ever runs for `Date` as the *destination*.|
-|2026-09-26|1.7|§6.1.1 Symbol injection — the standard library's symbols are read off the SDK declarations that define it (`StdLibSymbolReader`), so a member's name, parameters and return type are written down once, in the signature an implementation has to satisfy: `RuntimeSemanticsEvaluationResult<TValue>` states a return type and the non-generic one states none (which is what makes a member a `Sub`), and `StdLibModuleAttribute`/`StdLibClassAttribute`/`StdLibEnumAttribute`/`StdLibMemberAttribute` carry only what a signature cannot say — a name no convention recovers (`Hex` beside `Hex$`, `FormShowConstants`), an accessor kind, a class or enum return type. Nothing references the library and nothing opts into it: the set is whatever carries a marker, so a project has the symbols whether or not its `.rdproj` mentions it. Landed with it: all sixteen §6.1.1 predefined enums, and §6.1.2.7 `Information` and §6.1.3.2 `ErrObject` in full — including the MS-VBA shape of `Err`, a zero-argument `Function` of `Information` rather than a global class module with a default instance, which leaves `ErrObject` nameable in an `As` clause instead of shadowed by its own instance. §6.1.2 `ErrObject.StackTrace` — RD-VBA's own addition to MS-VBAL's `Err` class (`VBStackTrace`, `ISessionErrorState.StackTrace`, `ICallStack.Frames`): the call stack the current error was raised on, innermost first, captured at the interpreter's error-interception point because the activations it names are unwound by the time a handler reads it; only the activation the error was raised in carries a location. §5.2.3.4 — an `Enum`'s members are lexically scoped, as "the Enum type *and its Enum members* are accessible within the enclosing project"/"within the enclosing module" has always said: an enum constant parents to its enum rather than to a scope, so `ScopeTreeBuilder` resolves its placement through the enum and takes its visibility from the enum's own access modifier (it has none of its own), which is what makes `vbSunday` a name on its own. Two facets of the same rule fixed with it: a public `Enum`, and a public user-defined type (§5.2.3.3, same wording), reach the project scope from a class module too — the class's other members need an instance to be reached through, but a declared type needs none. §6.1.2.10 Math and §6.1.2.3 Conversion reshaped declaration by declaration against the specification's own Function Declaration blocks (return types, and the Optional parameters several of them were missing), and §6.1.2.11 Strings written in full - 43 subsections, 55 members, since the B-suffixed byte variants, the $-suffixed String-returning twins and the LTrim/RTrim/Trim group each declare more than one. `CLngPtr` needed the one thing a declaration cannot state: `LongPtr` is a different type in each pointer width (§3.3.2), and the width belongs to the environment, so `StdLibSymbolProvider` is told it and the environment host passes its own profile's. `rdcore/host/symbols/define` now resolves a declared type name against the library's own types as well as the intrinsics, as seen from the module being defined - the project scope is an ancestor of a module's own scope and of nothing else - so `Dim d As VbDayOfWeek` binds in the host session too instead of landing as `VBUnknownType`. §2.6 — every diagnostic family now has a **title**: the error's category (_Syntax error_, _Compile error_, _Run-time error_, _Application error_) as distinct from its description, which is what went wrong. Derived rather than stored, since the two `VBC` categories share one family and only the numeric portion separates them (`VBCompileErrorId` reserves `[9300..]` for the semantic ones), and switched on the error's runtime type so that a carrier declared more generally cannot make it answer for the wrong family. §6.1.3 `Information.Erl` — the line number the most recent run-time error was raised at, undocumented in MS-VBAL and hidden in MS-VBA, which nonetheless exposes it from that module. RD-VBA departs from MS-VBA's own answer in two ways, because it is not a useful one. It counts the wrong thing: MS-VBA reports the last line-number *label* it passed, so a fault in an unnumbered statement is reported at whichever numbered line came before it, however far back, and code that numbers nothing is told every error happened at line 0 — truthful only where every line is numbered, which is to say a BASIC program. So what `Erl` counts is an environment setting (`IRuntimeEnvironmentProfile.ErlLineNumbering`, bound from `appsettings.json` with the rest of the runtime profile): `DocumentLine`, the default, is the line the faulting statement is really on, counted from 1 as an editor counts it; `LineLabel` is MS-VBA's, for a workspace that depends on it. A named label sets it in neither mode. And it reports it too narrowly: 🎯 **RD-VBA returns a `Long` where MS-VBA reports `ushort` resolution and wraps around** — a program numbered past 65535 would otherwise be told it faulted at a line it has not got. Carried on `ISessionErrorState.LineNumber`, captured at the one point every run-time error already reaches the error state, and answered by the new `InstructionList.TryGetLineNumber`. The interactive shell now renders all of it on a run-time error — icon, title with the program's own line number, diagnostic code and description, `Err.Source` (the project name by default, MS-VBAL §6.1.3.2.2.6), and the stack trace — over a widened `rdcore/session/execute` result carrying the code, title, source, position, line number and a structured stack trace instead of just a number and a message.|
-|2026-09-27|1.8|§5.4.5 File statements — the whole section runs, all of it through one session-level shim (`IFileChannels`/`IFileChannel`, the seam an administrator can restrict or redirect and a test can fake): numbered channels with the modes they were opened under, `FileStatementAccess` holding §5.4.5.1's statement/mode/access table once so twelve statements do not each restate it, a character surface each way (`IFileChannelOutput` for `Print #`/`Write #` and their `Width`-settable maximum line length, `IFileChannelInput` for `Line Input #`/`Input #`), and a record surface for `Put`/`Get`. `Write #` and `Input #` are one format read both ways — a quoted string, `#TRUE#`, `#NULL#`, `#ERROR n#`, `#yyyy-mm-dd hh:mm:ss#` — and `Input #` reads a different number of characters depending on the declared type of the variable it is reading into, which is why the target is resolved before its field is read (`LetAssignmentEvaluator.TryResolveTarget`, lifted out of the assignment statement so `Input #`, `Line Input #` and `Get` all Let-assign what they read the way §5.4.5.6/.10/.12 each say they do). `Put`/`Get` speak §5.4.5.11's Variant type descriptors and binary widths (`RecordDataFormat`), which is a wire format rather than a behaviour: a Boolean is `FF FF` in two bytes, a `Random`-mode String carries a two-byte length prefix and a `Binary` one does not, and a `Variant` is preceded by its two-byte descriptor — so that a file written here is a file MS-VBA reads. Two places the specification leaves a gap and RD-VBA names its choice: a `Random` channel whose `Open` declared no `Len` clause counts positions in 128-byte records, MS-VBA's own default, since §5.4.5.1 constrains the clause but never says what an absent one means; and record 1 is byte 0, because §5.4.5.11 says the position becomes "exactly <record-number> number of bytes from the start" while the same statement defaults its record number to the current file-pointer-position, which §5.4.5.3 counts from 1 — the two are one quantity, and `Seek` and `Get` have to agree about it. §3.4.3 — `Lock`/`Unlock` get a node of their own (`FileLockStatementNode`): their `record-range` has three shapes and a flat input list could only tell two apart, `Lock #1, 5` (record 5) and `Lock #1, To 5` (records 1 through 5) carrying one expression each. The absent `start-record-number` stays absent in the node, since "the effect is as if it consisted of the integer number token 1" is a runtime semantic and not something the program wrote. §2.5.2.1.3 — a UDT value carries a **field store**, one cell per declared field in declaration order, exactly as an array value carries its element block and for the same reason: a UDT's real data is its fields, which a scalar managed value has nowhere to hold. Until now `VBUserDefinedTypeValue` carried none of them and `VBUserDefinedType.CreateValue` threw, so reading a UDT variable back was impossible and a `Put` of one had nothing to write. Three pieces make it survive storage: `VBRuntimeUserDefinedTypeValue` boxes the UDT on the way in (the third location-identified value of its kind, after an array and a `Variant`), `CreateValue` unboxes it rather than rebuilding one with default fields, and the copy constructor gives every `with`-derived copy a field store of its own, deep through a nested UDT, because VBA copies a UDT on assignment. A UDT field is reachable from source in both directions now — a `<member-access-expression>` reads one, and §5.4.3.8 assigns one by Let-coercing to the field's own declared type and writing the cell, a UDT field not being an addressable symbol the way a variable is. With that, §5.4.5.11-12's "the value of each member of the UDT is written to the file... in the order in which the members are declared" is real, recursively through a nested record: `Put #1, , myRecord` and `Get #1, , myRecord` are the one-line binary serialization the pair exists for. 🎯 A UDT has **two sizes**, and §6.1.2.11 says so where it defines `Len` and `LenB`: `Len` "returns the size as it will be written to the file" — the members concatenated, no padding — and `LenB` "the in-memory size, including any implementation-specific padding between elements". `VBUserDefinedTypeLayout` is the second one, holding MS-VBA's own natural alignment in one place along with each field's offset, and `VBUserDefinedTypeValue.Size` reports it. §6.1.4 — `Strings.Len`/`Strings.LenB` implemented, which is what makes both sizes observable to a program; one measurement with one dial, since the specification defines `LenB` as `Len` "except for strings or UDTs" rather than as a second function. Two fixes at the dispatch seam were needed for either to be callable at all: a `Variant` parameter rejected its argument (which left most of the library uncallable, most of it declaring `Variant` parameters and the evaluator coercing every argument to the declared type on the way in), and the declared type was lost there — an external call carries `IRuntimeValue` arguments and a `Variant`'s own `BoxedValue` unwraps all the way to the managed value, so the typed value is now taken off the runtime variant itself. It survives after that, because each intrinsic stores its own exact managed type — a `short` for `Integer` and an `int` for `Long` — which is what lets `Len` answer "the number of bytes required to store a variable" rather than guess. Still open: applying a real OS-level lock, which §5.4.5.4 leaves implementation-defined, and a 64-bit UDT layout (the pointer width is a parameter, defaulted to MS-VBA's 32-bit). §5.4.3.6-7 — `LSet` and `RSet`. Both fit a value into the width the target **already has**, taken from its current value rather than from its declared type, which is what makes them meaningful on a variable-length `String` and harmless on one; they differ only in which end pads, and both truncate from the same end. `LSet`'s other form is a **byte copy between two UDT variables** (`VBUserDefinedTypeImage`), because that is how VBA fakes a union: a record is laid out through its own layout and read back through the destination's, so a `Long` reinterprets as two `Integer`s. Only the bytes both types have are copied — a destination field the source's image does not reach is its default rather than half a value. A variable-length `String` member is the case MS-VBA corrupts a process over, copying the pointer and leaving two records owning one allocation; here the member has no byte image at all, and its value is carried across only when the destination has a field of the same type at the same offset, so a reference is never reinterpreted as a different kind of reference. 🚧 The analysis pass should flag an `LSet` over a record holding one either way, since a program written against MS-VBA is relying on what MS-VBA does with it.|
+|2026-09-06|1.1|[§2.3.1.2](rd-vbal.2.3.1.2.session-services.md) session services; [§2.5.2.1.2](rd-vbal.2.5.2.1.2.array-values.md) array values; [§3.2.0.1](rd-vbal.3.2.0.literals.md) numeric literal types; [§5.6.9.2](rd-vbal.5.6.9.2.simple-data-operators.md) effective type; [§5.5.1.2](rd-vbal.5.5.1.2.runtime-semantics.md) let-coercion dispatch and the MS-VBAL divergence principle; [§2.5.2.1.3](rd-vbal.2.5.2.1.3.udt-values.md) UDT values|
+|2026-09-09|1.2|[§2.6](rd-vbal.2.6.diagnostics.md) diagnostic code families and help URLs; [§2.6.5](rd-vbal.2.6.5.diagnostics-pipeline.md) diagnostics pipeline|
+|2026-09-13|1.3|[§3.4.0](rd-vbal.3.4.0.statements.md) statement node families: [§3.4.1](rd-vbal.3.4.1.block-statements.md) block, [§3.4.2](rd-vbal.3.4.2.simple-statements.md) simple and [§3.4.3](rd-vbal.3.4.3.file-statements.md) file statements|
+|2026-09-23|1.4|[§3.5.0](rd-vbal.3.5.0.instructions.md) instructions: [§3.5.1](rd-vbal.3.5.1.instructionlist.md) `InstructionList`, [§3.5.2](rd-vbal.3.5.2.instruction.md) `Instruction`, [§3.5.3](rd-vbal.3.5.3.lowering-block-statements.md) lowering, [§3.5.4](rd-vbal.3.5.4.execution.md) execution; [§5.4.3.8](rd-vbal.5.4.3.8.let-statement.md)–[9](rd-vbal.5.4.3.9.set-statement.md) Let and Set statements|
+|2026-09-24|1.5|[§5.3.1.11](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md) procedure invocation, `ByRef` binding, return values, named and `Optional` arguments; [§5.4.3.1](rd-vbal.5.4.3.1.local-variable-declarations.md) hoisted locals|
+|2026-09-25|1.6|[§5.3.1.11](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md) `ParamArray`; [§2.3.1.2](rd-vbal.2.3.1.2.session-services.md) zero-size storage; [§2.5.2.1.5](rd-vbal.2.5.2.1.5.variant-values.md) Variant values; [§5.5.1.2](rd-vbal.5.5.1.2.runtime-semantics.md), [§5.5.2.2](rd-vbal.5.5.2.2.runtime-semantics.md), [§5.6.9.2](rd-vbal.5.6.9.2.simple-data-operators.md), [§5.6.9.4](rd-vbal.5.6.9.4.ampersand-operator.md), [§5.6.13](rd-vbal.5.6.13.index-expressions.md), [§5.4.2.4](rd-vbal.5.4.2.4.for-each-statement.md) Variant operands; [§5.6.9.5](rd-vbal.5.6.9.5.relational-operators.md) Variant String/Numeric comparison; [§6.1.1.16](rd-vbal.6.1.1.predefined-enums.md) `VbVarType`; [§5.4.2.10](rd-vbal.5.4.2.10.select-case-statement.md) `Null` selector; [§5.5.1.2.1](rd-vbal.5.5.1.2.runtime-semantics.md) `DateSerial` flag|
+|2026-09-26|1.7|[§6.0.1](rd-vbal.6.0.standard-library.md) symbol injection; [§6.1.1](rd-vbal.6.1.1.predefined-enums.md) predefined enums; [§6.1.2.7](rd-vbal.6.1.2.7.information.md) Information and [§6.1.2.7.1.14](rd-vbal.6.1.2.7.information.md) `Erl`; [§6.1.3.2](rd-vbal.6.1.3.2.err-class.md) Err class and [§6.1.3.2.2.7](rd-vbal.6.1.3.2.err-class.md) `StackTrace`; [§5.2.3](rd-vbal.5.2.3.module-declarations.md) Enum and UDT scoping; [§2.3.1.3](rd-vbal.2.3.1.3.name-resolution.md) name resolution; [§6.1.2.10](rd-vbal.6.1.2.10.math.md) Math; [§6.1.2.3](rd-vbal.6.1.2.3.conversion-module.md) Conversion and `CLngPtr`; [§6.1.2.11](rd-vbal.6.1.2.11.strings.md) Strings; [§2.4.1](rd-vbal.2.4.1.intrinsic-types.md) `LongPtr`; [§2.0.2](rd-vbal.2.0.2.client-server-capabilities.md) `rdcore/host/symbols/define` and `rdcore/session/execute`; [§2.6](rd-vbal.2.6.diagnostics.md) diagnostic titles; [§3.5.1](rd-vbal.3.5.1.instructionlist.md) line numbers|
+|2026-09-27|1.8|[§5.4.5](rd-vbal.5.4.5.file-statements.md) file statements; [§3.4.3](rd-vbal.3.4.3.file-statements.md) `Lock`/`Unlock` node; [§2.5.2.1.3](rd-vbal.2.5.2.1.3.udt-values.md) UDT field store and sizes; [§6.1.2.11.1.22](rd-vbal.6.1.2.11.strings.md) `Len`/`LenB`; [§6.0](rd-vbal.6.0.standard-library.md) `Variant` parameters; [§5.4.3.6](rd-vbal.5.4.3.6.lset-statement.md)–[7](rd-vbal.5.4.3.7.rset-statement.md) `LSet`/`RSet`|
+|2026-09-27|1.9|Sections split into pages of their own; chapters 5 and 6 aligned with MS-VBAL numbering; statement semantics moved from §3.5.4 to [§5.4](rd-vbal.5.4.procedure-bodies-and-statements.md); duplicate section numbers fixed. See the section map below.|
 
+### Section map (1.9)
+
+Sections not listed keep their number. Pages that existed keep their file name.
+
+|Old RD-VBAL §|New RD-VBAL §|
+|---|---|
+|1.1.1–1.1.6, on the 1.1 page|[1.1.1](rd-vbal.1.1.1.platform-extensions.md)–[1.1.6](rd-vbal.1.1.6.capabilities-provider.md), one page each|
+|2.0.1, 2.0.2 (with 2.0.2.1–2.0.2.3), on the 2.0 page|[2.0.1](rd-vbal.2.0.1.supported-languages.md) and [2.0.2](rd-vbal.2.0.2.client-server-capabilities.md), one page each|
+|2.2.3.2 RDCoreReference|[2.2.3.2](rd-vbal.2.2.3.projectfile.md)|
+|2.2.3.2 RDCoreModule (duplicate number)|[2.2.3.3](rd-vbal.2.2.3.projectfile.md)|
+|2.2.3.2.1 DocClassType Enum|[2.2.3.3.1](rd-vbal.2.2.3.projectfile.md)|
+|2.2.3.3 RDCoreFile|[2.2.3.4](rd-vbal.2.2.3.projectfile.md)|
+|2.3.1.2 Session Services: name resolution (`ISymbolResolver`, `ResolveValue`/`ResolveType`/`ResolveQualifier`, `ScopeTreeSymbolResolver`, `CompositeSymbolResolver`, `ScopeTree`, lookup order, reference priority, `ModuleDirectives`)|[2.3.1.3](rd-vbal.2.3.1.3.name-resolution.md) Name Resolution|
+|2.3.1.2 Session Services: the services (`IRuntimeSession`, the three services, `References`, heaps, `ISymbolProvider`)|[2.3.1.2](rd-vbal.2.3.1.2.session-services.md)|
+|2.5.2.1.1–2.5.2.1.5, on the 2.5 page|[2.5.2.1.1](rd-vbal.2.5.2.1.1.numeric-values.md)–[2.5.2.1.5](rd-vbal.2.5.2.1.5.variant-values.md), one page each|
+|2.6 Pipeline (unnumbered)|[2.6.5](rd-vbal.2.6.5.diagnostics-pipeline.md) Diagnostics Pipeline|
+|3.0.1.1 Annotation List (duplicate number)|[3.0.1.1.1](rd-vbal.3.0.1.token-semantics.md)|
+|3.0.1.2 Annotation|[3.0.1.1.2](rd-vbal.3.0.1.token-semantics.md)|
+|3.0.1.3 Annotation Arguments|[3.0.1.1.3](rd-vbal.3.0.1.token-semantics.md)|
+|3.1.1.2 VB_Exposed (duplicate number)|[3.1.1.3](rd-vbal.3.1.1.attributes.md)|
+|3.1.1.3 VB_GlobalNameSpace|[3.1.1.4](rd-vbal.3.1.1.attributes.md)|
+|3.1.1.4 VB_Customizable|[3.1.1.5](rd-vbal.3.1.1.attributes.md)|
+|3.1.1.5 VB_PredeclaredId|[3.1.1.6](rd-vbal.3.1.1.attributes.md)|
+|3.1.1.6 VB_Description|[3.1.1.7](rd-vbal.3.1.1.attributes.md)|
+|3.4.1–3.4.3, on the 3.4.0 page|[3.4.1](rd-vbal.3.4.1.block-statements.md)–[3.4.3](rd-vbal.3.4.3.file-statements.md), one page each|
+|3.5.1–3.5.5, on the 3.5.0 page|[3.5.1](rd-vbal.3.5.1.instructionlist.md)–[3.5.5](rd-vbal.3.5.5.placement-and-licensing.md), one page each|
+|3.5.4 Execution: per-statement semantics|5.4.x.y, each statement's own page under [5.4](rd-vbal.5.4.procedure-bodies-and-statements.md); procedure invocation: 5.3.1.x under [5.3.1](rd-vbal.5.3.1.procedure-declarations.md)|
+|4.1 VBIDE Synchronization, on the 4.0 page|[4.1](rd-vbal.4.1.vbide-synchronization.md), own page|
+|5.0.1.1 Simple Name Expressions|[5.6.10](rd-vbal.5.6.10.simple-name-expressions.md)|
+|5.0.2.1 Operator Evaluation|[5.6.9.2](rd-vbal.5.6.9.2.simple-data-operators.md) (pipeline, effective type); arithmetic: [5.6.9.3](rd-vbal.5.6.9.3.arithmetic-operators.md); relational and the Variant String/Numeric exception: [5.6.9.5](rd-vbal.5.6.9.5.relational-operators.md); logical: [5.6.9.8](rd-vbal.5.6.9.8.logical-operators.md)|
+|5.0.2.2 Let-Coercion|[5.5.1.2](rd-vbal.5.5.1.2.runtime-semantics.md) (provider, strategies, frame stack); numeric: 5.5.1.2.1; banker's rounding: 5.5.1.2.1.1; Variant: 5.5.1.2.12|
+|5.0.2.2 `VarType` and COM interop shape|[6.1.1.16](rd-vbal.6.1.1.predefined-enums.md) VbVarType|
+|5.0.2.3 Statement Evaluation|[5.4](rd-vbal.5.4.procedure-bodies-and-statements.md)|
+|6.1 VBA Project, on the 6.0 page|[6.1](rd-vbal.6.1.vba-project.md), own page|
+|6.1.1 Symbol injection|[6.0.1](rd-vbal.6.0.standard-library.md)|
+|6.1.1 The `Err` function shape|[6.1.3.2](rd-vbal.6.1.3.2.err-class.md)|
+|6.1.2 `ErrObject.StackTrace`|[6.1.3.2.2.7](rd-vbal.6.1.3.2.err-class.md) 🧩|
+|6.1.3 `Information.Erl`|[6.1.2.7.1.14](rd-vbal.6.1.2.7.information.md) 🧩|
+|6.1.4 `Strings.Len`/`Strings.LenB`|[6.1.2.11.1.22](rd-vbal.6.1.2.11.strings.md)|
+|6.1.5 Modules: enums|[6.1.1](rd-vbal.6.1.1.predefined-enums.md)|
+|6.1.5 Modules: procedural modules|[6.1.2](rd-vbal.6.1.2.predefined-procedural-modules.md) and 6.1.2.1–6.1.2.12|
+|6.1.5 Modules: class modules|[6.1.3](rd-vbal.6.1.3.predefined-class-modules.md) and 6.1.3.1–6.1.3.3|
+|"MS-VBAL §6.2.1" VBScript RegExp 5.5 (no such MS-VBAL section)|[6.2](rd-vbal.6.2.vbscript-regexp.md), RD-VBAL's own|
+
+---
+> ⏭️ [**RD-VBAL §1.0** Introduction](rd-vbal.1.0.introduction.md)

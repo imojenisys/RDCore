@@ -1,113 +1,121 @@
 # 6.0 Standard Library
 
----
-## 6.1 VBA Project
-The `VBA` project is a _host project_ that is present in every _VBA environment_. The `VBA` project consists of a set of classes, functions, `Enum` and constants that form VBA's _standard library_.
+This chapter describes the **RD-VBA** implementation of the VBA standard library,
+[**MS-VBAL §6** VBA Standard Library](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c645c903-9bd4-4849-8735-3136e867536a).
 
-🎯 The **RDCore** platform must therefore implement this library, and the _environment host_ shall inject its symbols into all `VBA` projects; the symbols shall carry the appropriate _return type_ metadata.
+The `VBA` project consists of a set of classes, functions, `Enum` types and constants that together form VBA's
+_standard library_ ([**RD-VBAL §6.1** VBA Project](rd-vbal.6.1.vba-project.md)).
 
-### 6.1.1 Symbol injection
+🎯 The **RDCore** platform must implement the VBA standard library. The _environment host_ shall inject the standard
+library's symbols into all `VBA` projects, and those symbols shall carry the appropriate _return type_ metadata.
 
-The SDK declarations _are_ the library's definition, and its symbols are read off them: a module's members, their names, their parameters and their return types all come from the signature an implementation has to satisfy, so a symbol the _workspace_ resolves cannot describe a member the runtime does not have.
+The SDK defines the interfaces for the _internal representation_ of each standard-library module
+([RDCore.SDK.Runtime.Abstract.StdLib](../api/RDCore.SDK.Runtime.Abstract.StdLib.html)). The environment host exposes
+the symbols provided by the standard library to the _workspace_.
 
-- A declaration states its **return type** in its own signature: a `RuntimeSemanticsEvaluationResult<TValue>` names the value the member produces, and the non-generic `RuntimeSemanticsEvaluationResult` names none — which is what makes the member a `Sub`.
-- What a signature cannot express is stated by an attribute, and only where it applies: `StdLibModuleAttribute` / `StdLibClassAttribute` / `StdLibEnumAttribute` mark a declaration and may name it; `StdLibMemberAttribute` carries a name no convention recovers (`Hex` beside `Hex$`), an accessor kind, or a return type that is a _class_ or an _enum_ rather than an intrinsic type.
-- Everything regular is left to convention: `IStdInformationModule` is `Information`, `VBDayOfWeek` is `VbDayOfWeek`, `VBSunday` is `vbSunday`.
-- Nothing _references_ the library and nothing opts into it: the set of modules a project gets is whatever carries a marker, so the symbols are present whether or not a `.rdproj` mentions the library at all.
+A session is composed from several _symbol providers_: configuration flags, AST declarations, reflected referenced
+libraries, and the environment host's own runtime and standard library
+([**RD-VBAL §2.3.1.2** Session Services](rd-vbal.2.3.1.2.session-services.md)).
 
-The `Err` _function_ (**MS-VBAL §6.1.3.2**) illustrates one deliberate shape. MS-VBAL describes the error object as the default instance of a global class module named `Err`; **MS-VBA** exposes it as a zero-argument `Function` of `Information` returning an instance of a class named `ErrObject`. The two are indistinguishable from source — a standard module's members are promoted to the _project scope_, so a bare `Err` yields the error object either way — and the latter is what also leaves `ErrObject` nameable in an `As` clause instead of shadowed by its own default instance. **RD-VBA implements the MS-VBA shape.**
+The following standard-library topics are described with their module or class:
 
-### 6.1.2 `ErrObject.StackTrace`
-
-🎯 **RD-VBA adds one member to MS-VBAL's `Err` class**: a read-only `StackTrace` property reporting the call stack the current error was raised on, innermost activation first. VBA can say _what_ an error was but never _where_ it came from, which is what makes an `Err.Description` from deep in a call chain so uninformative.
-
-- The trace is **captured when the error is raised** — at the interpreter's own error-interception point, the one place every run-time error passes through — rather than derived when it is read: by the time a handler reads it, the activations it names have been unwound.
-- Only the activation the error was raised in carries a _location_; a caller's activation record does not say where in itself it is suspended.
-- It is empty when no error is current, and when source made one current by assigning `Err.Number` rather than by raising one.
-
-### 6.1.3 `Information.Erl`
-
-🎯 **RD-VBA widens a member MS-VBA got wrong.** `Erl` reports the _line number_ the most recent run-time error was raised at — a member MS-VBAL does not document at all, and that MS-VBA hides, while nonetheless exposing it from `Information`.
-
-**MS-VBA's own answer is not a useful one**, in two separate ways, and RD-VBA departs from both.
-
-**It counts the wrong thing.** MS-VBA reports the last _line-number label_ it passed. Hardly any code numbers every line, so a fault in an unnumbered statement is reported at whichever numbered line came before it — however far back that is — and a program that numbers nothing is told every error happened at line `0`. The number is truthful only where every single line is numbered, which is to say a BASIC program. So what `Erl` counts is a setting of the _environment_ (`ErlLineNumbering`, bound from `appsettings.json` like the rest of the runtime profile):
-
-|Mode|`Erl` reports|
+|Topic|Described in|
 |---|---|
-|`DocumentLine` (default)|the line the faulting statement is really on, counted from `1` as an editor counts it|
-|`LineLabel`|the last line-number label at or before it, or `0` when none precedes it — bug for bug with MS-VBA|
+|The `Err` function, and the shape of the error object it returns|[**RD-VBAL §6.1.3.2** Err Class](rd-vbal.6.1.3.2.err-class.md)|
+|🧩 `ErrObject.StackTrace`|[**RD-VBAL §6.1.3.2.2.7** StackTrace](rd-vbal.6.1.3.2.err-class.md#613227-stacktrace)|
+|🧩 `Information.Erl`|[**RD-VBAL §6.1.2.7.1.14** Erl](rd-vbal.6.1.2.7.information.md#6127114-erl)|
+|`Strings.Len` / `Strings.LenB`|[**RD-VBAL §6.1.2.11.1.22** Len / LenB](rd-vbal.6.1.2.11.strings.md#61211122-len--lenb)|
+|The VBScript RegExp 5.5 class modules|[**RD-VBAL §6.2** VBScript Regular Expressions](rd-vbal.6.2.vbscript-regexp.md)|
 
-A _named_ label never sets it in either mode; only a label spelled as decimal digits does. `LineLabel` is the right answer for a numbered BASIC program, where it _is_ the document line, and is there for a workspace whose own code depends on MS-VBA's behaviour.
 
-**And it reports it too narrowly.** MS-VBA reports `Erl` with `ushort` resolution and wraps around on any line number that does not fit, so a program numbered past `65535` is told it faulted at a line it has not got. **RD-VBA returns a `Long`**, so every legal line number is representable.
+## Standard-Library Calls
 
-### 6.1.4 `Strings.Len` / `Strings.LenB`
+Most of the standard library declares `Variant` parameters. A standard-library member's `Variant` parameter accepts
+its argument.
 
-**MS-VBAL §6.1.2.11.1.22.** The pair returns "the number of characters in a string or the number of bytes required to store a variable on the current platform", and `LenB` "will return the same value as `Len`, except for strings or UDTs" — one function with two exceptions, rather than two functions.
+An argument of a standard-library call reaches the member as follows:
 
-|Expression|`Len`|`LenB`|
-|---|---|---|
-|A `String`|its characters|two bytes per character|
-|A fixed-length `String`|its declared length|twice its declared length|
-|`Null`|`Null`|`Null`|
-|Any other scalar|the bytes it occupies|the same|
-|A **UDT**|"the size as it will be written to the file"|"the in-memory size, including any implementation-specific padding between elements"|
+1. The evaluator coerces the argument to the parameter's declared type on the way in
+   ([**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)).
+2. The external call carries the argument as an
+   [IRuntimeValue](../api/RDCore.SDK.Model.Values.Runtime.IRuntimeValue.html): a runtime value rather than a typed
+   value.
+3. At external dispatch, the typed value of a `Variant` argument is taken off the runtime variant itself
+   ([VBRuntimeVariantValue](../api/RDCore.SDK.Model.Values.Runtime.VBRuntimeVariantValue.html)), not from its
+   `BoxedValue`. A `Variant`'s own `BoxedValue` unwraps all the way to the managed value
+   ([**RD-VBAL §2.5.2.1.5** Variant Values](rd-vbal.2.5.2.1.5.variant-values.md)).
 
-The UDT row is the one that needs the platform to know two different sizes for the same value; [§2.5.2.1.3](rd-vbal.2.5.runtime-values.md) defines both and holds the padding rule. A record whose members include a variable-length `String` is the case MS-VBAL warns cannot be predicted — `Len` counts the characters the member currently holds, and `LenB` counts the pointer, so the two move independently of each other.
+The declared type of an argument survives external dispatch, because each intrinsic type stores its own exact
+managed type: a `short` for `Integer` and an `int` for `Long`
+([**RD-VBAL §2.5.2.1.1** Numeric Values](rd-vbal.2.5.2.1.1.numeric-values.md)).
 
-> 👉 An external call carries _runtime_ values rather than _typed_ ones, so the declared type a member was called with is recovered at the dispatch seam. It survives because each intrinsic stores its own exact managed type — a `short` for `Integer` and an `int` for `Long`, not one integer type for both — which is what lets `Len` answer for the variable it was given rather than guess. `Date` and `Double` are indistinguishable there and need not be: they are the same width.
+👉 Because each intrinsic stores its exact managed type, `Len` returns "the number of bytes required to store a
+variable" ([**RD-VBAL §6.1.2.11.1.22** Len / LenB](rd-vbal.6.1.2.11.strings.md#61211122-len--lenb)).
 
-### 6.1.5 Modules
 
-The SDK defines all the interfaces for the _internal representation_ of each module - the _environment host_ exposes the symbols provided by the library to the _workspace_:
+## 6.0.1 Symbol Injection
 
-- **MS-VBAL §6.1.1 Predefined Enums**
-  - [FormShowConstants](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBFormShowConstants.html)
-  - [VbAppWinStyle](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBAppWinStyle.html)
-  - [VbCalendar](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBCalendar.html)
-  - [VbCallType](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBCallType.html)
-  - [VbCompareMethod](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBCompareMethod.html)
-  - [VbDateTimeFormat](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBDateTimeFormat.html)
-  - [VbDayOfWeek](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBDayOfWeek.html)
-  - [VbFileAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBFileAttribute.html)
-  - [VbFirstWeekOfYear](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBFirstWeekOfYear.html)
-  - [VbIMEStatus](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBIMEStatus.html)
-  - [VbMsgBoxResult](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBMsgBoxResult.html)
-  - [VbMsgBoxStyle](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBMsgBoxStyle.html)
-  - [VbQueryClose](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBQueryClose.html)
-  - [VbStrConv](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBStrConv.html)
-  - [VbTriState](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBTriState.html)
-  - [VbVarType](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBVarType.html)
+The SDK declarations are the standard library's definition. The standard library's symbols are read off those
+declarations by [StdLibSymbolReader](../api/RDCore.SDK.Runtime.StdLib.StdLibSymbolReader.html).
 
-- **MS-VBAL §6.1.2 Predefined Procedural Modules**
-  - [ColorConstantsModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdColorConstantsModule.html)
-  - [ConstantsModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdConstantsModule.html)
-  - [ConversionModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdConversionModule.html)
-  - [DateTimeModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdDateTimeModule.html)
-  - [FileSystemModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdFileSystemModule.html)
-  - [FinancialModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdFinancialModule.html)
-  - [InformationModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInformationModule.html)
-  - [InteractionModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInteractionModule.html)
-  - [KeyCodeConstants](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBKeyCodeConstants.html)
-  - [MathModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdMathModule.html)
-  - [StringsModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdStringsModule.html)
-  - [SystemColorsConstants](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBSystemColorConstants.html)
+A standard-library module's members, their names, their parameters and their return types all come from the
+signature an implementation has to satisfy. Each of them is stated once, in that SDK signature.
 
-- **MS-VBAL §6.1.3 Predefined Class Modules**
-  - [CollectionClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdCollectionClass.html)
-  - [ErrClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdErrClass.html)
-  - [GlobalClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdGlobalClass.html)
+👉 Because the symbols are read off the SDK signatures, a symbol the _workspace_ resolves cannot describe a member the
+runtime does not have.
 
-> [!NOTE]
-> The **VBScript RegExp 5.5** _regular expressions_ library was recently folded (as-is) into the **MS-VBA** _VBA Standard Library_; this reference MS-VBAL section does not actually exist, the folded VBScript library does not appear to be officially documented by its publisher at this time.
+### Return Types
 
-- **MS-VBAL §6.2.1 VBScript RegExp 5.5 Class Modules**
-  - [RegExpClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdRegExpClass.html)
-  - [MatchClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdMatchClass.html)
-  - [MatchCollectionClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdMatchCollectionClass.html)
-  - [SubMatchesClass](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdSubMatchesClass.html)
+A standard-library declaration states its return type in its own signature:
 
+|Declaration result type|Return type of the member|
+|---|---|
+|[RuntimeSemanticsEvaluationResult&lt;TValue&gt;](../api/RDCore.SDK.Runtime.Shared.RuntimeSemanticsEvaluationResult-1.html)|Stated: `TValue` names the value the member produces.|
+|[RuntimeSemanticsEvaluationResult](../api/RDCore.SDK.Runtime.Shared.RuntimeSemanticsEvaluationResult.html) (non-generic)|None. This is what makes the member a `Sub`.|
+
+### Attributes
+
+An attribute states what a declaration's signature cannot express, and is used only where it applies.
+
+|Attribute|Carries|
+|---|---|
+|[StdLibModuleAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibModuleAttribute.html)|Marks a declaration as a standard-library module, and may name it.|
+|[StdLibClassAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibClassAttribute.html)|Marks a declaration as a standard-library class, and may name it.|
+|[StdLibEnumAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibEnumAttribute.html)|Marks a declaration as a standard-library enum, and may name it. `FormShowConstants` is a name no naming convention recovers, so the attribute states it.|
+|[StdLibMemberAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibMemberAttribute.html)|Any of: a member name no naming convention recovers (for example `Hex` beside `Hex$`); an accessor kind ([StdLibMemberKind](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibMemberKind.html)); a return type that is a _class_ or an _enum_ rather than an intrinsic type.|
+
+### Naming Conventions
+
+A standard-library name that follows a naming convention needs no attribute:
+
+|SDK declaration|Standard-library name|
+|---|---|
+|Interface [IStdInformationModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdInformationModule.html)|Module `Information`|
+|Enum [VBDayOfWeek](../api/RDCore.SDK.Runtime.Abstract.StdLib.VBDayOfWeek.html)|Enum `VbDayOfWeek`|
+|Enum member `VBSunday`|Constant `vbSunday`|
+
+### No Reference, No Opt-In
+
+Nothing references the standard library, and nothing opts into it. The standard-library modules a project gets are
+the SDK declarations that carry a marker attribute.
+
+A project has the standard library's symbols whether or not its `.rdproj` mentions the library
+([**RD-VBAL §2.2.3** ProjectFile](rd-vbal.2.2.3.projectfile.md)).
+
+`rdcore/host/symbols/define` resolves a declared type name against the standard library's own types as well as the
+intrinsic types ([**RD-VBAL §2.0.2** Client/Server Capabilities](rd-vbal.2.0.2.client-server-capabilities.md)).
+
+### Pointer Width
+
+`CLngPtr` needs the one thing a standard-library declaration cannot state: its `LongPtr` return type depends on the
+pointer width. `LongPtr` is a different type in each pointer width
+([**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md);
+[**RD-VBAL §6.1.2.3.1.10** CLngPtr](rd-vbal.6.1.2.3.conversion-module.md#6123110-clngptr)).
+
+The pointer width belongs to the environment. The environment host passes
+[StdLibSymbolProvider](../api/RDCore.SDK.Runtime.StdLib.StdLibSymbolProvider.html) the pointer width of its own
+runtime profile
+([IRuntimeEnvironmentProfile](../api/RDCore.SDK.Runtime.Abstract.Execution.IRuntimeEnvironmentProfile.html)).
 
 ---
-> ⏮️ [**RD-VBAL §5.0** Semantics](rd-vbal.5.0.semantics.html)
+> ⏮️ [**RD-VBAL §5.6.16** Constrained Expressions](rd-vbal.5.6.16.constrained-expressions.md) | ⏭️ [**RD-VBAL §6.1** VBA Project](rd-vbal.6.1.vba-project.md)

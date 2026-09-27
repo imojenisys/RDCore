@@ -1,25 +1,23 @@
 # 3.3.0 Operator Expressions
-> [!NOTE]
-> This section is incomplete at this time. Planned pages:
->  - [**RD-VBAL §3.3.1** Unary Operators]<!-- (./rd-vbal.3.3.1.unary-operators.html) -->
->  - [**RD-VBAL §3.3.2** Arithmetic Operators]<!--(./rd-vbal.3.3.2.arithmetic-operators.html)-->
->  - [**RD-VBAL §3.3.3** Logical (Bitwise) Operators]<!--(./rd-vbal.3.3.3.logical-operators.html)-->
->  - [**RD-VBAL §3.3.4** Relational (Comparison) Operators]<!--(./rd-vbal.3.3.4.relational-operators.html)--> 
 
-An _operator_ consists of a _bound expression node_ that yields a deterministic _result_ given one or more _operand_ inputs.
+An _operator_ consists of a _bound expression node_ that yields a deterministic _result_ given one or more
+_operand_ inputs. The semantics of operator expressions are described in
+[**RD-VBAL §5.6.9** Operator Expressions](rd-vbal.5.6.9.operator-expressions.md).
 
-- An operator that accepts a single input is a **unary operator**;
-- An operator that accepts two inputs is a **binary operator**;
-- An operator that accepts three inputs is a **ternary operator**.
+|Inputs|Operator kind|Notation|
+|---|---|---|
+|One|**Unary operator**|All unary operators are _prefix_: the operator token appears _before_ its operand.|
+|Two|**Binary operator**|All binary operators are _infix_: a _left_ and a _right_ operand, with the operator token between them.|
+|Three|**Ternary operator**|Undefined in **RD-VBA**.|
 
 > [!NOTE]
-> 🧩 RD-VBA does not currently define any _ternary operators_.
+> 🧩 **RD-VBA** does not define any _ternary operators_. Ternary operators should never be introduced in the
+> _language core_.
 
-- All _unary operators_ are _prefix_, with the operator token appearing _before_ its operand;
-- All _binary operators_ are _infix_, with a _left_ and a _right_ operand and the operator token between them;
-- _ternary operators_ are **undefined in RD-VBA** and should never be introduced in the _language core_.
+## Operator Node Hierarchy
 
-All operators ultimately inherit `SyntaxNode`, which represents any type of AST node:
+All operators ultimately inherit `SyntaxNode`, which represents any type of AST node
+([**RD-VBAL §3.0.2** Node Types](rd-vbal.3.0.2.node-types.md)):
 
 - [SyntaxNode](../api/RDCore.SDK.Model.AST.Abstract.SyntaxNode.html)
   - [ExpressionNode](../api/RDCore.SDK.Model.AST.Abstract.ExpressionNode.html)
@@ -27,21 +25,29 @@ All operators ultimately inherit `SyntaxNode`, which represents any type of AST 
       - [VBUnaryOperatorExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.VBUnaryOperatorExpressionNode.html)
       - [VBBinaryOperatorExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.VBBinaryOperatorExpressionNode.html)
 
-Each layer of this inheritance hierarchy refines its members with more specialized signatures in _templated methods_, usually sealing overrides to leave only one or two methods to implement at the leaves. For example an `ExpressionNode` has a general-purpose _inputs_ array of values, but an _operator expression_ exposes them as _indexed operands_ (`Children[n]`), and a _unary operator_ exposes only `Operand` while a _binary operator_ exposes `Left` and `Right`.  
+Each layer of this inheritance hierarchy refines its members with more specialized signatures in
+_templated methods_. The layers usually seal their overrides, leaving only one or two methods to implement at the
+leaves. For example, each layer exposes the node's inputs as follows:
 
-> [!TIP]
-> This is also the case for all _semantics_, both _static_ and _runtime_.
+|Node type|Inputs exposed as|
+|---|---|
+|`ExpressionNode`|A general-purpose _inputs_ array of values.|
+|`VBOperatorExpression`|Indexed _operands_ (`Children[n]`).|
+|`VBUnaryOperatorExpressionNode`|`Operand` only.|
+|`VBBinaryOperatorExpressionNode`|`Left` and `Right`.|
 
-<!-- TODO
+The same layered refinement through templated methods applies to all _semantics_, both _static_ and _runtime_
+([**RD-VBAL §5.0** Semantics](rd-vbal.5.0.semantics.md)).
+
 ---
 ## In this section
 
-- [**RD-VBAL §3.3.1** Unary Operators](./rd-vbal.3.3.1.unary-operators.html)
-- [**RD-VBAL §3.3.2** Arithmetic Operators](./rd-vbal.3.3.2.arithmetic-operators.html)
-- [**RD-VBAL §3.3.3** Logical (Bitwise) Operators](./rd-vbal.3.3.3.logical-operators.html)
-- [**RD-VBAL §3.3.4** Relational (Comparison) Operators](./rd-vbal.3.3.4.relational-operators.html) 
--->
+|§|Title|
+|---|---|
+|3.3.1|[Unary Operators](rd-vbal.3.3.1.unary-operators.md)|
+|3.3.2|[Arithmetic Operators](rd-vbal.3.3.2.arithmetic-operators.md) — *reserved*|
+|3.3.3|[Logical (Bitwise) Operators](rd-vbal.3.3.3.logical-operators.md) — *reserved*|
+|3.3.4|[Relational (Comparison) Operators](rd-vbal.3.3.4.relational-operators.md) — *reserved*|
 
 ---
-> ⏮️ [**RD-VBAL §3.2** Literals](rd-vbal.3.2.0.literals.html) | ⏭️ [**RD-VBAL §3.4** Statements](rd-vbal.3.4.0.statements.html)
-
+> ⏮️ [**RD-VBAL §3.2.0** Literal Expressions](rd-vbal.3.2.0.literals.md) | ⏭️ [**RD-VBAL §3.3.1** Unary Operators](rd-vbal.3.3.1.unary-operators.md)

@@ -1,0 +1,426 @@
+- name: "RD-VBAL"
+  href: rd-vbal.md
+- name: "1.0 Introduction"
+  href: rd-vbal.1.0.introduction.md
+  items:
+    - name: "1.1 Design and Extension Philosophy"
+      href: rd-vbal.1.1.philosophy.md
+      items:
+        - name: "1.1.1 Platform Extensions"
+          href: rd-vbal.1.1.1.platform-extensions.md
+        - name: "1.1.2 Language Core Extensions"
+          href: rd-vbal.1.1.2.language-core-extensions.md
+        - name: "1.1.3 Core Semantic Flags"
+          href: rd-vbal.1.1.3.core-semantic-flags.md
+        - name: "1.1.4 Core Diagnostics"
+          href: rd-vbal.1.1.4.core-diagnostics.md
+        - name: "1.1.5 Extension Manifest"
+          href: rd-vbal.1.1.5.extension-manifest.md
+        - name: "1.1.6 Capabilities Provider"
+          href: rd-vbal.1.1.6.capabilities-provider.md
+- name: "2.0 RD-VBA Computational Environment"
+  href: rd-vbal.2.0.computational-environment.md
+  items:
+    - name: "2.0.1 Supported Languages"
+      href: rd-vbal.2.0.1.supported-languages.md
+    - name: "2.0.2 Client/Server Capabilities"
+      href: rd-vbal.2.0.2.client-server-capabilities.md
+    - name: "2.1 Implicit Storage"
+      href: rd-vbal.2.1.implicit-storage.md
+    - name: "2.2 RDPROJ Structure"
+      href: rd-vbal.2.2.rdproj-structure.md
+      items:
+        - name: "2.2.1 Conventions"
+          href: rd-vbal.2.2.1.conventions.md
+        - name: "2.2.2 WorkspaceFile"
+          href: rd-vbal.2.2.2.workspacefile.md
+        - name: "2.2.3 ProjectFile"
+          href: rd-vbal.2.2.3.projectfile.md
+    - name: "2.3 Application Host"
+      href: rd-vbal.2.3.application-host.md
+      items:
+        - name: "2.3.1 Composition Root"
+          href: rd-vbal.2.3.1.composition-root.md
+          items:
+            - name: "2.3.1.1 Execution Session"
+              href: rd-vbal.2.3.1.1.execution-session.md
+            - name: "2.3.1.2 Session Services"
+              href: rd-vbal.2.3.1.2.session-services.md
+            - name: "2.3.1.3 Name Resolution"
+              href: rd-vbal.2.3.1.3.name-resolution.md
+        - name: "2.3.2 Mode / State"
+          href: rd-vbal.2.3.2.mode-state.md
+    - name: "2.4 Static Types"
+      href: rd-vbal.2.4.static-types.md
+      items:
+        - name: "2.4.1 Intrinsic Types"
+          href: rd-vbal.2.4.1.intrinsic-types.md
+        - name: "2.4.2 Non-intrinsic Types"
+          href: rd-vbal.2.4.2.non-intrinsic-types.md
+        - name: "2.4.3 Meta and Advanced Types"
+          href: rd-vbal.2.4.3.meta-and-advanced-types.md
+        - name: "2.4.4 Deferred Types"
+          href: rd-vbal.2.4.4.deferred-types.md
+    - name: "2.5 Runtime Values"
+      href: rd-vbal.2.5.runtime-values.md
+      items:
+        - name: "2.5.1 Runtime Entities"
+          href: rd-vbal.2.5.1.runtime-entities.md
+        - name: "2.5.2 VBTypedValue"
+          href: rd-vbal.2.5.2.vbtypedvalue.md
+          items:
+            - name: "2.5.2.1 Intrinsic Type Values"
+              href: rd-vbal.2.5.2.1.intrinsic-type-values.md
+              items:
+                - name: "2.5.2.1.1 Numeric Values"
+                  href: rd-vbal.2.5.2.1.1.numeric-values.md
+                - name: "2.5.2.1.2 Array Values"
+                  href: rd-vbal.2.5.2.1.2.array-values.md
+                - name: "2.5.2.1.3 User-Defined Type (UDT) Values"
+                  href: rd-vbal.2.5.2.1.3.udt-values.md
+                - name: "2.5.2.1.4 Object Values"
+                  href: rd-vbal.2.5.2.1.4.object-values.md
+                - name: "2.5.2.1.5 Variant Values"
+                  href: rd-vbal.2.5.2.1.5.variant-values.md
+    - name: "2.6 Diagnostics"
+      href: rd-vbal.2.6.diagnostics.md
+      items:
+        - name: "2.6.1 Syntax Errors"
+          href: rd-vbal.2.6.1.syntax-errors.md
+        - name: "2.6.2 Semantic Compilation Errors"
+          href: rd-vbal.2.6.2.semantic-compilation-errors.md
+        - name: "2.6.3 Runtime Errors"
+          href: rd-vbal.2.6.3.runtime-errors.md
+        - name: "2.6.4 Rubberduck Core Diagnostics"
+          href: rd-vbal.2.6.4.rubberduck-core-diagnostics.md
+        - name: "2.6.5 Diagnostics Pipeline"
+          href: rd-vbal.2.6.5.diagnostics-pipeline.md
+- name: "3.0 Abstract Syntax Tree"
+  href: rd-vbal.3.0.syntax-tree.md
+  items:
+    - name: "3.0.1 Token Semantics"
+      href: rd-vbal.3.0.1.token-semantics.md
+    - name: "3.0.2 Node Types"
+      href: rd-vbal.3.0.2.node-types.md
+    - name: "3.0.3 Binding Contexts"
+      href: rd-vbal.3.0.3.binding-contexts.md
+    - name: "3.1 Attributes and Directives"
+      href: rd-vbal.3.1.attributes-directives.md
+      items:
+        - name: "3.1.1 Attributes"
+          href: rd-vbal.3.1.1.attributes.md
+    - name: "3.2.0 Literal Expressions"
+      href: rd-vbal.3.2.0.literals.md
+    - name: "3.3.0 Operator Expressions"
+      href: rd-vbal.3.3.0.operators.md
+      items:
+        - name: "3.3.1 Unary Operators"
+          href: rd-vbal.3.3.1.unary-operators.md
+        - name: "3.3.2 Arithmetic Operators"
+          href: rd-vbal.3.3.2.arithmetic-operators.md
+        - name: "3.3.3 Logical (Bitwise) Operators"
+          href: rd-vbal.3.3.3.logical-operators.md
+        - name: "3.3.4 Relational (Comparison) Operators"
+          href: rd-vbal.3.3.4.relational-operators.md
+    - name: "3.4.0 Statements"
+      href: rd-vbal.3.4.0.statements.md
+      items:
+        - name: "3.4.1 Block Statements"
+          href: rd-vbal.3.4.1.block-statements.md
+        - name: "3.4.2 Simple Statements"
+          href: rd-vbal.3.4.2.simple-statements.md
+        - name: "3.4.3 File Statements"
+          href: rd-vbal.3.4.3.file-statements.md
+    - name: "3.5.0 Instructions"
+      href: rd-vbal.3.5.0.instructions.md
+      items:
+        - name: "3.5.1 InstructionList"
+          href: rd-vbal.3.5.1.instructionlist.md
+        - name: "3.5.2 Instruction"
+          href: rd-vbal.3.5.2.instruction.md
+        - name: "3.5.3 Lowering Block Statements"
+          href: rd-vbal.3.5.3.lowering-block-statements.md
+        - name: "3.5.4 Execution"
+          href: rd-vbal.3.5.4.execution.md
+        - name: "3.5.5 Placement and Licensing"
+          href: rd-vbal.3.5.5.placement-and-licensing.md
+- name: "4.0 Program Structure and Organization"
+  href: rd-vbal.4.0.program-structure.md
+  items:
+    - name: "4.1 VBIDE Synchronization"
+      href: rd-vbal.4.1.vbide-synchronization.md
+- name: "5.0 Semantics"
+  href: rd-vbal.5.0.semantics.md
+  items:
+    - name: "5.1 Module Body Structure"
+      href: rd-vbal.5.1.module-body-structure.md
+    - name: "5.2 Module Declaration Section Structure"
+      href: rd-vbal.5.2.module-declaration-section-structure.md
+      items:
+        - name: "5.2.1 Option Directives"
+          href: rd-vbal.5.2.1.option-directives.md
+        - name: "5.2.2 Implicit Definition Directives"
+          href: rd-vbal.5.2.2.implicit-definition-directives.md
+        - name: "5.2.3 Module Declarations"
+          href: rd-vbal.5.2.3.module-declarations.md
+        - name: "5.2.4 Class Module Declarations"
+          href: rd-vbal.5.2.4.class-module-declarations.md
+    - name: "5.3 Module Code Section Structure"
+      href: rd-vbal.5.3.module-code-section-structure.md
+      items:
+        - name: "5.3.1 Procedure Declarations"
+          href: rd-vbal.5.3.1.procedure-declarations.md
+          items:
+            - name: "5.3.1.1 Procedure Scope"
+              href: rd-vbal.5.3.1.1.procedure-scope.md
+            - name: "5.3.1.2 Static Procedures"
+              href: rd-vbal.5.3.1.2.static-procedures.md
+            - name: "5.3.1.3 Procedure Names"
+              href: rd-vbal.5.3.1.3.procedure-names.md
+            - name: "5.3.1.4 Function Type Declarations"
+              href: rd-vbal.5.3.1.4.function-type-declarations.md
+            - name: "5.3.1.5 Parameter Lists"
+              href: rd-vbal.5.3.1.5.parameter-lists.md
+            - name: "5.3.1.6 Subroutine and Function Declarations"
+              href: rd-vbal.5.3.1.6.subroutine-and-function-declarations.md
+            - name: "5.3.1.7 Property Declarations"
+              href: rd-vbal.5.3.1.7.property-declarations.md
+            - name: "5.3.1.8 Event Handler Declarations"
+              href: rd-vbal.5.3.1.8.event-handler-declarations.md
+            - name: "5.3.1.9 Implemented Name Declarations"
+              href: rd-vbal.5.3.1.9.implemented-name-declarations.md
+            - name: "5.3.1.10 Lifecycle Handler Declarations"
+              href: rd-vbal.5.3.1.10.lifecycle-handler-declarations.md
+            - name: "5.3.1.11 Procedure Invocation Argument Processing"
+              href: rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md
+    - name: "5.4 Procedure Bodies and Statements"
+      href: rd-vbal.5.4.procedure-bodies-and-statements.md
+      items:
+        - name: "5.4.1 Statement Blocks"
+          href: rd-vbal.5.4.1.statement-blocks.md
+          items:
+            - name: "5.4.1.1 Statement Labels"
+              href: rd-vbal.5.4.1.1.statement-labels.md
+            - name: "5.4.1.2 Rem Statement"
+              href: rd-vbal.5.4.1.2.rem-statement.md
+        - name: "5.4.2 Control Statements"
+          href: rd-vbal.5.4.2.control-statements.md
+          items:
+            - name: "5.4.2.1 Call Statement"
+              href: rd-vbal.5.4.2.1.call-statement.md
+            - name: "5.4.2.2 While Statement"
+              href: rd-vbal.5.4.2.2.while-statement.md
+            - name: "5.4.2.3 For Statement"
+              href: rd-vbal.5.4.2.3.for-statement.md
+            - name: "5.4.2.4 For Each Statement"
+              href: rd-vbal.5.4.2.4.for-each-statement.md
+            - name: "5.4.2.5 Exit For Statement"
+              href: rd-vbal.5.4.2.5.exit-for-statement.md
+            - name: "5.4.2.6 Do Statement"
+              href: rd-vbal.5.4.2.6.do-statement.md
+            - name: "5.4.2.7 Exit Do Statement"
+              href: rd-vbal.5.4.2.7.exit-do-statement.md
+            - name: "5.4.2.8 If Statement"
+              href: rd-vbal.5.4.2.8.if-statement.md
+            - name: "5.4.2.9 Single-line If Statement"
+              href: rd-vbal.5.4.2.9.single-line-if-statement.md
+            - name: "5.4.2.10 Select Case Statement"
+              href: rd-vbal.5.4.2.10.select-case-statement.md
+            - name: "5.4.2.11 Stop Statement"
+              href: rd-vbal.5.4.2.11.stop-statement.md
+            - name: "5.4.2.12 GoTo Statement"
+              href: rd-vbal.5.4.2.12.goto-statement.md
+            - name: "5.4.2.13 On...GoTo Statement"
+              href: rd-vbal.5.4.2.13.on-goto-statement.md
+            - name: "5.4.2.14 GoSub Statement"
+              href: rd-vbal.5.4.2.14.gosub-statement.md
+            - name: "5.4.2.15 Return Statement"
+              href: rd-vbal.5.4.2.15.return-statement.md
+            - name: "5.4.2.16 On...GoSub Statement"
+              href: rd-vbal.5.4.2.16.on-gosub-statement.md
+            - name: "5.4.2.17 Exit Sub Statement"
+              href: rd-vbal.5.4.2.17.exit-sub-statement.md
+            - name: "5.4.2.18 Exit Function Statement"
+              href: rd-vbal.5.4.2.18.exit-function-statement.md
+            - name: "5.4.2.19 Exit Property Statement"
+              href: rd-vbal.5.4.2.19.exit-property-statement.md
+            - name: "5.4.2.20 RaiseEvent Statement"
+              href: rd-vbal.5.4.2.20.raiseevent-statement.md
+            - name: "5.4.2.21 With Statement"
+              href: rd-vbal.5.4.2.21.with-statement.md
+            - name: "5.4.2.22 End Statement"
+              href: rd-vbal.5.4.2.22.end-statement.md
+            - name: "5.4.2.23 Assert Statement"
+              href: rd-vbal.5.4.2.23.assert-statement.md
+        - name: "5.4.3 Data Manipulation Statements"
+          href: rd-vbal.5.4.3.data-manipulation-statements.md
+          items:
+            - name: "5.4.3.1 Local Variable Declarations"
+              href: rd-vbal.5.4.3.1.local-variable-declarations.md
+            - name: "5.4.3.2 Local Constant Declarations"
+              href: rd-vbal.5.4.3.2.local-constant-declarations.md
+            - name: "5.4.3.3 ReDim Statement"
+              href: rd-vbal.5.4.3.3.redim-statement.md
+            - name: "5.4.3.4 Erase Statement"
+              href: rd-vbal.5.4.3.4.erase-statement.md
+            - name: "5.4.3.5 Mid/MidB/Mid$/MidB$ Statement"
+              href: rd-vbal.5.4.3.5.mid-statement.md
+            - name: "5.4.3.6 LSet Statement"
+              href: rd-vbal.5.4.3.6.lset-statement.md
+            - name: "5.4.3.7 RSet Statement"
+              href: rd-vbal.5.4.3.7.rset-statement.md
+            - name: "5.4.3.8 Let Statement"
+              href: rd-vbal.5.4.3.8.let-statement.md
+            - name: "5.4.3.9 Set Statement"
+              href: rd-vbal.5.4.3.9.set-statement.md
+        - name: "5.4.4 Error Handling Statements"
+          href: rd-vbal.5.4.4.error-handling-statements.md
+          items:
+            - name: "5.4.4.1 On Error Statement"
+              href: rd-vbal.5.4.4.1.on-error-statement.md
+            - name: "5.4.4.2 Resume Statement"
+              href: rd-vbal.5.4.4.2.resume-statement.md
+            - name: "5.4.4.3 Error Statement"
+              href: rd-vbal.5.4.4.3.error-statement.md
+        - name: "5.4.5 File Statements"
+          href: rd-vbal.5.4.5.file-statements.md
+          items:
+            - name: "5.4.5.1 Open Statement"
+              href: rd-vbal.5.4.5.1.open-statement.md
+            - name: "5.4.5.2 Close and Reset Statements"
+              href: rd-vbal.5.4.5.2.close-and-reset-statements.md
+            - name: "5.4.5.3 Seek Statement"
+              href: rd-vbal.5.4.5.3.seek-statement.md
+            - name: "5.4.5.4 Lock Statement"
+              href: rd-vbal.5.4.5.4.lock-statement.md
+            - name: "5.4.5.5 Unlock Statement"
+              href: rd-vbal.5.4.5.5.unlock-statement.md
+            - name: "5.4.5.6 Line Input Statement"
+              href: rd-vbal.5.4.5.6.line-input-statement.md
+            - name: "5.4.5.7 Width Statement"
+              href: rd-vbal.5.4.5.7.width-statement.md
+            - name: "5.4.5.8 Print Statement"
+              href: rd-vbal.5.4.5.8.print-statement.md
+            - name: "5.4.5.9 Write Statement"
+              href: rd-vbal.5.4.5.9.write-statement.md
+            - name: "5.4.5.10 Input Statement"
+              href: rd-vbal.5.4.5.10.input-statement.md
+            - name: "5.4.5.11 Put Statement"
+              href: rd-vbal.5.4.5.11.put-statement.md
+            - name: "5.4.5.12 Get Statement"
+              href: rd-vbal.5.4.5.12.get-statement.md
+    - name: "5.5 Implicit coercion"
+      href: rd-vbal.5.5.implicit-coercion.md
+      items:
+        - name: "5.5.1 Let-coercion"
+          href: rd-vbal.5.5.1.let-coercion.md
+          items:
+            - name: "5.5.1.1 Static semantics"
+              href: rd-vbal.5.5.1.1.static-semantics.md
+            - name: "5.5.1.2 Runtime semantics"
+              href: rd-vbal.5.5.1.2.runtime-semantics.md
+        - name: "5.5.2 Set-coercion"
+          href: rd-vbal.5.5.2.set-coercion.md
+          items:
+            - name: "5.5.2.1 Static semantics"
+              href: rd-vbal.5.5.2.1.static-semantics.md
+            - name: "5.5.2.2 Runtime semantics"
+              href: rd-vbal.5.5.2.2.runtime-semantics.md
+    - name: "5.6 Expressions"
+      href: rd-vbal.5.6.expressions.md
+      items:
+        - name: "5.6.1 Expression Classifications"
+          href: rd-vbal.5.6.1.expression-classifications.md
+        - name: "5.6.2 Expression Evaluation"
+          href: rd-vbal.5.6.2.expression-evaluation.md
+        - name: "5.6.3 Member Resolution"
+          href: rd-vbal.5.6.3.member-resolution.md
+        - name: "5.6.4 Expression Binding Contexts"
+          href: rd-vbal.5.6.4.expression-binding-contexts.md
+        - name: "5.6.5 Literal Expressions"
+          href: rd-vbal.5.6.5.literal-expressions.md
+        - name: "5.6.6 Parenthesized Expressions"
+          href: rd-vbal.5.6.6.parenthesized-expressions.md
+        - name: "5.6.7 TypeOf...Is Expressions"
+          href: rd-vbal.5.6.7.typeof-is-expressions.md
+        - name: "5.6.8 New Expressions"
+          href: rd-vbal.5.6.8.new-expressions.md
+        - name: "5.6.9 Operator Expressions"
+          href: rd-vbal.5.6.9.operator-expressions.md
+          items:
+            - name: "5.6.9.1 Operator Precedence and Associativity"
+              href: rd-vbal.5.6.9.1.operator-precedence-and-associativity.md
+            - name: "5.6.9.2 Simple Data Operators"
+              href: rd-vbal.5.6.9.2.simple-data-operators.md
+            - name: "5.6.9.3 Arithmetic Operators"
+              href: rd-vbal.5.6.9.3.arithmetic-operators.md
+            - name: "5.6.9.4 & Operator"
+              href: rd-vbal.5.6.9.4.ampersand-operator.md
+            - name: "5.6.9.5 Relational Operators"
+              href: rd-vbal.5.6.9.5.relational-operators.md
+            - name: "5.6.9.6 Like Operator"
+              href: rd-vbal.5.6.9.6.like-operator.md
+            - name: "5.6.9.7 Is Operator"
+              href: rd-vbal.5.6.9.7.is-operator.md
+            - name: "5.6.9.8 Logical Operators"
+              href: rd-vbal.5.6.9.8.logical-operators.md
+        - name: "5.6.10 Simple Name Expressions"
+          href: rd-vbal.5.6.10.simple-name-expressions.md
+        - name: "5.6.11 Instance Expressions"
+          href: rd-vbal.5.6.11.instance-expressions.md
+        - name: "5.6.12 Member Access Expressions"
+          href: rd-vbal.5.6.12.member-access-expressions.md
+        - name: "5.6.13 Index Expressions"
+          href: rd-vbal.5.6.13.index-expressions.md
+        - name: "5.6.14 Dictionary Access Expressions"
+          href: rd-vbal.5.6.14.dictionary-access-expressions.md
+        - name: "5.6.15 With Expressions"
+          href: rd-vbal.5.6.15.with-expressions.md
+        - name: "5.6.16 Constrained Expressions"
+          href: rd-vbal.5.6.16.constrained-expressions.md
+- name: "6.0 Standard Library"
+  href: rd-vbal.6.0.standard-library.md
+  items:
+    - name: "6.1 VBA Project"
+      href: rd-vbal.6.1.vba-project.md
+      items:
+        - name: "6.1.1 Predefined Enums"
+          href: rd-vbal.6.1.1.predefined-enums.md
+        - name: "6.1.2 Predefined Procedural Modules"
+          href: rd-vbal.6.1.2.predefined-procedural-modules.md
+          items:
+            - name: "6.1.2.1 ColorConstants Module"
+              href: rd-vbal.6.1.2.1.colorconstants-module.md
+            - name: "6.1.2.2 Constants Module"
+              href: rd-vbal.6.1.2.2.constants-module.md
+            - name: "6.1.2.3 Conversion Module"
+              href: rd-vbal.6.1.2.3.conversion-module.md
+            - name: "6.1.2.4 DateTime Module"
+              href: rd-vbal.6.1.2.4.datetime-module.md
+            - name: "6.1.2.5 FileSystem"
+              href: rd-vbal.6.1.2.5.filesystem.md
+            - name: "6.1.2.6 Financial"
+              href: rd-vbal.6.1.2.6.financial.md
+            - name: "6.1.2.7 Information"
+              href: rd-vbal.6.1.2.7.information.md
+            - name: "6.1.2.8 Interaction"
+              href: rd-vbal.6.1.2.8.interaction.md
+            - name: "6.1.2.9 KeyCodeConstants"
+              href: rd-vbal.6.1.2.9.keycodeconstants.md
+            - name: "6.1.2.10 Math"
+              href: rd-vbal.6.1.2.10.math.md
+            - name: "6.1.2.11 Strings"
+              href: rd-vbal.6.1.2.11.strings.md
+            - name: "6.1.2.12 SystemColorConstants"
+              href: rd-vbal.6.1.2.12.systemcolorconstants.md
+        - name: "6.1.3 Predefined Class Modules"
+          href: rd-vbal.6.1.3.predefined-class-modules.md
+          items:
+            - name: "6.1.3.1 Collection Object"
+              href: rd-vbal.6.1.3.1.collection-object.md
+            - name: "6.1.3.2 Err Class"
+              href: rd-vbal.6.1.3.2.err-class.md
+            - name: "6.1.3.3 Global Class"
+              href: rd-vbal.6.1.3.3.global-class.md
+    - name: "6.2 VBScript Regular Expressions"
+      href: rd-vbal.6.2.vbscript-regexp.md

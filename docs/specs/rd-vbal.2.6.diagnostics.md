@@ -1,166 +1,78 @@
 # 2.6 Diagnostics
+
 > [!NOTE]
 > This specification may be incomplete at this time.
 
-🎯 Every problem the **RDCore** platform finds in a workspace — a syntax error, a static or runtime
-compilation error, an analyzer finding — surfaces to the editor as an **LSP diagnostic** carrying a
-stable **code**, a **help URL** for that code, and, for error diagnostics, structured detail.
+🎯 Every problem the **RDCore** platform finds in a workspace surfaces to the editor as an **LSP diagnostic**. Such problems include syntax errors, static or runtime compilation errors, and analyzer findings.
 
-Diagnostic codes are grouped into four families by the layer that raises them:
+🎯 Every RDCore LSP diagnostic carries:
+
+- a stable **code**;
+- a **help URL** for that code;
+- for an error diagnostic, structured **detail**.
+
+🧩 **RDCore.Diagnostics** is the core platform extension responsible for issuing all *language core diagnostics*. Additional first-party or third-party extensions may provide additional or advanced diagnostics to the LSP orchestration layer. See [**RD-VBAL §1.1.4** Core Diagnostics](rd-vbal.1.1.4.core-diagnostics.md).
+
+Diagnostics reach the editor through an LSP pull pipeline that asks diagnostics providers; see [**RD-VBAL §2.6.5** Diagnostics Pipeline](rd-vbal.2.6.5.diagnostics-pipeline.md).
+
+## Code Families
+
+Diagnostic codes are grouped into four families by the layer that raises them. The code prefixes are `VBC`, `VBR`, `VBA` and `RDC`.
 
 |Family|Prefix|Title|Raised by|Section|
 |---|---|---|---|---|
-|Syntax errors|`VBC`|_Syntax error_|the parser (concrete syntax tree)|[§2.6.1](#261-syntax-errors)|
-|Semantic compilation errors|`VBC`|_Compile error_|the static semantics layer (abstract syntax tree)|[§2.6.2](#262-semantic-compilation-errors)|
-|Runtime errors|`VBR` / `VBA`|_Run-time error_ / _Application error_|the runtime semantics layer / workspace `Err.Raise`|[§2.6.3](#263-runtime-errors)|
-|Rubberduck Core diagnostics|`RDC`|_(per finding)_|the `RDCore.Diagnostics` analyzers|[§2.6.4](#264-rubberduck-core-diagnostics)|
+|Syntax errors|`VBC`|_Syntax error_|the parser (concrete syntax tree)|[**RD-VBAL §2.6.1** Syntax Errors](rd-vbal.2.6.1.syntax-errors.md)|
+|Semantic compilation errors|`VBC`|_Compile error_|the static semantics layer (abstract syntax tree)|[**RD-VBAL §2.6.2** Semantic Compilation Errors](rd-vbal.2.6.2.semantic-compilation-errors.md)|
+|Runtime errors|`VBR` / `VBA`|_Run-time error_ (`VBR`) / _Application error_ (`VBA`)|the runtime semantics layer (`VBR`) / a workspace `Err.Raise` (`VBA`)|[**RD-VBAL §2.6.3** Runtime Errors](rd-vbal.2.6.3.runtime-errors.md)|
+|Rubberduck Core diagnostics|`RDC`|_(per finding)_|the `RDCore.Diagnostics` analyzers|[**RD-VBAL §2.6.4** Rubberduck Core Diagnostics](rd-vbal.2.6.4.rubberduck-core-diagnostics.md)|
 
-The **title** is an error's _category_ — what kind of thing went wrong — as distinct from its
-_description_, which is what went wrong: a title of "Run-time error" over a description of "Division by
-zero". It is localized, and it is derived rather than stored, because the two `VBC` categories share one
-family and nothing but the numeric portion separates them: `VBCompileErrorId` reserves `[9300..]` for the
-semantic ones, and everything below it is the parser's.
+The code format of each family (`VBC00000`, `VBR00000`, `VBA00000`, `RDC00000`), and the `RDX00000` format for extension diagnostics, is specified in [**RD-VBAL §1.1.4** Core Diagnostics](rd-vbal.1.1.4.core-diagnostics.md).
 
-The numeric portion is a five-digit zero-padded code (`VBC00001`, `VBR00009`, `RDC01001`). Each code
-is documented on its own page under [Diagnostics](../diagnostics/index.html)
-(`https://rubberduck-vba.github.io/RDCore/diagnostics/<code>.html`), and every emitted diagnostic
-points there through the LSP `codeDescription` field — the client opens that URL when the reader
-follows a diagnostic's "learn more".
+## Titles
 
-A code's page is published **the moment the platform can emit that code** — the documentation grows
-at the same rate as the diagnostics. A published code is **not renumbered and not retired** so that
-older builds' diagnostic links keep resolving; the page's prose may evolve as the ideal set of codes
-is narrowed down.
+Every diagnostic family has a **title**. A diagnostic's title is the error's *category*: what kind of thing went wrong. Its *description*, as distinct from its title, is what went wrong.
 
-## Pipeline
+For example, a diagnostic titled "Run-time error" has the description "Division by zero".
 
-The language server does not compute diagnostics itself. A _diagnostics provider_ is a platform
-extension whose manifest advertises the `DiagnoseDocument` capability
-(`[assembly: ProvidesCorePlatformClientCapability<DiagnoseDocument>]`, recorded by
-`rdc.exe describe-ext` in the extension's
-[`extension.manifest.json`](rd-vbal.2.3.application-host.html)). The set of registered capabilities —
-not a hard-coded list — determines which extensions the language server asks. **RDCore.Diagnostics**
-is the core-bundled provider, always brought up during platform assembly; other extensions
-(dimensional analysis, and so on) register alongside it. With no provider registered, a workspace
-simply has no diagnostics.
+|Family|Title|
+|---|---|
+|Syntax errors|_Syntax error_|
+|Semantic compilation errors|_Compile error_|
+|Runtime errors (`VBR`)|_Run-time error_|
+|Runtime errors (`VBA`)|_Application error_|
+|Rubberduck Core diagnostics|per finding|
 
-Diagnostics use the **LSP 3.17 pull model** (`textDocument/diagnostic`). When the editor asks for a
-document, the language server, as orchestrator:
+The title is localized. The description of compilation and run-time errors shall exactly match the corresponding MS-VBA descriptions; see [**RD-VBAL §1.1.4** Core Diagnostics](rd-vbal.1.1.4.core-diagnostics.md).
 
-1. resolves the workspace document and its current version;
-2. parses it (the authoritative parse);
-3. fans the parsed [`ModuleParseResult`](rd-vbal.3.0.syntax-tree.html) out to every registered
-   provider over the internal `rdcore/diagnostics/document` request — the language server owns the
-   document and parser state and pushes them _down_, so a provider needs no parser or file-system
-   access of its own;
-4. aggregates the LSP `Diagnostic`s the providers return (each provider projects its own findings
-   through `ICoreDiagnosticsFactory`), collapsing exact duplicates, and answers the pull.
+A diagnostic's title is derived rather than stored, because the two `VBC` categories (syntax errors and semantic compilation errors) share one family and nothing but the numeric portion separates them. [VBCompileErrorId](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html) reserves the range `[9300..]` for semantic compilation errors. Every `VBCompileErrorId` value below 9300 belongs to the parser (syntax errors).
 
-`rdcore/diagnostics/document` carries the parse result as a
-[`PlatformJson`](rd-vbal.2.3.application-host.html) string because the syntax tree is polymorphic; it
-is the seam a future `SemanticContext` (resolver output) is added to, so the semantic and runtime
-passes receive the same envelope. The editor edge stays plain LSP throughout — only the
-language-server-to-provider hop is an RDCore request.
+The title derivation ([VBErrorExtensions](../api/RDCore.SDK.Model.Errors.Abstract.VBErrorExtensions.html)) switches on the error's runtime type. An error held through a more general declared type therefore still takes the title of its own family.
 
-The report's `resultId` tracks the document's in-memory version. A `previousResultId` that still
-matches answers a `RelatedUnchangedDocumentDiagnosticReport` and computes nothing. Results are also
-**staleness-gated**: the version is captured before the fan-out and re-checked after; a report that
-raced a later edit is dropped rather than returned, and the `resultId` advances to the current
-version.
+## Codes and Help URLs
 
-> [!NOTE]
-> Document versioning is inert until `textDocument/didChange` is handled — today the version only
-> moves on workspace reload or rename. Proactive push (`textDocument/publishDiagnostics`) and
-> workspace-wide diagnostics (`workspace/diagnostic`) are forthcoming; the pull pipeline is the seam
-> they hang off. On start-up the language server pulls diagnostics for every loaded document once, to
-> exercise the fan-out without an editor attached.
+The numeric portion of a diagnostic code is a five-digit zero-padded code, e.g. `VBC00001`, `VBR00009`, `RDC01001`.
+
+Each diagnostic code is documented on its own page under [Diagnostics](../diagnostics/index.md). A code's help page URL is `https://rubberduck-vba.github.io/RDCore/diagnostics/<code>.html`, with `<code>` in lower case (e.g. `.../diagnostics/vbc00001.html`).
+
+Every emitted diagnostic points to its code's help page through the LSP `codeDescription` field. The client opens that URL when the reader follows a diagnostic's "learn more".
+
+## Publication
+
+A diagnostic code's page is published as soon as the platform can emit that code. The diagnostics documentation grows at the same rate as the diagnostics.
+
+A published diagnostic code is **not renumbered** and **not retired**, so that older builds' diagnostic links keep resolving. The code and its abstract meaning do not change.
+
+The prose of a code's page may evolve as the ideal set of codes is narrowed down. Each page describes the condition in the abstract: the specifics of a particular occurrence (which token, which literal, which type) travel in the diagnostic's verbose detail, not in the code.
+
+## Severity
+
+|Severity|Use|
+|---|---|
+|Error|Reserved for coded syntax/compilation and runtime/application errors.|
+|Warning|Flags potential bugs or logical errors causing unexpected or unintended behavior, or severe performance issues. Warning diagnostics should be used carefully.|
+|Hint, suggestion|Can be as opinionated as needed.|
+
+The choice of a warning severity should take into account that a host environment can be configured to "treat warnings as errors". If a diagnostic is not worth breaking a build over, it is not a warning. See [**RD-VBAL §5.0** Semantics](rd-vbal.5.0.semantics.md).
 
 ---
-## 2.6.1 Syntax Errors
-
-A **syntax error** is raised while the parser traverses the _concrete syntax tree_ (CST) — a token
-the grammar cannot place. It is the inaugural diagnostic the platform emits.
-
-|||
-|---|---|
-|Code family|`VBC` — `VBC00001`–`VBC00999`|
-|Source metadata|[`VBSyntaxErrorInfo`](../api/RDCore.SDK.Model.Errors.VBSyntaxErrorInfo.html) (`ErrorId` is a [`VBCompileErrorId`](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html))|
-|Severity|`Error`|
-|Detail|the faulted token and its expected role, on `Diagnostic.data`|
-
-MS-VBAL does not distinguish a compile-time error raised in CST semantics from one raised in AST
-semantics; RDCore splits them by numeric range only. A `#If` that splits a statement is unparseable
-by the grammar and reports located `VBC` diagnostics a client can anchor a squiggle on.
-
-The parser deliberately narrows its output over time: `VBC00001` is the general fallback, and
-recurring shapes are promoted to a dedicated code in the `VBC00042`–`VBC00999` range. Published so
-far:
-
-|Code|Condition|
-|---|---|
-|[`VBC00001`](../diagnostics/vbc00001.html)|a token the grammar cannot place|
-|[`VBC00042`](../diagnostics/vbc00042.html)|a numeric literal outside the range of its type|
-
----
-## 2.6.2 Semantic Compilation Errors
-
-A **semantic compilation error** is raised by the static semantics layer while walking the _abstract
-syntax tree_ (AST) with symbol information — a duplicate declaration, an undefined name, a type
-mismatch in a constant expression.
-
-|||
-|---|---|
-|Code family|`VBC` — `VBC09300`–`VBC09999`|
-|Source metadata|[`VBCompileErrorInfo`](../api/RDCore.SDK.Model.Errors.VBCompileErrorInfo.html)|
-|Severity|`Error`|
-|Detail|the offending symbol / expression, on `Diagnostic.data`|
-
-Emitted once the resolver and static semantic pass are online; the provider projects them through the
-same `ICoreDiagnosticsFactory` as syntax errors. Published so far:
-
-|Code|Condition|
-|---|---|
-|[`VBC09309`](../diagnostics/vbc09309.html)|a jump names a line label or line number the procedure does not define|
-|[`VBC09319`](../diagnostics/vbc09319.html)|a procedure defines the same line label or line number more than once|
-|[`VBC09320`](../diagnostics/vbc09320.html)|a property's Get/Let/Set sharing a name do not together describe one valid property|
-|[`VBC09321`](../diagnostics/vbc09321.html)|a Property Let or Property Set declares no parameters at all|
-
----
-## 2.6.3 Runtime Errors
-
-A **runtime error** is raised by the runtime semantics layer and left unhandled by workspace code — a
-subscript out of range, a type-mismatch coercion, division by zero.
-
-|||
-|---|---|
-|Code family|`VBR` — the numeric portion matches the corresponding MS-VBA run-time error code|
-|Source metadata|[`VBRuntimeErrorInfo`](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorInfo.html)|
-|Severity|`Error`|
-
-An **application error** is a custom run-time error explicitly raised from workspace source code with
-`Error` or `Err.Raise`. MS-VBAL does not distinguish it from a semantic run-time error.
-
-|||
-|---|---|
-|Code family|`VBA` — pseudo-code; the numeric portion matches the application-supplied error code|
-|Source metadata|[`VBApplicationErrorInfo`](../api/RDCore.SDK.Model.Errors.VBApplicationErrorInfo.html)|
-|Severity|`Error`|
-
----
-## 2.6.4 Rubberduck Core Diagnostics
-
-**Rubberduck Core diagnostics** are the analyzer findings issued by the `RDCore.Diagnostics`
-analyzers — implicit declarations, obsolete syntax, misleading constructs, and every inspection the
-legacy Rubberduck add-in shipped, and then some.
-
-|||
-|---|---|
-|Code family|`RDC` — [`RDCoreDiagnosticId`](../api/RDCore.SDK.Model.Diagnostics.RDCoreDiagnosticId.html); the enum value is the code|
-|Severity|spans `Hint` through `Error`, per finding|
-
-Unlike the `VBC`/`VBR`/`VBA` families, which describe conditions the language core defines, `RDC`
-diagnostics are opinions of the analyzer. Diagnostics contributed by **other extensions** must use
-their own prefix, distinct from `RDC`, so codes stay unique and traceable to their source.
-
----
-> ⏮️ [**RD-VBAL §2.5** Runtime Values](rd-vbal.2.5.runtime-values.html) | ⏭️ [**RD-VBAL §3.0** Syntax Tree](rd-vbal.3.0.syntax-tree.html)
+> ⏮️ [**RD-VBAL §2.5.2.1.5** Variant Values](rd-vbal.2.5.2.1.5.variant-values.md) | ⏭️ [**RD-VBAL §2.6.1** Syntax Errors](rd-vbal.2.6.1.syntax-errors.md)
