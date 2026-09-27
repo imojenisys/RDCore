@@ -726,10 +726,10 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         => OnKeywordStatement(Tokens.Seek, context, CaptureFileNumber(context.fileNumber()), CaptureIsolatedExpression(context.position()?.expression()));
 
     public override void ExitLockStmt([NotNull] VBAParser.LockStmtContext context)
-        => OnKeywordStatement(Tokens.Lock, context, [CaptureFileNumber(context.fileNumber()), .. CaptureRecordRange(context.recordRange())]);
+        => OnFileLockStatement(Tokens.Lock, context, context.fileNumber(), context.recordRange());
 
     public override void ExitUnlockStmt([NotNull] VBAParser.UnlockStmtContext context)
-        => OnKeywordStatement(Tokens.Unlock, context, [CaptureFileNumber(context.fileNumber()), .. CaptureRecordRange(context.recordRange())]);
+        => OnFileLockStatement(Tokens.Unlock, context, context.fileNumber(), context.recordRange());
 
     public override void ExitGetStmt([NotNull] VBAParser.GetStmtContext context)
         => OnKeywordStatement(Tokens.Get, context, CaptureFileNumber(context.fileNumber()), CaptureIsolatedExpression(context.recordNumber()?.expression()), CaptureIsolatedExpression(context.variable()?.expression()));
@@ -827,19 +827,22 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
     private ExpressionNode?[] CaptureInputList(VBAParser.InputListContext? context)
         => context is null ? [] : [.. context.inputVariable().Select(v => CaptureIsolatedExpression(v.expression()))];
 
-    // `recordRange` (MS-VBAL Lock/Unlock statements) is either just a start record, or `start To end` —
-    // 1 or 2 expressions, never 0 (the whole recordRange is optional at the call site instead).
-    private ExpressionNode?[] CaptureRecordRange(VBAParser.RecordRangeContext? context)
+    // `recordRange` (MS-VBAL 5.4.5.4) is `start`, `start To end`, or `To end` — three shapes, and which end of
+    // the range an expression is cannot be read off a flat list of them, because `Lock #1, 5` and
+    // `Lock #1, To 5` each carry exactly one. FileLockStatementNode keeps the two ends apart by name instead.
+    private void OnFileLockStatement(
+        string token, VBABaseParserRuleContext context,
+        VBAParser.FileNumberContext? fileNumber, VBAParser.RecordRangeContext? recordRange)
     {
-        if (context is null)
+        if (CaptureFileNumber(fileNumber) is not { } number)
         {
-            return [];
+            return;
         }
 
-        var start = CaptureIsolatedExpression(context.startRecordNumber()?.expression());
-        return context.endRecordNumber() is { } endContext
-            ? [start, CaptureIsolatedExpression(endContext.expression())]
-            : [start];
+        CurrentBuilder.AddChild(new FileLockStatementNode(
+            GetCurrentNodeId(), context.GetSourceLocation(_rootUri), token, number,
+            CaptureIsolatedExpression(recordRange?.startRecordNumber()?.expression()),
+            CaptureIsolatedExpression(recordRange?.endRecordNumber()?.expression())));
     }
 
     // Re-walks an already-parsed, self-contained subtree in isolation, with capture enabled just for
@@ -1265,6 +1268,14 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
             if (variantLiteralContext.EMPTY() is not null)
             {
                 OnExpression(new LiteralExpressionNode(GetCurrentNodeId(), location, VBEmptyValue.Empty));
+            }
+            else if (variantLiteralContext.NULL() is not null)
+            {
+                // the grammar has always had it — `variantLiteralIdentifier : EMPTY | NULL` — and this branch
+                // did not, so `Null` parsed to no node at all and then evaluated to an internal error. It is a
+                // Variant subtype rather than an object, which is why it belongs here and not beside Nothing:
+                // Nothing is the absent *reference*, Null the absent *value*.
+                OnExpression(new LiteralExpressionNode(GetCurrentNodeId(), location, VBNullValue.Null));
             }
         }
     }

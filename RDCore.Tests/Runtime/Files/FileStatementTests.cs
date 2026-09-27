@@ -1,26 +1,16 @@
-using NSubstitute;
-using RDCore.Parsing;
 using RDCore.Runtime.Execution;
-using RDCore.Runtime.Semantics;
-using RDCore.SDK.Model.AST.Abstract;
-using RDCore.SDK.Model.AST.Declarations;
-using RDCore.SDK.Model.AST.Statements;
 using RDCore.SDK.Model.Errors;
-using RDCore.SDK.Model.Source;
-using RDCore.SDK.Model.Symbols;
-using RDCore.SDK.Model.Symbols.Abstract;
-using RDCore.SDK.Model.Types.Complex;
-using RDCore.SDK.Runtime;
+using RDCore.SDK.Model.AST.Statements;
+using RDCore.SDK.Runtime.Abstract;
 using RDCore.SDK.Runtime.Abstract.Execution;
-using RDCore.SDK.Semantics.Instructions;
-using RDCore.SDK.Services.VerboseMessages;
 using System.IO.Abstractions.TestingHelpers;
 
 namespace RDCore.Tests.Runtime.Files;
 
 /// <summary>
-/// <strong>MS-VBAL §5.4.5.1/.2</strong> the <c>Open</c>, <c>Close</c> and <c>Reset</c> statements — the ones
-/// that associate a file number with an external file and disassociate it again.
+/// <strong>MS-VBAL §5.4.5.1/.2/.8/.9</strong> the <c>Open</c>, <c>Close</c> and <c>Reset</c> statements — the
+/// ones that associate a file number with an external file and disassociate it again — and the <c>Print #</c>
+/// and <c>Write #</c> statements that write through one.
 /// </summary>
 /// <remarks>
 /// Against a fake file system, which is the point of the shim: real VBA file semantics, nothing on disk.
@@ -30,38 +20,10 @@ namespace RDCore.Tests.Runtime.Files;
 public sealed class FileStatementTests
 {
     private const string Root = "/ws";
-    private static readonly Uri ProcedureUri = TestUri.TestSubProcUri();
-    private static readonly SyntaxNodeId NodeId = new(ProcedureUri.AbsolutePath, [1]);
-
-    private sealed class Provider : ISymbolProvider
-    {
-        public IEnumerable<Symbol> ProvideSymbols() => [];
-    }
 
     private static (IRuntimeSession Session, RuntimeExecutionOutcome Outcome) Run(
         MockFileSystem fileSystem, params string[] body)
-    {
-        var session = RuntimeSessionComposer.Compose(
-            new RuntimeEnvironmentProfile(Is64Bit: true, 0, 1252, false), [], [new Provider()],
-            output: null, fileSystem: fileSystem);
-
-        var pipeline = RuntimeExecutionPipeline.Create(
-            session, new Dictionary<SemanticId, InstructionList>(), Substitute.For<IVerboseMessageBuilder>());
-
-        var frame = session.Symbols.CreateFrame(NodeId, new StaticSymbol("Foo", SymbolKindExt.Procedure, VBVoidType.TypeInfo));
-        session.CallStack.TryPush(frame);
-
-        var source = $"Sub Foo()\r\n{string.Join("\r\n", body)}\r\nEnd Sub\r\n";
-        var parse = new ModuleParser().Parse(new Uri("file:///c:/ws/Mod1.bas"), source);
-        Assert.IsTrue(parse.IsSuccess, string.Join("; ", parse.SyntaxErrors.Select(error => error.Verbose)));
-
-        var member = parse.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single();
-        var lowering = InstructionListLowering.Lower(new StatementBlock([.. member.Children]));
-        Assert.IsEmpty(lowering.Errors, string.Join("; ", lowering.Errors.Select(error => error.Verbose)));
-
-        var outcome = pipeline.Executor.Run(session, frame, lowering.InstructionList, new RuntimeEvaluationContext(ProcedureUri));
-        return (session, outcome);
-    }
+        => RuntimeSourceHarness.Run(fileSystem, [], body);
 
     private static MockFileSystem WithFile(string path, string content = "")
         => new(new Dictionary<string, MockFileData> { [path] = new(content) });
@@ -181,6 +143,95 @@ public sealed class FileStatementTests
         Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind);
         Assert.IsTrue(session.Files.TryGet(1, out var channel));
         Assert.AreEqual(0, channel!.RecordLength);
+    }
+
+    [TestMethod]
+    public void Write_QuotesStringsAndSeparatesWithCommas()
+    {
+        // MS-VBAL 5.4.5.9 is a *record* format, not a layout: a string is quoted so a comma inside one is not
+        // mistaken for a separator, which is what lets Input # read the record back.
+        var fileSystem = WithFile($"{Root}/out.txt");
+
+        var (_, outcome) = Run(fileSystem,
+            $"Open \"{Root}/out.txt\" For Output As #1",
+            "Write #1, \"a,b\", \"c\"",
+            "Close #1");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual("\"a,b\",\"c\"\r\n", fileSystem.File.ReadAllText($"{Root}/out.txt"));
+    }
+
+    [TestMethod]
+    public void Write_SpellsBooleansWithHashes()
+    {
+        // #TRUE# and #FALSE# are not VBA source syntax - 3.3's boolean-literal-identifier is only true/false.
+        // They exist for this record format, and for the coercion that reads them back case-sensitively.
+        var fileSystem = WithFile($"{Root}/out.txt");
+
+        var (_, outcome) = Run(fileSystem,
+            $"Open \"{Root}/out.txt\" For Output As #1",
+            "Write #1, True, False",
+            "Close #1");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual("#TRUE#,#FALSE#\r\n", fileSystem.File.ReadAllText($"{Root}/out.txt"));
+    }
+
+    [TestMethod]
+    public void Write_SpellsNullWithHashes()
+    {
+        var fileSystem = WithFile($"{Root}/out.txt");
+
+        var (_, outcome) = Run(fileSystem,
+            $"Open \"{Root}/out.txt\" For Output As #1",
+            "Write #1, Null",
+            "Close #1");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual("#NULL#\r\n", fileSystem.File.ReadAllText($"{Root}/out.txt"));
+    }
+
+    [TestMethod]
+    public void Write_UsesADotForTheDecimalSeparatorWhateverTheLocale()
+    {
+        // "ignoring any implementation dependent locale setting and using '.' as the decimal separator" - a
+        // record written under one set of regional settings has to read under another. And unlike Print, no
+        // leading space for the sign column: the space would come back as part of the value.
+        var fileSystem = WithFile($"{Root}/out.txt");
+
+        var (_, outcome) = Run(fileSystem,
+            $"Open \"{Root}/out.txt\" For Output As #1",
+            "Write #1, 1.5, 2",
+            "Close #1");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual("1.5,2\r\n", fileSystem.File.ReadAllText($"{Root}/out.txt"));
+    }
+
+    [TestMethod]
+    public void Write_WithATrailingSeparator_HoldsTheRecordOpen()
+    {
+        var fileSystem = WithFile($"{Root}/out.txt");
+
+        Run(fileSystem,
+            $"Open \"{Root}/out.txt\" For Output As #1",
+            "Write #1, \"a\",",
+            "Write #1, \"b\"",
+            "Close #1");
+
+        Assert.AreEqual("\"a\",\"b\"\r\n", fileSystem.File.ReadAllText($"{Root}/out.txt"));
+    }
+
+    [TestMethod]
+    public void Write_ToAChannelOpenedForInput_IsBadFileMode()
+    {
+        // the same 5.4.5.1 table Print # is checked against: Write # is valid only in Append and Output.
+        var (_, outcome) = Run(
+            WithFile($"{Root}/a.txt"),
+            $"Open \"{Root}/a.txt\" For Input As #1",
+            "Write #1, \"nope\"");
+
+        Assert.AreEqual((int)VBRuntimeErrorId.BadFileMode, outcome.ErrorInfo!.ErrorId);
     }
 
     [TestMethod]
