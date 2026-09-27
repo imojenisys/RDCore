@@ -52,6 +52,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
             [typeof(IStdInformationModule)] = new StdInformation(session),
             [typeof(IStdFileSystemModule)] = new StdFileSystem(session),
             [typeof(IStdStringsModule)] = new StdStrings(),
+            [typeof(IStdFinancialModule)] = new StdFinancial(),
         });
 
     /// <summary>

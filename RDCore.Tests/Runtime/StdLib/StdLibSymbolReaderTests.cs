@@ -202,6 +202,42 @@ public sealed class StdLibSymbolReaderTests
     }
 
     [TestMethod]
+    public void TheFinancialModule_IsReadWithEveryMemberOfItsSpecification()
+    {
+        // MS-VBAL 6.1.2.6.1: thirteen public functions, every one of them As Double.
+        var members = MembersOf(Module("Financial")).Cast<VBFunctionMemberSymbol>().ToArray();
+
+        CollectionAssert.AreEquivalent(
+            new[] { "DDB", "FV", "IPmt", "IRR", "MIRR", "NPer", "NPV", "Pmt", "PPmt", "PV", "Rate", "SLN", "SYD" },
+            members.Select(member => member.Name).ToArray());
+        Assert.IsTrue(members.All(member => member.ResolvedType == VBDoubleType.TypeInfo));
+    }
+
+    [TestMethod]
+    public void FVsPresentValueAndDue_AreOptional_WhateverTheSpecificationsDeclarationSays()
+    {
+        // MS-VBAL 6.1.2.6.1.2 declares "PV As Variant, Due As Variant" without Optional, where its own table says
+        // what an omitted one means - and every other annuity function declares its Due optional.
+        var fv = (VBFunctionMemberSymbol)MembersOf(Module("Financial")).Single(member => member.Name == "FV");
+
+        CollectionAssert.AreEqual(new[] { "PV", "Due" }, fv.Parameters.Where(parameter => parameter.IsOptional).Select(parameter => parameter.Name).ToArray());
+    }
+
+    [TestMethod]
+    public void PmtsParameters_AreNamedAsTheSpecificationSpellsThem()
+        // pV and fV in C#, so that they read as the specification's PV and FV rather than Pv and Fv.
+        => CollectionAssert.AreEqual(
+            new[] { "Rate", "NPer", "PV", "FV", "Due" },
+            ((VBFunctionMemberSymbol)MembersOf(Module("Financial")).Single(member => member.Name == "Pmt")).Parameters.Select(parameter => parameter.Name).ToArray());
+
+    [TestMethod]
+    public void MIRRsRates_AreNamedWithTheSpecificationsUnderscores()
+        // a named argument has to spell the name the specification declares: Finance_Rate:=, not FinanceRate:=.
+        => CollectionAssert.AreEqual(
+            new[] { "ValueArray", "Finance_Rate", "Reinvest_Rate" },
+            ((VBFunctionMemberSymbol)MembersOf(Module("Financial")).Single(member => member.Name == "MIRR")).Parameters.Select(parameter => parameter.Name).ToArray());
+
+    [TestMethod]
     public void TheDollarSuffixedPairs_AreTwoMembers_DifferingOnlyInReturnType()
     {
         // MS-VBAL 6.1.2.3.1.16: Function Hex(Number As Variant) / Function Hex$(Number As Variant) As
