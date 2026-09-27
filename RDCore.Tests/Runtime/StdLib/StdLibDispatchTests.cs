@@ -5,14 +5,18 @@ using NSubstitute;
 using RDCore.Parsing;
 using RDCore.Runtime.Execution;
 using RDCore.Runtime.Semantics;
+using RDCore.Runtime.StdLib;
 using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.AST.Statements;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Types.Complex;
+using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
+using RDCore.SDK.Runtime.Abstract.StdLib;
+using RDCore.SDK.Runtime.Shared;
 using RDCore.SDK.Runtime.StdLib;
 using RDCore.SDK.Semantics.Instructions;
 using RDCore.SDK.Services.VerboseMessages;
@@ -108,5 +112,66 @@ public sealed class StdLibDispatchTests
             "30 Debug.Print \"trapped\"");
 
         Assert.Contains("trapped", output[^1]);
+    }
+
+    [TestMethod]
+    public void IntegerParameters_TakeTheArgumentsTheirCallerCoerced()
+    {
+        // an Integer's storage is a short; RGB declares three of them.
+        var rgb = new StdLibSymbolReader(Root).Read(typeof(IStdInformationModule).Assembly)
+            .OfType<VBFunctionMemberSymbol>().Single(member => member.Name == "RGB");
+        var information = Substitute.For<IStdInformationModule>();
+        information.RGB(Arg.Any<VBIntegerValue>(), Arg.Any<VBIntegerValue>(), Arg.Any<VBIntegerValue>())
+            .Returns(RuntimeSemanticsEvaluationResult<VBLongValue>.Success(new VBLongValue(0)));
+        var dispatcher = new StdLibDispatcher(new Dictionary<Type, object> { [typeof(IStdInformationModule)] = information });
+
+        var result = dispatcher.Dispatch(
+            new ExternalCallRequest(rgb, [new VBIntegerValue(1).RuntimeValue, new VBIntegerValue(2).RuntimeValue, new VBIntegerValue(3).RuntimeValue]),
+            Substitute.For<ISymbolResolver>());
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+        information.Received().RGB(
+            Arg.Is<VBIntegerValue>(red => red.Value == 1), Arg.Is<VBIntegerValue>(green => green.Value == 2), Arg.Is<VBIntegerValue>(blue => blue.Value == 3));
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void ABooleanParameter_TakesTheArgumentItsCallerCoerced(bool abbreviate)
+    {
+        // a Boolean's storage is a struct of its own, which is what lets it be told from an Integer.
+        var monthName = new StdLibSymbolReader(Root).Read(typeof(IStdStringsModule).Assembly)
+            .OfType<VBFunctionMemberSymbol>().Single(member => member.Name == "MonthName");
+        var strings = Substitute.For<IStdStringsModule>();
+        strings.MonthName(Arg.Any<VBLongValue>(), Arg.Any<VBBooleanValue?>())
+            .Returns(RuntimeSemanticsEvaluationResult<VBStringValue>.Success(new VBStringValue(string.Empty)));
+        var dispatcher = new StdLibDispatcher(new Dictionary<Type, object> { [typeof(IStdStringsModule)] = strings });
+
+        var result = dispatcher.Dispatch(
+            new ExternalCallRequest(monthName, [new VBLongValue(3).RuntimeValue, new VBBooleanValue(abbreviate).RuntimeValue]),
+            Substitute.For<ISymbolResolver>());
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+        strings.Received().MonthName(
+            Arg.Is<VBLongValue>(month => month.Value == 3), Arg.Is<VBBooleanValue?>(value => value != null && (bool)value.Value == abbreviate));
+    }
+
+    [TestMethod]
+    public void ATypedParameter_TakesTheArgumentItsCallerCoerced()
+    {
+        // the call site Let-coerces an argument to the parameter's declared type, so a Double parameter's
+        // argument arrives as a boxed double - the storage of a Double, not a Double. Atn declares one.
+        var atn = new StdLibSymbolReader(Root).Read(typeof(IStdMathModule).Assembly)
+            .OfType<VBFunctionMemberSymbol>().Single(member => member.Name == "Atn");
+        var math = Substitute.For<IStdMathModule>();
+        math.Atn(Arg.Any<VBDoubleValue>())
+            .Returns(call => RuntimeSemanticsEvaluationResult<VBDoubleValue>.Success(call.Arg<VBDoubleValue>()));
+        var dispatcher = new StdLibDispatcher(new Dictionary<Type, object> { [typeof(IStdMathModule)] = math });
+
+        var result = dispatcher.Dispatch(
+            new ExternalCallRequest(atn, [new VBDoubleValue(0.5).RuntimeValue]), Substitute.For<ISymbolResolver>());
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+        math.Received().Atn(Arg.Is<VBDoubleValue>(number => number.Value == 0.5));
     }
 }
