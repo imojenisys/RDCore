@@ -2,25 +2,28 @@
 
 Every problem the RDCore platform reports carries a stable **code** and, through the LSP
 `codeDescription` field, a link to its page here. See
-[RD-VBAL §2.6 Diagnostics](../specs/rd-vbal.2.6.diagnostics.md) for the pull pipeline and the
-definition of each code family.
+[**RD-VBAL §2.6** Diagnostics](../specs/rd-vbal.2.6.diagnostics.md) for the definition of each code
+family, and [**RD-VBAL §2.6.5** Diagnostics Pipeline](../specs/rd-vbal.2.6.5.diagnostics-pipeline.md)
+for the pull pipeline.
 
 |Family|Prefix|Raised by|
 |---|---|---|
-|Syntax errors|`VBC` (`VBC00001`–`VBC00999`)|the parser, walking the concrete syntax tree|
-|Semantic compilation errors|`VBC` (`VBC09300`+)|the static semantics layer, walking the abstract syntax tree|
-|Runtime errors|`VBR` / `VBA`|the runtime semantics layer / a workspace `Err.Raise`|
-|Rubberduck Core diagnostics|`RDC`|the `RDCore.Diagnostics` analyzers|
+|[Syntax errors](../specs/rd-vbal.2.6.1.syntax-errors.md)|`VBC` (`VBC00001`–`VBC00999`)|the parser, walking the concrete syntax tree|
+|[Semantic compilation errors](../specs/rd-vbal.2.6.2.semantic-compilation-errors.md)|`VBC` (`VBC09300`+)|the static semantics layer, walking the abstract syntax tree|
+|[Runtime errors](../specs/rd-vbal.2.6.3.runtime-errors.md)|`VBR` / `VBA`|the runtime semantics layer (`VBR`) / a workspace `Err.Raise` (`VBA`)|
+|[Rubberduck Core diagnostics](../specs/rd-vbal.2.6.4.rubberduck-core-diagnostics.md)|`RDC`|the `RDCore.Diagnostics` analyzers|
 
 ## Stability
 
-A code gets a page here **the moment the platform can emit it** — the documentation grows at the
-same rate as the diagnostics. Once published, a code is **not renumbered and not retired**: a
-workspace built against an older release must still resolve its diagnostic links. The *content* of a
-page may evolve as the ideal set of codes is narrowed down; the code and its abstract meaning do not.
+A code gets a page here **the moment the platform can emit it**. The documentation grows at the same
+rate as the diagnostics.
 
-Each page describes the condition in the abstract. The specifics of a particular occurrence — which
-token, which literal, which type — travel in the diagnostic's verbose detail, not in the code.
+Once published, a code is **not renumbered and not retired**: a workspace built against an older
+release must still resolve its diagnostic links. The *content* of a page may evolve as the ideal set
+of codes is narrowed down; the code and its abstract meaning do not.
+
+Each page describes the condition in the abstract. The specifics of a particular occurrence (which
+token, which literal, which type) travel in the diagnostic's verbose detail, not in the code.
 
 ## Published codes
 

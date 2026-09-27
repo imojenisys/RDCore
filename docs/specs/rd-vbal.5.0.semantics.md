@@ -1,197 +1,196 @@
 # 5.0 Semantics
 
-The role of _semantics_ is to encode the _meaning_ of the language into a set of deterministic rules and specified sequences of operations.
+The role of _semantics_ is to encode the _meaning_ of the language into a set of deterministic rules and specified
+sequences of operations.
 
-There are two types of _abstract semantics_ explicitly defined in **RDCore.SDK**:
-- [StaticSemantics](../api/RDCore.SDK.Semantics.Static.Abstract.IStaticSemantics.html)
-- [RuntimeSemantics](../api/RDCore.SDK.Runtime.Abstract.IRuntimeSemantics-2.html)
+**RDCore.SDK** explicitly defines two types of _abstract semantics_:
 
-The _environment host_ may provide additional semantics through external providers (extensions); _static semantics_ are effective in _design-time_ and fully available to the _semantic analysis layer_. 
+|Semantics|Defined by|Availability to the _semantic analysis layer_|
+|---|---|---|
+|_Static semantics_ ([**§5.0.1**](#501-static-semantics))|[IStaticSemantics](../api/RDCore.SDK.Semantics.Static.Abstract.IStaticSemantics.html)|Fully available.|
+|_Runtime semantics_ ([**§5.0.2**](#502-runtime-semantics))|[IRuntimeSemantics&lt;,&gt;](../api/RDCore.SDK.Runtime.Abstract.IRuntimeSemantics-2.html)|Partially available, for simulated execution pipelines.|
 
-_Runtime semantics_ are partially available to the _semantic analysis layer_ (for simulated execution pipelines), but generally unavailable in a _static context_.
+_Static semantics_ are effective in _design-time_. _Runtime semantics_ are generally unavailable in a _static
+context_.
+
+The _environment host_ may provide additional semantics through external providers (extensions; see
+[**RD-VBAL §1.1** Design and Extension Philosophy](rd-vbal.1.1.philosophy.md)).
+
+The same layered refinement through _templated methods_ applies to all semantics, both static and runtime
+([**RD-VBAL §3.3.0** Operator Expressions](rd-vbal.3.3.0.operators.md)).
 
 
----
 ## 5.0.1 Static Semantics
-The role of _static semantics_ is to determine a _declared type_ for a given _bound expression_, given the determined static _declared type_ of its inputs.
 
-Static semantics always yield a [StaticSemanticsEvaluationResult](../api/RDCore.SDK.Semantics.Static.Abstract.StaticSemanticsEvaluationResult.html) that represents either:
-- a `Success` result encapsulating a [VBType](../api/RDCore.SDK.Model.Types.Abstract.VBType.html);
-- an `Error` result encapsulating a [VBCompileErrorInfo](../api/RDCore.SDK.Model.Errors.VBCompileErrorInfo.html).
+The role of _static semantics_ is to determine a _declared type_ for a given _bound expression_, given the
+determined static _declared type_ of its inputs.
 
-> 👉 In most error cases, the compile-time error metadata returned is for a [TypeMismatch](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html) error.
+Static semantics always yield a
+[StaticSemanticsEvaluationResult](../api/RDCore.SDK.Semantics.Static.Abstract.StaticSemanticsEvaluationResult.html):
 
-Every rule is evaluated against a [StaticEvaluationContext](../api/RDCore.SDK.Semantics.Static.Abstract.StaticEvaluationContext.html) — the [ISymbolResolver](../api/RDCore.SDK.Runtime.Abstract.Execution.ISymbolResolver.html) and the [LexicalScope](../api/RDCore.SDK.Model.Symbols.LexicalScope.html) an expression is lexically found in (see §2.3.1.2 for how a scope is resolved). Module-level facts a rule needs — today, whether the enclosing module declares `Option Explicit` — are not parameters of this context; they live on [ModuleDirectives](../api/RDCore.SDK.Model.Symbols.ModuleDirectives.html), reachable from any scope via `LexicalScope.EnclosingModuleDirectives()`. This keeps the context's shape stable as the directive surface MS-VBAL and RD-VBA both define (`Option Compare`, `Attribute` declarations, …) grows over time.
+|Result|Encapsulates|
+|---|---|
+|`Success`|A [VBType](../api/RDCore.SDK.Model.Types.Abstract.VBType.html): the declared type.|
+|`Error`|A [VBCompileErrorInfo](../api/RDCore.SDK.Model.Errors.VBCompileErrorInfo.html): compile-time error metadata.|
 
-> [!NOTE]
-> Each subsection below documents one node kind's own rule in isolation — none of them recurse into
-> their own children to produce the `operandDeclaredTypes` they're given. [ExpressionStaticSemanticsEvaluator](../api/RDCore.SDK.Semantics.Static.ExpressionStaticSemanticsEvaluator.html)
-> is the piece that does: given any (possibly deeply nested) expression, it dispatches by the node's
-> own type — and, for an operator node, by its token — evaluating children first and short-circuiting
-> on the first error, so `Foo.Bar.Baz` or `x + 1` resolves end to end instead of only being exercised
-> with hand-fed operand types. A node kind with no rule yet, or an operator token with no mapped rule
-> (`Mod`), defers to `VBUnknownType` rather than erroring.
+> 👉 In most static-semantics error cases, the compile-time error metadata returned is for a `TypeMismatch` error
+> ([VBCompileErrorId](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html)).
 
-### 5.0.1.1 Simple Name Expressions
-> [!NOTE]
-> This section describes the implementation of **MS-VBAL §5.6.10 Simple Name Expressions**.
+### Static evaluation context
 
-The declared type of a _simple name expression_ is the declared type of the entity its identifier
-resolves to, per the ordered lookup of §2.3.1.2: a `Symbol` that determines its own declared type
-([ITypedSymbol](../api/RDCore.SDK.Model.Symbols.Abstract.ITypedSymbol.html), unifying bound and unbound
-typed symbols) yields that type directly — a bare procedure reference yields its return type (or
-`VBVoidType` for a `Sub`, already the type its own symbol carries).
+Every static semantics rule is evaluated against a
+[StaticEvaluationContext](../api/RDCore.SDK.Semantics.Static.Abstract.StaticEvaluationContext.html):
 
-Three outcomes fork on the resolver's result:
-- **Ambiguous** (`Duplicate`/`Ambiguous`, see §2.3.1.2) → an `Error` carrying
-  [AmbiguousName](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html) or
-  [DuplicateDeclaration](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html).
-- **Unresolved, under `Option Explicit`** → an `Error` carrying
-  [VariableNotDefined](../api/RDCore.SDK.Model.Errors.VBCompileErrorId.html).
-- **Unresolved, otherwise** → `Success(VBUnknownType)`. MS-VBA permits an implicit `Variant`
-  declaration here; RD-VBA defers the actual guess to a later type-inference pass
-  ([IVBInferableType](../api/RDCore.SDK.Model.Types.Complex.VBDeferredType.html)) rather than deciding
-  it in this rule.
+|Member|Description|
+|---|---|
+|`Resolver`|The [ISymbolResolver](../api/RDCore.SDK.Runtime.Abstract.Execution.ISymbolResolver.html).|
+|`Scope`|The [LexicalScope](../api/RDCore.SDK.Model.Symbols.LexicalScope.html) the expression is lexically found in. How a lexical scope is resolved is specified in [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md).|
+|`EnclosingWithTargetType`|The declared type of the innermost enclosing `With` block's target expression, or `null` when the expression is not inside any `With` block ([**RD-VBAL §5.6.15** With Expressions](rd-vbal.5.6.15.with-expressions.md)).|
+
+Module-level facts a static semantics rule needs are not parameters of the `StaticEvaluationContext`. They live on
+[ModuleDirectives](../api/RDCore.SDK.Model.Symbols.ModuleDirectives.html), reachable from any scope via
+`LexicalScope.EnclosingModuleDirectives()`.
+
+The module-level fact a static semantics rule needs is whether the enclosing module declares `Option Explicit`
+([**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md)). `ModuleDirectives` also records the
+module's `Option Compare` mode and RD-VBA's `'@OptionStrict` annotation
+([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)).
+
+Keeping module-level facts on `ModuleDirectives` rather than on `StaticEvaluationContext` keeps the context's shape
+stable as the directive surface that MS-VBAL and RD-VBA both define (`Option Compare`, `Attribute` declarations, …)
+grows.
+
+### Expression evaluation
+
+Each static semantics rule for a node kind is documented in isolation, in the section that implements its MS-VBAL
+counterpart. A node kind's own static semantics rule does not recurse into its own children to produce the
+`operandDeclaredTypes` it is given.
+
+[ExpressionStaticSemanticsEvaluator](../api/RDCore.SDK.Semantics.Static.ExpressionStaticSemanticsEvaluator.html) is
+the component that recurses into child expressions, given any (possibly deeply nested) expression:
+
+1. It dispatches by the node's own type; for an operator node, it dispatches by the operator's token.
+2. It evaluates children first.
+3. It short-circuits on the first error.
+
+With `ExpressionStaticSemanticsEvaluator`, an expression such as `Foo.Bar.Baz` or `x + 1` resolves end to end.
+
+|Case|Outcome in `ExpressionStaticSemanticsEvaluator`|
+|---|---|
+|A node kind with no static semantics rule|Defers to [VBUnknownType](../api/RDCore.SDK.Model.Types.VBUnknownType.html) rather than erroring.|
+|An operator token with no mapped rule, such as `Mod` ([**RD-VBAL §5.6.9.3** Arithmetic Operators](rd-vbal.5.6.9.3.arithmetic-operators.md))|Defers to `VBUnknownType` rather than erroring.|
+
+Every type-comparing static-semantics rule in RDCore follows the same convention: an unresolved declared type is
+deferred, not flagged (see [VBC09320](../diagnostics/vbc09320.md)).
+
+See [**RD-VBAL §5.6.10** Simple Name Expressions](rd-vbal.5.6.10.simple-name-expressions.md) for the static
+semantics of a simple name expression.
 
 
----
 ## 5.0.2 Runtime Semantics
+
 The role of _runtime semantics_ depends on the type of node being evaluated:
-- _Directives_ and _literal_ or _constant expressions_ evaluate to their static / compile-time value;
-- _Operators_ evaluate a [VBTypedValue](../api/RDCore.SDK.Model.Values.Abstract.VBTypedValue.html) from their _operands_;
-- _Statements_ induce _side-effects_ to _program_, _global_, or _host environment_ state.
+
+|Node|At runtime|
+|---|---|
+|_Directives_|Evaluate to their static / compile-time value.|
+|_Literal_ or _constant expressions_|Evaluate to their static / compile-time value ([**RD-VBAL §5.6.5** Literal Expressions](rd-vbal.5.6.5.literal-expressions.md)).|
+|_Operators_|Evaluate a [VBTypedValue](../api/RDCore.SDK.Model.Values.Abstract.VBTypedValue.html) from their _operands_ ([**RD-VBAL §5.6.9** Operator Expressions](rd-vbal.5.6.9.operator-expressions.md)).|
+|_Statements_|Induce _side-effects_ to _program_, _global_, or _host environment_ state ([**RD-VBAL §5.4** Procedure Bodies and Statements](rd-vbal.5.4.procedure-bodies-and-statements.md)).|
+
+🎯 Evaluation returns an evaluation result record,
+[RuntimeSemanticsEvaluationResult](../api/RDCore.SDK.Runtime.Shared.RuntimeSemanticsEvaluationResult.html), that
+describes and encapsulates either the evaluation result or runtime error metadata
+([**RD-VBAL §3.0.3** Binding Contexts](rd-vbal.3.0.3.binding-contexts.md)).
+
+See [**RD-VBAL §5.6.9.2** Simple Data Operators](rd-vbal.5.6.9.2.simple-data-operators.md) for the operator
+evaluation pipeline and computation in the effective type.
+
+See [**RD-VBAL §5.6.9.3** Arithmetic Operators](rd-vbal.5.6.9.3.arithmetic-operators.md),
+[**RD-VBAL §5.6.9.5** Relational Operators](rd-vbal.5.6.9.5.relational-operators.md) (including the `Variant`
+String/Numeric comparison exception) and [**RD-VBAL §5.6.9.8** Logical Operators](rd-vbal.5.6.9.8.logical-operators.md)
+for the evaluation of each operator family.
+
+See [**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md) for let-coercion, including
+numeric let-coercion and `Variant` let-coercion and storage.
+
+See [**RD-VBAL §6.1.1** Predefined Enums](rd-vbal.6.1.1.predefined-enums.md) (§6.1.1.16 `VbVarType`) for the
+`VarType` and COM interop shape of a `Variant`.
+
+See [**RD-VBAL §5.4** Procedure Bodies and Statements](rd-vbal.5.4.procedure-bodies-and-statements.md) for statement
+evaluation.
 
 
-### 5.0.2.1 Operator Evaluation
-> [!NOTE]
-> This section describes the implementation of **MS-VBAL §5.6.9.2 Simple Data Operators**.
-
-The _evaluation pipeline_ of all operators follows a clear sequence:
-1. The _effective type_ of the operation is determined, based on the _declared type_ of its _operands_;
-2. Validation: all non-[null](../api/RDCore.SDK.Model.Values.Intrinsic.VBNullValue.html) _operands_ are let-coerced to the determined _effective type_ of the operation;
-3. Evaluation: a templated method evaluates a result from the validated _operands_.
-
-The sequence may be aborted at any point to return an _error result_ that encapsulates [VBRuntimeErrorInfo](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorInfo.html) error metadata.
-
-**Computation in the effective type.** The result of step 3 is computed in the _effective type_'s own
-representation — `Long` arithmetic in 64-bit integers, `Currency`/`Decimal` in `decimal`, `Single` in
-`float`, and so on — never through a `Double` intermediate. Arithmetic runs in a _checked_ context, so
-an integral or fixed-point result that does not fit the effective type raises
-[Overflow](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorId.html) rather than wrapping or silently
-narrowing; an integral division or `Mod` by zero raises
-[DivisionByZero](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorId.html). The `^` operator is the sole
-exception — its effective type is always `Double`, and it is evaluated as IEEE-754 exponentiation.
-Relational operators compare in the effective type (integral comparisons in 64-bit integers,
-fixed-point in `decimal`) and yield a [VBBooleanValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBBooleanValue.html);
-a `NaN` operand raises [Overflow](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorId.html). Logical
-operators compute bitwise in the effective integral type (`Boolean` over its `-1`/`0` representation).
-
-**The `Variant` String/Numeric comparison exception (MS-VBAL §5.6.9.5).** When both relational
-operands are `Variant`, one originally holding a `String` value and the other a numeric value, the
-numeric operand is always considered less than the `String` operand — regardless of their actual
-values, and without ever attempting to coerce the `String` to a number (which would fail, or succeed
-incorrectly, depending on its content). `BinaryRelationalOperatorRuntimeSemantics` detects this before
-normal effective-type determination and coercion ever run, reducing it to a synthetic `Integer` rank
-(`0` for the numeric side, `1` for the `String` side) that the operator's own ordinary `Integer`
-evaluation branch then compares for real — no bespoke evaluation path needed.
-
-
-### 5.0.2.2 Let-Coercion
-> [!NOTE]
-> This section describes the implementation of **MS-VBAL §5.5.1.2 Let-coercion (run-time semantics)**.
-
-_Let-coercion_ is the implicit conversion applied to an operand (or an assignment RHS) so that its
-value fits a required _destination declared type_. It is driven by a let-coercion _provider_ that
-dispatches to a per-_destination-type_ strategy resolved by walking the destination
-[VBType](../api/RDCore.SDK.Model.Types.Abstract.VBType.html)'s base-type chain — one strategy keyed
-on `VBNumericType` serves every concrete numeric type. The
-provider maintains a coercion frame stack so that a _recursive let-coercion_ (a strategy that must
-coerce through an intermediate type, e.g. `Date → Double → Integer`) is detected and reported as
-[OutOfStackSpace](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorId.html) rather than overflowing the
-call stack. Each step yields a [LetCoercionResult](../api/RDCore.SDK.Runtime.Shared.LetCoercionResult.html)
-that is `Success` (a coerced [VBTypedValue](../api/RDCore.SDK.Model.Values.Abstract.VBTypedValue.html)),
-`Error` ([TypeMismatch](../api/RDCore.SDK.Model.Errors.VBRuntimeErrorId.html) or `Overflow`), or
-`NotApplicable`.
-
-**Numeric let-coercion (MS-VBAL §5.5.1.2.1).** Coercion between numeric types validates that the
-source value is within the destination's representable range (`Overflow` otherwise), then:
-
-- widening, and narrowing to a wider-or-equal integral type: the value is copied, converted to the
-  destination's representation;
-- narrowing a floating-point or fixed-point value to an integral type: the value is rounded to the
-  nearest integer using **round-half-to-even ("banker's rounding", MS-VBAL §5.5.1.2.1.1)** before
-  conversion.
-
-> [!NOTE]
-> **RD-VBAL diverges from MS-VBAL** in the integral → floating-point block of §5.5.1.2.1: the MS
-> document specifies it as a verbatim copy of the preceding (narrowing) block, including the
-> finite-value and banker's-rounding checks — conditions no integer value can meet, for a conversion
-> that is unambiguously widening. RD-VBAL treats it as a plain widening copy. Divergences of this
-> kind (obvious copy/paste and transcription errors in the MS specification, and anything that
-> implicitly depends on the Windows Registry, ActiveX, or MSForms — all out of scope for the
-> run-time) are resolved in favour of the evident intent.
-
-**`Variant` let-coercion and storage (MS-VBAL §5.5.1.2.12).** Any value except a class or `Nothing`
-Let-coerces to `Variant` as a copy, wrapped in a
-[VBVariantValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBVariantValue.html). A `VBVariantValue`'s
-own `TypeInfo` deliberately mirrors its wrapped value's — so ordinary destination-type dispatch (both
-here and in operator/effective-type determination) picks the same strategy it would for the
-unwrapped value — but its runtime *instance* stays a `VBVariantValue`, wrapping the whole value, not
-just a scalar. Storage round-trips it as a
-[VBRuntimeVariantValue](../api/RDCore.SDK.Model.Values.Runtime.VBRuntimeVariantValue.html) box (the
-same pattern a
-[VBArrayValue](../api/RDCore.SDK.Model.Values.Abstract.VBArrayValue.html) uses via
-`VBRuntimeArrayValue`), so a `Variant` read back from a variable, array element, or field carries the
-exact value that was stored — never a fresh, unrelated `Empty`.
-
-Because `TypeInfo` mirrors the wrapped value, any code that short-circuits on a `TypeInfo` match, or
-pattern-matches a `VBTypedValue` operand against a concrete value type directly, must unwrap a
-`VBVariantValue` first (recursively — a `Variant` may wrap another `Variant`) or it will see the box
-instead of the value. `LetCoercionRuntimeSemanticsProvider.EvaluateLetCoercionSemantics` does this
-once, centrally, for every let-coercion; `OperatorRuntimeSemantics.LetCoerceNonNullOperand` never
-skips its own "already the right type" short-circuit for a `Variant` operand;
-`SetCoercionRuntimeSemantics` unwraps before its own object pattern-match; and
-`RuntimeExpressionEvaluator.EvaluateIndex`, `ProcedureExecutor.ExecuteForEachOpener`, and
-`BinaryConcatOperatorRuntimeSemantics.IsByteArray` each unwrap before matching a wrapped array.
-
-**`VarType` and COM interop shape (MS-VBAL §6.1.1.16).** A `Variant`'s own COM `VARENUM`-compatible
-tag — `VBVarType`, the same numeric values `VarType()` reports and OLE Automation marshals a
-`VARIANT` against — is computed from the wrapped value's declared type by `VBVarTypeExtensions.VarType`
-and carried on its `VBRuntimeVariantValue` box, so it round-trips through storage alongside the value
-itself. An array's own tag is `VBArray` combined with its element type's own tag, recursively. A
-`VBClassType` with a known class module defers to `VBClassModuleSymbol.AutomationKind` —
-`Dispatch` (`VT_DISPATCH`, true of every RD-VBA class module today) or `Unknown` (`VT_DISPATCH`'s
-`vbDataObject` sibling, `IUnknown`-only — groundwork for a future external/COM reference kind, not
-constructed anywhere yet); a generic `VBObjectType` reference — a live object's concrete class is only
-knowable by looking up the actual instance, which this mapping has no access to — defaults to
-`Dispatch`, the only sound default absent that lookup.
-
-### 5.0.2.3 Statement Evaluation
-> [!NOTE]
-> The specification of this section is currently a work in progress.
-
-
----
 ## 5.0.3 Semantic Analysis
-The _analysis pipeline_ of all operators follows a clear sequence:
-1. The _effective type_ of the operation is determined, based on the _declared type_ of its _operands_ and invoking the same methods as runtime semantics;
-2. Validation: all non-[null](../api/RDCore.SDK.Model.Values.Intrinsic.VBNullValue.html) _operands_ are let-coerced to the determined _effective type_ of the operation, using the same runtime semantics let-coercion provider as the evaluation pipeline;
-3. Semantic evaluation: a templated method evaluates a _semantic result_, having the _execution context_ and the validated _operands_ to work with **but without inducing any side-effects**.
 
-The `Analyze` method then yields a [_builder_](../api/RDCore.SDK.Semantics.Builders.ISemanticContextContributor-2.html) that builds a _semantic context_ for this specific _expression node_ that includes the results of each evaluation step:
-- A [DetermineOperatorEffectiveTypeResult](../api/RDCore.SDK.Runtime.Shared.DetermineOperatorEffectiveTypeResult.html) encapsulating the result of the first step;
-- A [LetCoercionAnalysisContext](../api/RDCore.SDK.Semantics.Analysis.LetCoercionAnalysisContext.html) encapsulating the aggregated evaluation stack and outcome of all let-coercion operations, with their respective _semantic flags_;
-- A [RuntimeSemanticsEvaluationResult](../api/RDCore.SDK.Runtime.Shared.RuntimeSemanticsEvaluationResult.html) encapsulating the result of the operation.
+The _analysis pipeline_ of all operators follows a fixed sequence of three steps:
 
-> 👉 The role of the `Analyze` method at this level is simply to report the _semantic facts_ of an operation, that usually cannot be inferred from the operands or _effective type_ alone. **These flags are pure _facts_, not _opinions_**.
+1. The _effective type_ of the operation is determined, based on the _declared type_ of its _operands_. This step
+   invokes the same methods as runtime semantics to determine the effective type.
+2. Validation: all non-null operands (non-[VBNullValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBNullValue.html))
+   are let-coerced to the determined _effective type_ of the operation. This step uses the same runtime semantics
+   let-coercion provider as the evaluation pipeline
+   ([**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md)).
+3. Semantic evaluation: a templated method evaluates a _semantic result_, having the _execution context_ and the
+   validated _operands_ to work with, without inducing any side-effects.
 
-> 🧩 The role of _analyzers_ in extensions like **RDCore.Diagnostics** is to inspect the flags and errors in these _semantic contexts, and issue _diagnostics_. While **error** diagnostics are reserved for coded _syntax/compilation_ and _runtime/application_ errors, a **hint** or **suggestion** diagnostic can be as opiniated as needed.
+The `Analyze` method yields a _builder_,
+[ISemanticContextContributor&lt;,&gt;](../api/RDCore.SDK.Semantics.Builders.ISemanticContextContributor-2.html), that
+builds a _semantic context_ for the specific _expression node_. The semantic context includes the results of each
+analysis step:
 
-> [!NOTE]
-> **Warning** diagnostics should be used carefully, for flagging _potential bugs_ or logical errors causing unexpected or unintended behavior, or perhaps _severe_ performance issues. Always consider the possibility of there being a _treat warnings as errors_ host environment configuration setting: if a diagnostic is not worth _breaking a build over_, then it's not a _warning_. 
+|Semantic context member|Encapsulates|
+|---|---|
+|[DetermineOperatorEffectiveTypeResult](../api/RDCore.SDK.Runtime.Shared.DetermineOperatorEffectiveTypeResult.html)|The result of the first step.|
+|[LetCoercionAnalysisContext](../api/RDCore.SDK.Semantics.Analysis.LetCoercionAnalysisContext.html)|The aggregated evaluation stack and outcome of all let-coercion operations, with their respective _semantic flags_.|
+|`RuntimeSemanticsEvaluationResult`|The result of the operation.|
 
-**RDCore** implements the MS-VBAL type-coercion rules through _pattern-matching_ against its type
-system, verbatim except for the resolved specification errors noted in §5.0.2.2.
+The language core features an analytical pipeline that attaches detailed _semantic flags_ to abstract syntax tree
+(AST) nodes ([**RD-VBAL §1.1.3** Core Semantic Flags](rd-vbal.1.1.3.core-semantic-flags.md)).
+
+> 👉 The role of the `Analyze` method at this level is to report the _semantic facts_ of an operation. These facts
+> usually cannot be inferred from the operands or _effective type_ alone.
+
+**Semantic flags are pure _facts_, not _opinions_.**
+
+### Diagnostics
+
+> 🧩 The role of _analyzers_ in extensions like **RDCore.Diagnostics** is to inspect the flags and errors in
+> semantic contexts, and issue _diagnostics_ ([**RD-VBAL §1.1.4** Core Diagnostics](rd-vbal.1.1.4.core-diagnostics.md)).
+
+|Diagnostic|Use|
+|---|---|
+|**Error**|Reserved for coded _syntax/compilation_ and _runtime/application_ errors.|
+|**Warning**|Used carefully: for flagging _potential bugs_ or logical errors causing unexpected or unintended behavior, or _severe_ performance issues.|
+|**Hint** or **suggestion**|Can be as opinionated as needed.|
+
+When choosing a warning severity, always consider the possibility of a _treat warnings as errors_ host environment
+configuration setting. If a diagnostic is not worth _breaking a build over_, it is not a _warning_
+([**RD-VBAL §2.6** Diagnostics](rd-vbal.2.6.diagnostics.md)).
+
+### Type coercion
+
+**RDCore** implements the MS-VBAL type-coercion rules through _pattern-matching_ against its type system
+([**RD-VBAL §5.5** Implicit coercion](rd-vbal.5.5.implicit-coercion.md)).
+
+The rules are implemented verbatim, except for the resolved specification errors noted in
+[**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md). Divergences from MS-VBAL caused by
+obvious copy/paste and transcription errors in the MS specification are resolved in favour of the evident intent.
+
+Anything in MS-VBAL that implicitly depends on the Windows Registry, ActiveX, or MSForms is out of scope for the
+RD-VBA run-time; such requirements are also resolved in favour of the evident intent.
 
 ---
-> ⏮️ [**RD-VBAL §4.0** Program Structure](rd-vbal.4.0.program-structure.html) | ⏭️ [**RD-VBAL §6.0** Standard Library](rd-vbal.6.0.standard-library.html)
+## In this section
+
+|§|Title|MS-VBAL|
+|---|---|---|
+|5.1|[Module Body Structure](rd-vbal.5.1.module-body-structure.md) — *reserved*|[§5.1](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/700b6540-33f4-4c9b-a151-cf1ee646e5ee)|
+|5.2|[Module Declaration Section Structure](rd-vbal.5.2.module-declaration-section-structure.md) — *reserved*|[§5.2](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/501a2cb4-21a0-4982-9e5d-29fbb1c624f5)|
+|5.3|[Module Code Section Structure](rd-vbal.5.3.module-code-section-structure.md) — *reserved*|[§5.3](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/10d7f639-e0e0-4d05-be3a-cff2e542cd35)|
+|5.4|[Procedure Bodies and Statements](rd-vbal.5.4.procedure-bodies-and-statements.md)|[§5.4](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/618815bc-c68b-4488-8082-ed1b36fac6d4)|
+|5.5|[Implicit coercion](rd-vbal.5.5.implicit-coercion.md)|[§5.5](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/72801139-6d53-4492-ad30-4d4363d6c6f9)|
+|5.6|[Expressions](rd-vbal.5.6.expressions.md) — *reserved*|[§5.6](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/65a708dc-e805-442e-8b9c-c02acb6254b2)|
+
+---
+> ⏮️ [**RD-VBAL §4.1** VBIDE Synchronization](rd-vbal.4.1.vbide-synchronization.md) | ⏭️ [**RD-VBAL §5.1** Module Body Structure](rd-vbal.5.1.module-body-structure.md)

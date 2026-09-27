@@ -8,3 +8,7 @@
   href: vbc09309.md
 - name: VBC09319 — Duplicate label definition
   href: vbc09319.md
+- name: VBC09320 — Inconsistent property accessors
+  href: vbc09320.md
+- name: VBC09321 — Argument required for Property Let or Property Set
+  href: vbc09321.md

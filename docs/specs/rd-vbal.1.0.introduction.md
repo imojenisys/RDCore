@@ -1,35 +1,37 @@
 # 1.0 Introduction
 
-This specification describes the **RDCore Language Platform and SDK** which includes an _implementation of the VBA programming language_ herein described as **RD-VBA**, *derivative* of the **MS-VBAL** specification for **Microsoft Visual Basic for Applications** (MS-VBA) but **entirely independent** from (but striving to achieve _and maintain_ full compatibility with) its _historical host environment_.
+This specification describes the **RDCore Language Platform and SDK**. The platform includes an implementation of the VBA programming language, herein called **RD-VBA**.
 
----
+RD-VBA is derived from [**MS-VBAL**](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d5418146-0bd2-45eb-9c7a-fd9502722c74), the specification for **Microsoft Visual Basic for Applications** (**MS-VBA**). RD-VBA is entirely independent from the historical host environment of MS-VBA, but strives to achieve and maintain full compatibility with it.
+
 ## 1.0.1 RDCore
 
-**RDCore**™ is an actively evolving _Language Server_ (LSP) platform that is currently a **work in progress**. Ultimately, the RDCore deliverables are:
+**RDCore**™ is a *Language Server* (LSP) platform. It is actively evolving, and is a work in progress.
 
-- 🎯 **rdc.exe**: a configurable and extensible RD-VBA _environment host_ and LSP client CLI application;
-- 🎯 **RDCore.LanguageServer.exe**: the platform's "orchestrator" LSP server application;
-- 🎯 **RDCore.ParseServer.exe**: the platform's parser is a satellite LSP server application owned and coordinated by the main language server;
-- 🎯 **RDCore.Diagnostics.exe**: a core platform extension asynchronously issuing _diagnostics_ to the main language server;
-- 👉 **RDCore.Runtime.dll**: a library containing an implementation for all the RD-VBA runtime semantics and mechanics, _including an implementation of the VBA Standard Library_;
-- 🧩 **RDCore.SDK.dll**: a library exposing the RDCore abstractions and encapsulating the base RD-VBA _language core_ implementation.
+Ultimately, the RDCore deliverables are the following six components:
 
+|Deliverable|Kind|Description|
+|---|---|---|
+|🎯 `rdc.exe`|LSP client CLI application|A configurable and extensible RD-VBA *environment host*.|
+|🎯 `RDCore.LanguageServer.exe`|LSP server application|The platform's "orchestrator" language server.|
+|🎯 `RDCore.ParseServer.exe`|Satellite LSP server application|The platform's parser. It is owned and coordinated by the main language server, `RDCore.LanguageServer.exe`.|
+|🎯 `RDCore.Diagnostics.exe`|Core platform extension|Issues *diagnostics* asynchronously to the main language server. See [**RD-VBAL §1.1.4** Core Diagnostics](rd-vbal.1.1.4.core-diagnostics.md).|
+|👉 `RDCore.Runtime.dll`|Library|An implementation of all the RD-VBA runtime semantics and mechanics, including an implementation of the VBA Standard Library.|
+|🧩 `RDCore.SDK.dll`|Library|Exposes the RDCore abstractions, and encapsulates the base RD-VBA *language core* implementation.|
 
----
+🎯 The RDCore platform shall provide, with the `rdc.exe` CLI client, the ability to *compose, host, analyze, run, and debug* any RD-VBA application. See [**RD-VBAL §2.0** RD-VBA Computational Environment](rd-vbal.2.0.computational-environment.md) and [**RD-VBAL §2.3** Application Host](rd-vbal.2.3.application-host.md).
+
+A fully-realized RDCore platform could technically run RD-VBA CI/CD pipelines, and integrate Enterprise software development lifecycles. See [**RD-VBAL §4.0** Program Structure and Organization](rd-vbal.4.0.program-structure.md).
+
 ## 1.0.2 RD-VBA
 
-The implementation of the platform's _language core_ is a **work in progress**. Ultimately, RD-VBA:
+The implementation of the platform's *language core*, RD-VBA, is a work in progress. Ultimately, RD-VBA:
 
-- 🎯 **aims for strict compliance with the MS-VBAL specifications**, ensuring behavioral compatibility with existing VBA semantics;
-- 🧩 **elevates VBA into a modern, extensible, _and fully open-sourced_ language platform** separating the language definition from its original 1993 implementation;
-- 👀 **makes implicit language behavior explicit**, exposing semantic rules, evaluation steps, call stacks, and error conditions as _observable facts_.
+- 🎯 **aims for strict compliance with the MS-VBAL specifications.** Strict compliance is intended to ensure behavioural compatibility with existing VBA semantics.
+- 🧩 **elevates VBA into a modern, extensible, and fully open-sourced language platform.** RD-VBA separates the VBA language definition from its original 1993 implementation.
+- **makes implicit language behaviour explicit.** RD-VBA exposes semantic rules, evaluation steps, call stacks, and error conditions as *observable facts*.
 
-
----
-## In this section
-- [**RD-VBAL§1.1** Philosophy](rd-vbal.1.1.philosophy.html)
-
+The principles that govern these objectives are described in [**RD-VBAL §1.1** Design and Extension Philosophy](rd-vbal.1.1.philosophy.md).
 
 ---
-> ⏭️ [**RD-VBAL §2.0** Computational Environment](rd-vbal.2.0.computational-environment.html)  
-
+> ⏮️ [**RD-VBAL** Table of Contents](rd-vbal.md) | ⏭️ [**RD-VBAL §1.1** Design and Extension Philosophy](rd-vbal.1.1.philosophy.md)
