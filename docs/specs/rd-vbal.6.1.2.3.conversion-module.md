@@ -1,0 +1,56 @@
+# 6.1.2.3 Conversion Module
+
+> [!NOTE]
+> This section describes the implementation of [**MS-VBAL §6.1.2.3** Conversion Module](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/498c1238-f735-4e3b-810f-e0999b4d5fda).
+
+The `Conversion` module is represented in the SDK by the interface
+[IStdConversionModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdConversionModule.html).
+
+The `Conversion` module's declarations follow MS-VBAL's own _Function Declaration_ blocks (**MS-VBAL §6.1.2.3**),
+declaration by declaration, including their return types and their `Optional` parameters.
+
+
+## 6.1.2.3.1 Public Functions
+
+> [!NOTE]
+> This section describes the implementation of [**MS-VBAL §6.1.2.3.1** Public Functions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1951c2a7-7527-4d8d-b4a5-3b212d2442d5).
+
+|§|Member|Notes|
+|---|---|---|
+|6.1.2.3.1.1|[CBool](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fb8b7a86-5c7a-4623-807a-9b6551dadfa5)||
+|6.1.2.3.1.2|[CByte](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/fd97115a-ea2b-49ba-94eb-ccfbf8701861)||
+|6.1.2.3.1.3|[CCur](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ec718b0a-6c8d-4ada-90fa-dbb331516b58)||
+|6.1.2.3.1.4|[CDate / CVDate](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1f287742-e07f-4169-8ce7-5ddfe0f951fb)||
+|6.1.2.3.1.5|[CDbl](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/03e8d20d-8356-4080-809c-6f1b563af0d0)||
+|6.1.2.3.1.6|[CDec](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/07360f30-1220-4c1f-afc3-8ba7a7dac332)||
+|6.1.2.3.1.7|[CInt](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/8d3ac81d-00ba-4cee-bda0-4bf7c32a7fc8)||
+|6.1.2.3.1.8|[CLng](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c5c2f77f-10e8-4a81-8eac-2ea15c13db8b)||
+|6.1.2.3.1.9|[CLngLng](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/4ca05bda-57b1-4f0f-bdc8-74febb84a1bb)||
+|6.1.2.3.1.10|[CLngPtr](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/39e8676c-5beb-4f2f-b7ac-8f4e832c5d62)|See [§6.1.2.3.1.10](#6123110-clngptr).|
+|6.1.2.3.1.11|[CSng](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f4161bc8-127a-4ecc-99e8-b6bb964e277d)||
+|6.1.2.3.1.12|[CStr](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/0fff7d08-82fc-43bd-bc75-4782cfa2f08d)||
+|6.1.2.3.1.13|[CVar](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6b423db1-cc79-4d28-9c4e-301d7781d41e)||
+|6.1.2.3.1.14|[CVErr](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7a7facef-2f52-4d08-918e-63bf6a9261ed)||
+|6.1.2.3.1.15|[Error / Error$](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/54992525-5c6f-4768-86ab-b97f3d0e2705)||
+|6.1.2.3.1.16|[Fix](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/97f8abc4-fd64-4ae4-9c80-1548db613ec9)||
+|6.1.2.3.1.17|[Hex / Hex$](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/b5f1801d-2e68-418b-b9db-1803368f012f)||
+|6.1.2.3.1.18|[Int](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/db6d8be7-82cd-423c-83cb-3e6eff0a3363)||
+|6.1.2.3.1.19|[Oct / Oct$](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f8c3018b-7005-4e1d-9c3b-6caea2a2625e)||
+|6.1.2.3.1.20|[Str / Str$](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/c4ecaf21-da57-4f88-b5db-0276dd0693de)||
+|6.1.2.3.1.21|[Val](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/6dff8d10-d573-43ad-8197-ca8cd509acf1)||
+
+### 6.1.2.3.1.10 CLngPtr
+
+> [!NOTE]
+> This section describes the implementation of [**MS-VBAL §6.1.2.3.1.10** CLngPtr](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/39e8676c-5beb-4f2f-b7ac-8f4e832c5d62).
+
+`CLngPtr` needs the one thing a standard-library declaration cannot state: its `LongPtr` return type depends on the
+pointer width. `LongPtr` is a different type in each pointer width
+([**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md)).
+
+The pointer width belongs to the environment, and is passed to
+[StdLibSymbolProvider](../api/RDCore.SDK.Runtime.StdLib.StdLibSymbolProvider.html)
+([**RD-VBAL §6.0.1** Symbol Injection](rd-vbal.6.0.standard-library.md#601-symbol-injection)).
+
+---
+> ⏮️ [**RD-VBAL §6.1.2.2** Constants Module](rd-vbal.6.1.2.2.constants-module.md) | ⏭️ [**RD-VBAL §6.1.2.4** DateTime Module](rd-vbal.6.1.2.4.datetime-module.md)

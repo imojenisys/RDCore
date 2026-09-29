@@ -1,160 +1,57 @@
 # 3.1 Attributes and Directives
 
-_Directives_ are **non-executable statements** that influence the semantics of the module they're located in, or the member they're referring to.
+_Directives_ are **non-executable statements**. A directive influences the semantics of the module it is located
+in, or of the member it refers to.
 
-These include `Option` statements:
+In the AST, the base node type for directives is
+[DirectiveNode](../api/RDCore.SDK.Model.AST.Abstract.DirectiveNode.html), which derives directly from
+`SyntaxNode` ([**RD-VBAL §3.0.2** Node Types](rd-vbal.3.0.2.node-types.md)).
 
-|Directive|Description
+## Option Statements
+
+Directives include the `Option` statements:
+
+|Directive|Description|
 |---|---|
-|`Option Explicit`|Implicit declarations become compile-time errors|
-|`Option Base`|Determines the base (0 or 1) of implicitly-sized arrays|
-|`Option Compare`|Determines the comparison mode (`Text` or `Binary`, or a _host-defined token_ to dynamically configure this value) for string comparisons|
-|`Option Private Module`|Determines the _accessibility_ of a module|
+|`Option Explicit`|Implicit declarations become compile-time errors.|
+|`Option Base`|Determines the base (0 or 1) of implicitly-sized arrays.|
+|`Option Compare`|Determines the comparison mode for string comparisons: `Text` or `Binary`. The comparison mode may instead be a _host-defined token_, which dynamically configures the comparison mode.|
+|`Option Private Module`|Determines the _accessibility_ of a module.|
 
-Directives also include `Def<Type>` _implicit definition_ statements:
+The semantics of the `Option` statements are described in
+[**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md).
 
-|Directive|Description
+## `Def<Type>` Statements
+
+Directives include the `Def<Type>` _implicit definition_ statements:
+
+|Directive|Configures implicit definitions for|
 |---|---|
-|`DefBool`|Configures implicit definitions for [VBBooleanType](../api/RDCore.SDK.Model.Types.VBBooleanType.html)|
-|`DefByte`|Configures implicit definitions for [VBByteType](../api/RDCore.SDK.Model.Types.VBByteType.html)|
-|`DefInt`|Configures implicit definitions for [VBIntegerType](../api/RDCore.SDK.Model.Types.VBIntegerType.html)|
-|`DefLng`|Configures implicit definitions for [VBLongType](../api/RDCore.SDK.Model.Types.VBLongType.html)|
-|`DefLngLng`|Configures implicit definitions for [VBLongLongType](../api/RDCore.SDK.Model.Types.VBLongLongType.html) in 64-bit environments|
-|`DefLngPtr`|Configures implicit definitions for [VBLongPtrType_x86](../api/RDCore.SDK.Model.Types.VBLongPtrType_x86.html) (32-bit) or [VBLongPtrType_x86](../api/RDCore.SDK.Model.Types.VBLongPtrType_x64.html) (64-bit)|
-|`DefCur`|Configures implicit definitions for [VBCurrencyType](../api/RDCore.SDK.Model.Types.VBCurrencyType.html)|
-|`DefSng`|Configures implicit definitions for [VBSingleType](../api/RDCore.SDK.Model.Types.VBSingleType.html)|
-|`DefDbl`|Configures implicit definitions for [VBDoubleType](../api/RDCore.SDK.Model.Types.VBDoubleType.html)|
-|`DefDate`|Configures implicit definitions for [VBDateType](../api/RDCore.SDK.Model.Types.VBDateType.html)|
-|`DefStr`|Configures implicit definitions for [VBStringType](../api/RDCore.SDK.Model.Types.VBStringType.html)|
-|`DefObj`|Configures implicit definitions for [VBObjectType](../api/RDCore.SDK.Model.Types.VBObjectType.html)|
-|`DefVar`|Configures implicit definitions for [VBVariantType](../api/RDCore.SDK.Model.Types.VBVariantType.html)|
+|`DefBool`|[VBBooleanType](../api/RDCore.SDK.Model.Types.VBBooleanType.html)|
+|`DefByte`|[VBByteType](../api/RDCore.SDK.Model.Types.VBByteType.html)|
+|`DefInt`|[VBIntegerType](../api/RDCore.SDK.Model.Types.VBIntegerType.html)|
+|`DefLng`|[VBLongType](../api/RDCore.SDK.Model.Types.VBLongType.html)|
+|`DefLngLng`|[VBLongLongType](../api/RDCore.SDK.Model.Types.VBLongLongType.html), in 64-bit environments|
+|`DefLngPtr`|[VBLongPtrType_x86](../api/RDCore.SDK.Model.Types.VBLongPtrType_x86.html) in a 32-bit environment; [VBLongPtrType_x64](../api/RDCore.SDK.Model.Types.VBLongPtrType_x64.html) in a 64-bit environment|
+|`DefCur`|[VBCurrencyType](../api/RDCore.SDK.Model.Types.VBCurrencyType.html)|
+|`DefSng`|[VBSingleType](../api/RDCore.SDK.Model.Types.VBSingleType.html)|
+|`DefDbl`|[VBDoubleType](../api/RDCore.SDK.Model.Types.VBDoubleType.html)|
+|`DefDate`|[VBDateType](../api/RDCore.SDK.Model.Types.VBDateType.html)|
+|`DefStr`|[VBStringType](../api/RDCore.SDK.Model.Types.VBStringType.html)|
+|`DefObj`|[VBObjectType](../api/RDCore.SDK.Model.Types.VBObjectType.html)|
+|`DefVar`|[VBVariantType](../api/RDCore.SDK.Model.Types.VBVariantType.html)|
 
-Other directives include `Implements` and `Attribute` statements:
+The semantics of the `Def<Type>` statements are described in
+[**RD-VBAL §5.2.2** Implicit Definition Directives](rd-vbal.5.2.2.implicit-definition-directives.md).
 
-|Directive|Description
-|---|---|
-|`Implements`|Specifies that the (class) module _implements_ an _interface class_.|
-|`Attribute`|Specifies flags and modifiers that alter the semantics of a module or member.|
+## Other Directives
 
+Directives also include the `Implements` and `Attribute` statements:
+
+|Directive|Description|Described in|
+|---|---|---|
+|`Implements`|Specifies that the (class) module _implements_ an _interface class_.|[**RD-VBAL §5.2.4** Class Module Declarations](rd-vbal.5.2.4.class-module-declarations.md)|
+|`Attribute`|Specifies flags and modifiers that alter the semantics of a module or member.|[**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md)|
 
 ---
-## 3.1.1 Attributes
-> [!NOTE]
-> **MS-VBAL 5.2.3 Module Declaration:** _Composition and compilation of Attribute statements is not permitted in the **Microsoft Visual Basic for Applications editor**, however, they are consumed and produced by **Microsoft Visual Basic for Applications** without error upon import and export and are therefore **considered valid VBA language constructs**._
-
-The interpretation of the **RDCore** platform is that this section of the **MS-VBAL** specification:
-- Relates specifically to the _MS-VBA_ implementation and the _Microsoft VBIDE_, which is _out of scope_ for **RD-VBA**;
-- Affirms `Attribute` statements as _valid VBA language constructs_;
-
-Therefore:
-- `Attribute` statements are valid **RD-VBA** language constructs;
-- Whether a RD-VBA client / editor displays `Attribute` statements and/or allows their composition within the editor, is _implementation-dependent_.
-- **Compilation** in RD-VBA is the responsibility of the _environment host_, i.e. the `rdc.exe` console client - specifically, it is normally **NOT** a concern for any other client or IDE.
-
-Attributes in the _header_ section of a module determine the _static semantics_ of that module.
-
-> [!TIP]
-> **MS-VBA** attribute semantics are severely truncated; **RD-VBA** has no reason not to honor their semantics accordingly with their original **VB6** intent.
-
-
-### 3.1.1.1 VB_Name
-If present, the value of a `VB_Name` attribute determines the `Name` of the _symbol_ for that module.
-
-If omitted, the _environment host_ may inject one with a value that matches the _file name_ of the module, stripped of any empty spaces or other characters that would be illegal in a valid _identifier name_:
-- If there are no other attributes in the header, and no module name can be inferred from the file, the module is named `Module` followed by as many digits as necessary to make a unique module name, starting with `Module1`, then `Module2`, and so on until a unique name is determined.
-- If the header contains any other attributes, and no module name can be inferred from the file, the module is named `Class` followed by as many digits as necessary to make a unique module name, starting with `Class1`, then `Class2`, and so on until a unique name is determined.
-
-The _environment host_ **must** inject any missing attributes _before_ requesting the parsing of that module, only if the file is NOT currently owned by any IDE or _editor client_.
-- If a module is missing a `VB_Name` attribute and is currently opened in an IDE or _editor client_, the language server may send a `WorkspaceEdit` notification to have any editor-owned files modified by the editor.
-
-> [!TIP]
-> See [LSP 3.17 § WorkspaceEdit](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#workspaceEdit) for more information about commanding client-side _workspace edits_ from the _language server_. Note that the implementation must ensure that the LSP client _does_ support the required capabilities for the requested edits.
-
-
-### 3.1.1.2 VB_Creatable
-Determines whether a class module can be directly instantiated using a `New` (or `CreateObject`) expression from a _referencing project_.  
-
-The value of this attribute **MUST** be `False` in a **VBA** module, but may be `True` in a **VB6** module, for RD-VBA clients that support the **VB6** language, of which **VBA** is deemed a subset.
-
-> [!TIP]
-> In practical terms, a _not-creatable_ class module can **only** be directly instantiated within the project it is defined in (the _enclosing project_), but an _instance_ of that class may be consumed by any _referencing project_ if the module is _exposed_.
-
-
-### 3.1.1.2 VB_Exposed
-Determines whether a class module is visible at all to a _referencing project_.
-
-The value of this attribute is `False` for _private modules_, or `True` for _public modules_; a _public module_ may be consumed by a _referencing project_, but whether a new instance of the module can be created outside of the _enclosing project_ that defines it, depends on the value of its `VB_Creatable` attribute.
-
-👉 Together, `VB_Creatable` and `VB_Exposed` determine the _instancing mode_ of a class module this value is:
-- `Private` when both attribute values are `False`;
-- `PublicNotCreatable` given `VB_Exposed=True` but `VB_Creatable=False`;
-- `PublicCreatable` given `VB_Exposed=True` and `VB_Creatable=True`.
-
-> [!NOTE]
-> The `PublicCreatable` _instancing mode_ is not a legal **VBA** configuration, but **RD-VBA** implementations may allow it, given _semantic flags_ being issued if the _host environment_ is configured to allow building _library projects_.
-
-
-### 3.1.1.3 VB_GlobalNameSpace
-Determines whether a class module is exposed to the _global namespace_.
-
-> [!NOTE]
-> This attribute is only meaningful in a _library project_.
-
-
-### 3.1.1.4 VB_Customizable
-This attribute marks a class, method, or property as _customizable_ in host environments that support _VB6 ActiveX Designers_ or _VB6 Object Template_; it indicates that the class or member supports _design-time customization_ and may participate in _persistence mechanisms_ used by _designer hosts_.
-
-> [!NOTE]
-> A _customizable_ class or member is allowed to appear in a .frx or _property bag_.
-
-**VB6** sets it automatically depending on whether:
-- the class is `Public` or part of an _ActiveX Project_;
-- the member is eligible for _design-time customization_;
-- the member is persisted (_serialized_) in a _property bag_.
-
-This attribute controls:
-- How a component is described in a _type library_;
-- How a consuming COM host interprets those descriptions;
-- Whether a _designer tool_ can _override_ or _persist_ the member.
-
-> 🎯 _VB6 ActiveX designer features_ are **out-of-scope** for the **RDCore** _language core_.  
-> 🧩 _VB6 ActiveX Designer features_ would be an very cool eventual _platform extension_ though.
-
-
-### 3.1.1.5 VB_PredeclaredId
-Determines whether the _environment host_ declares a global _auto-object_ instance of the class with a _predeclared ID_, where the _identifier name_ of the global _auto-object_ has the same name as the class module it is a _predeclared_ instance of.
-
-The "Id" refers to an internal _unique semantic identifier_ given to every object in the _host environment_.
-
-**Static semantics** (**MS-VBAL §5.2.4.1.2**) — ✅ modeled: a class module with `VB_PredeclaredId = True` has a
-[VBPredeclaredInstanceSymbol](../api/RDCore.SDK.Model.Symbols.VBPredeclaredInstanceSymbol.html), a global
-variable named after the class whose declared type is that class. It is created as if declared `As New`, so it is
-an _automatic instantiation variable_ (`SymbolProperties.AutoInstantiated`, **MS-VBAL §2.5.1**), like any
-variable declared with an `As New` clause (**§5.2.3.1.1**). It is what the class name binds to in the
-_default binding context_ (`ISymbolResolver.ResolveValue`), so `Widget.Size` is a member access on a variable of
-type `Widget`. A class module is never a name in that context otherwise: a class that is not predeclared has no
-default instance, and its name in an expression is an undefined variable. In the _type binding context_
-(`ResolveType`, an `As` clause or `New`) the name is still the class.
-
-It is **invalid for the default instance variable to be the target of a `Set` assignment** (**§5.2.4.1.2**),
-whatever is assigned to it: `Set Widget = New Widget` and `Set Widget = Nothing` are both compile errors
-(`VBC09304`), while `Widget.Size = 3` assigns a member of the object it holds, and a local or field that is
-itself named `Widget` hides the default instance and is an ordinary `Set` target.
-
-The run-time behavior described below — never `Nothing`, re-created on reference — is 🎯 not modeled yet, and
-neither is the declaration-level validity of `As New` (the specified type must be a named class, and creatable
-unless declared in the same project, **§5.2.3.1.4**).
-
-> [!TIP]
-> Setting an _auto-object_ to `Nothing` destroys its internal state (_semantic flags_ should identify whether a _predeclared_ class module is _stateful_ or not), but the object reference is immediately re-created as soon as it is being referred to, _including_ within a `Is Nothing` reference check - that check is therefore _statically constant_ (`false`).
-
-
-### 3.1.1.6 VB_Description
-This attribute holds a short _documentation string_ that IDE tooling can then use to supply helpful tooltips.
-
-> [!TIP]
-> Surfacing attributes does not necessarily make `@Description` annotations obsolete, because hiding `Attribute` directives may or may not be a capability that is supported by a LSP client.
-
-
----
-> ⏮️ [**RD-VBAL §3.0** Syntax Tree](rd-vbal.3.0.syntax-tree.html) | ⏮️ [**RD-VBAL §3.2** Literals](rd-vbal.3.2.0.literals.html)
+> ⏮️ [**RD-VBAL §3.0.3** Binding Contexts](rd-vbal.3.0.3.binding-contexts.md) | ⏭️ [**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md)

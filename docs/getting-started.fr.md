@@ -187,7 +187,7 @@ Les extensions de la plateforme RDCore avec un _manifest_ valide qui leur permet
 [assembly: ProvidesCorePlatformClientCapability<CliCommand>]
 ```
 
-> 👉 La liste complète et exhaustive des capacités de la plateforme sera documentée à la section [RD-VBAL §2.0.2](./specs/rd-vbal.2.0.computational-environment.html#202-clientserver-capabilities) à mesure que progresse son implémentation.
+> 👉 La liste complète et exhaustive des capacités de la plateforme sera documentée à la section [RD-VBAL §2.0.2](specs/rd-vbal.2.0.2.client-server-capabilities.md) à mesure que progresse son implémentation.
 
 > [!NOTE]
 > **Les extensions tant de première que de tierces parties** distribuées à travers l'**infranuagique RDCore**  _PEUVENT_ utiliser un _capability provider_ qui _PEUT_ valider la disponibilité de certains capacités avancées en **requérant une authentification 2FA**, la validation d'une **inscription active** (gratuite ou payante), et la validation d'un _build signé_ avec le _build officiel_ du canal de distribution certifié.
@@ -198,7 +198,7 @@ Les extensions de la plateforme RDCore avec un _manifest_ valide qui leur permet
 
 Le _coeur de langage_ est conçu pour être étendu à travers des extensions de la plateforme de type _serveur_, moyennant un échange de _capacités_ donnant accès à des points d'extensions.
 
-Voir [RD-VBAL § 1.1](/specs/rd-vbal.1.1.philosophy.md) pour les détails et la philosophie d'extension de la plateforme à ce niveau.
+Voir [RD-VBAL § 1.1](specs/rd-vbal.1.1.philosophy.md) pour les détails et la philosophie d'extension de la plateforme à ce niveau.
 
 ---
 [ACCUEIL](index.fr.md) • [HOME](./index.md) | ℹ️ [BIENVENUE](introduction.fr.md) • [WELCOME](introduction.html) | 🧩 BÂTISSONS • [BUILD](getting-started.html) | [**RD-VBAL**](/RDCore/specs/rd-vbal.html) | [SDK](/RDCore/api/RDCore.SDK.Model.Errors.VBCompileErrorId.html) | 🌐 [rubberduckvba.ca](https://rubberduckvba.ca)

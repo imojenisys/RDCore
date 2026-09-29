@@ -1,17 +1,29 @@
 # 3.2.0 Literal Expressions
 
-[LiteralExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.LiteralExpressionNode.html) (**MS-VBAL §5.6.5**) represents a value that is statically resolved to a [VBTypedValue](../api/RDCore.SDK.Model.Values.Abstract.VBTypedValue.html).
+[LiteralExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.LiteralExpressionNode.html) is the AST node for
+[**MS-VBAL §5.6.5** Literal Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/13557712-af01-4c82-acfa-01a440a27262)
+([**RD-VBAL §5.6.5** Literal Expressions](rd-vbal.5.6.5.literal-expressions.md)). A `LiteralExpressionNode`
+represents a value that is statically resolved to a
+[VBTypedValue](../api/RDCore.SDK.Model.Values.Abstract.VBTypedValue.html).
 
-The parser resolves the literal's _declared type_ from the source token: a `LiteralExpressionNode` already carries a fully-typed [VBTypedValue](../api/RDCore.SDK.Model.Values.Abstract.VBTypedValue.html), including the effect of any _type-declaration character_.
+The parser resolves a literal's _declared type_ from the source token. A `LiteralExpressionNode` already carries a
+fully-typed `VBTypedValue` when the parser produces it. That value includes the effect of any
+_type-declaration character_.
 
-
----
 ## 3.2.0.1 Numeric Literal Types
 
-The declared type of a numeric literal follows **MS-VBAL §3.3.2**:
+The declared type of a numeric literal follows
+[**MS-VBAL §3.3.2** Number Tokens](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/685ad840-accb-4bdb-8bfd-f3d88498547a).
+A numeric literal's type is fixed by the literal's own form (a type-declaration suffix, the presence of a decimal
+point or exponent, or a radix prefix) before any context is considered. Because of this, overflow is a property of
+the literal alone, and is caught while the syntax tree is built
+([VBC00042](../diagnostics/vbc00042.md) _Numeric literal overflow_).
 
-1. An explicit _type-declaration character_ suffix, if present, forces the type. A value that does
-   not fit the forced type is a **syntax error** (`NumericLiteralOverflow`), located at the literal.
+The declared type of a numeric literal is determined as follows:
+
+1. An explicit _type-declaration character_ suffix, if present, forces the literal's declared type. A literal whose
+   value does not fit its suffix-forced type is a **syntax error**, `NumericLiteralOverflow` (`VBC00042`), located
+   at the literal. For example, the `%` suffix denotes `Integer`, whose maximum is 32767.
 
    |Suffix|Declared type|
    |---|---|
@@ -22,51 +34,70 @@ The declared type of a numeric literal follows **MS-VBAL §3.3.2**:
    |`#`|`Double`|
    |`@`|`Currency`|
 
-2. Otherwise, an **unsuffixed decimal integer literal** (no fractional part, no exponent) takes the
-   smallest of `Integer`, `Long`, `Double` that can hold its value.
+2. Otherwise, an **unsuffixed decimal integer literal** (no fractional part, no exponent) takes the smallest of
+   `Integer`, `Long`, `Double` that can hold its value.
 
-3. Otherwise, a **floating-point literal** (fractional part or exponent) is `Double`. The exponent
-   letter is `[DEde]` — `D` is the legacy double-precision marker and produces the same value as `E`.
-   A literal that overflows to infinity is a `NumericLiteralOverflow` syntax error.
+3. Otherwise, a **floating-point literal** (a literal with a fractional part or an exponent) is `Double`.
+   - The exponent letter is one of `[DEde]`.
+   - `D` is the legacy double-precision marker. It produces the same value as `E`.
+   - A floating-point literal that overflows to infinity is a `NumericLiteralOverflow` syntax error.
 
-4. A **`&H…` hexadecimal / `&O…` octal literal** is typed by _bit width_, interpreting the radix
-   digits as a **two's-complement** value at that width — **not** by the decimal rule (2). Unsuffixed,
-   it is the narrowest of `Integer` (16-bit) or `Long` (32-bit) that the value's bit width fits:
-   `&HFFFF` is `Integer` `-1`, `&H8000` is `Integer` `-32768`, `&H10000` is `Long` `65536`,
-   `&HFFFFFFFF` is `Long` `-1`. `&HFFFFFFFF` is the largest unsuffixed radix literal; beyond 32 bits
-   is a `NumericLiteralOverflow` syntax error (use a `^` suffix for a 64-bit `LongLong`). `%` / `&` /
-   `^` set the width (16 / 32 / 64 bits); a radix literal is **never** `Double`.
+4. A **`&H…` hexadecimal or `&O…` octal (radix) literal** is typed by _bit width_, not by the decimal rule (rule 2).
+   Its radix digits are interpreted as a **two's-complement** value at the literal's bit width.
+
+### Radix Literals
+
+An unsuffixed `&H…` / `&O…` literal is the narrowest of `Integer` (16-bit) or `Long` (32-bit) that the value's bit
+width fits:
+
+|Literal|Declared type|Value|
+|---|---|---|
+|`&HFFFF`|`Integer`|`-1`|
+|`&H8000`|`Integer`|`-32768`|
+|`&H10000`|`Long`|`65536`|
+|`&HFFFFFFFF`|`Long`|`-1`|
+
+`&HFFFFFFFF` is the largest unsuffixed radix literal. An unsuffixed radix literal beyond 32 bits, such as
+`&HFFFFFFFFF`, is a `NumericLiteralOverflow` syntax error. A 64-bit `LongLong` radix literal requires the `^` suffix.
+
+A suffix sets a radix literal's width:
+
+|Suffix|Width|
+|---|---|
+|`%`|16 bits|
+|`&`|32 bits|
+|`^`|64 bits|
+
+A radix literal is **never** `Double`.
 
 > [!NOTE]
-> `LongLong` is only produced by the `^` suffix — an unsuffixed integer literal that exceeds `Long`
-> range widens to `Double`, never `LongLong`. String and `$`-suffixed identifiers are covered by the
-> declared-type rules for `String`, not here.
+> `LongLong` is only produced by the `^` suffix. An unsuffixed integer literal that exceeds `Long` range widens to
+> `Double`, never `LongLong`.
 
+`String` and `$`-suffixed identifiers are covered by the declared-type rules for `String`, not by the numeric
+literal type rules.
 
----
 ## 3.2.0.2 Static Symbols
 
-The _environment host_ defines a number of [_static symbols_](../api/RDCore.SDK.Model.Symbols.Abstract.StaticSymbol.html) that are globally defined, on top of the global [IStdConstantsModule](../api/IStdConstantsModule.html): 
+The _environment host_ defines a number of globally defined _static symbols_
+([StaticSymbol](../api/RDCore.SDK.Model.Symbols.Abstract.StaticSymbol.html)). They are defined on top of the global
+[IStdConstantsModule](../api/RDCore.SDK.Runtime.Abstract.StdLib.IStdConstantsModule.html).
 
-|Type|Value|Literal (token)|
+|Literal (token)|Type|Value|
 |---|---|---|
-|[VBBooleanType](../api/RDCore.SDK.Model.Types.VBBooleanType.html)|[VBBooleanValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBBooleanValue.html)|`True`,`False`|
-|[VBStringType](../api/RDCore.SDK.Model.Types.VBStringType.html)|[VBStringValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBStringValue.html)|`VBEmptyString`|
-|[VBNullType](../api/RDCore.SDK.Model.Types.VBNullType.html)|[VBNullValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBNullValue.html)|`Null`|
-|[VBVariantType](../api/RDCore.SDK.Model.Types.VBVariantType.html)|[VBEmptyValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBEmptyValue.html)|`Empty`|
-|[VBObjectType](../api/RDCore.SDK.Model.Types.VBObjectType.html)|[VBNothingValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBNothingValue.html)|`Nothing`|
+|`True`, `False`|[VBBooleanType](../api/RDCore.SDK.Model.Types.VBBooleanType.html)|[VBBooleanValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBBooleanValue.html)|
+|`VBEmptyString`|[VBStringType](../api/RDCore.SDK.Model.Types.VBStringType.html)|[VBStringValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBStringValue.html)|
+|`Null`|[VBNullType](../api/RDCore.SDK.Model.Types.VBNullType.html)|[VBNullValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBNullValue.html)|
+|`Empty`|[VBVariantType](../api/RDCore.SDK.Model.Types.VBVariantType.html)|[VBEmptyValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBEmptyValue.html)|
+|`Nothing`|[VBObjectType](../api/RDCore.SDK.Model.Types.VBObjectType.html)|[VBNothingValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBNothingValue.html)|
 
+The parser resolves the `Null` literal keyword to a `LiteralExpressionNode` carrying a `VBNullValue`, so a `Null`
+value can be written as a literal, for example as a `Select Case` selector
+([**RD-VBAL §5.4.2.10** Select Case Statement](rd-vbal.5.4.2.10.select-case-statement.md)).
 
----
-## 3.2.0.2.1 Instance Expressions - "Me"
-> [!NOTE]
-> **MS-VBAL §5.6.11** describes _instance expressions_ as _values_ with the _declared type_ defined by the class module containing the _enclosing procedure_, statically invalid within a procedural ("standard") module. At run-time, it represents the _current instance_ of the type defined by the enclosing class module and has this type as its _value type_.
+### 3.2.0.2.1 Instance Expressions
 
-It would be aligned with the specification to implement this "expression" not as such, but rather as a simple runtime artifact: the _current object_ is a common concept in many programming languages (often expressed with the token `this`). The implementation could be as simple as having the runtime context inject a `VBObjectValue` presenting the _default interface_ of the enclosing class type - pushing it to the _stack frame_ of _instance member calls_ as it would any _parameter_.
-
-> [!TIP]
-> In other words, we can get this one "for free" by having the runtime inject an implicit `Me` (`ByVal`) parameter to all _instance member calls_, pointed at the _current object_.
-
+See [**RD-VBAL §5.6.11** Instance Expressions](rd-vbal.5.6.11.instance-expressions.md).
 
 ---
-> ⏮️ [**RD-VBAL §3.1** Attributes and Directives](rd-vbal.3.2.attributes-directives.html) | ⏭️ [**RD-VBAL §3.3** Operators](rd-vbal.3.3.0.operators.html)
+> ⏮️ [**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md) | ⏭️ [**RD-VBAL §3.3.0** Operator Expressions](rd-vbal.3.3.0.operators.md)
