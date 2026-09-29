@@ -52,6 +52,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
             [typeof(IStdInformationModule)] = new StdInformation(session),
             [typeof(IStdFileSystemModule)] = new StdFileSystem(session),
             [typeof(IStdStringsModule)] = new StdStrings(),
+            [typeof(IStdFinancialModule)] = new StdFinancial(),
         });
 
     /// <summary>
@@ -139,7 +140,10 @@ public sealed class StdLibDispatcher : IExternalCallProvider
         arguments = new object?[parameters.Length];
 
         // an argument the caller did not supply is an omitted Optional: the implementation's own default
-        // stands in, which for a VBTypedValue parameter is null - the "Missing" its signature declares.
+        // stands in, which for a VBTypedValue parameter is null - the "Missing" its signature declares. The
+        // interpreter itself never leaves one out: it fills an omitted Optional with the parameter's default
+        // value - Empty for a Variant, and a typed one's own type's default, such as False, never null - so an
+        // implementation reads null and Empty alike as omitted, and cannot tell a typed one from its default.
         if (request.Arguments.Length > parameters.Length)
         {
             return false;
@@ -173,19 +177,13 @@ public sealed class StdLibDispatcher : IExternalCallProvider
             return true;
         }
 
-        // a VBTypedValue argument is already the shape the signature asks for, unless it is the wrong one -
-        // which is a coercion the caller was supposed to have done, not something to do quietly here.
-        marshalled = argument.BoxedValue as VBTypedValue ?? WrappedValue(argument, parameterType);
+        // the caller Let-coerced the argument to the parameter's declared type, so what arrives is that type's
+        // storage - a boxed double for a Double, a boxed short for an Integer - and the typed value it is the
+        // storage of is all there is left to recover. One that is still the wrong type is a coercion the
+        // caller was supposed to have done, not something to do quietly here.
+        marshalled = parameterType == typeof(VBVariantValue) ? Variant(argument) : TypedValue(argument);
         return marshalled is not null && parameterType.IsInstanceOfType(marshalled);
     }
-
-    // a runtime value that is not itself a VBTypedValue still has to reach a typed parameter, and the type
-    // the signature names is the one that knows how to hold it.
-    private static VBTypedValue? WrappedValue(IRuntimeValue argument, Type parameterType)
-        => parameterType == typeof(VBVariantValue) ? Variant(argument)
-            : parameterType == typeof(VBStringValue) && argument.BoxedValue is string text ? new VBStringValue(text)
-            : parameterType == typeof(VBLongValue) && argument.BoxedValue is not null ? new VBLongValue(Convert.ToInt32(argument.BoxedValue))
-            : null;
 
     // a Variant parameter takes anything, that being what a Variant is - MS-VBAL 5.5.1.2.2's Let-coercion to
     // Variant has no failing case. Most of the library declares its parameters that way, so a Variant that
@@ -201,8 +199,16 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     /// type a member was called with has to be recovered here. It survives: each intrinsic stores its own exact
     /// managed type — <c>short</c> for <c>Integer</c> and <c>int</c> for <c>Long</c>, not one integer type for
     /// both — which is what lets <c>Len</c> answer "the number of bytes required to store a variable" instead
-    /// of guessing. <c>Date</c> and <c>Double</c> both store a <c>double</c> and are indistinguishable here,
-    /// which costs nothing: they are the same width, and nothing else about them is asked at this seam.
+    /// of guessing. <c>Date</c> and <c>Double</c> both store a <c>double</c> and are indistinguishable here.
+    /// <para>
+    /// 🚧 TODO with the first member that declares a <c>Date</c>, <c>Decimal</c>, <c>LongPtr</c> or <c>Object</c>
+    /// parameter. The first three store what another type stores — a <c>double</c>, a <c>decimal</c>, a
+    /// <c>long</c> or an <c>int</c> — so the argument recovers as a <c>Double</c>, a <c>Currency</c>, a
+    /// <c>LongLong</c> or a <c>Long</c>, which such a parameter refuses, and a <c>Decimal</c> beyond
+    /// <c>Currency</c>'s range throws instead; and an object reference has no case here at all, so it is refused
+    /// too. A <c>Variant</c> argument is unaffected, carrying its typed value whole. The declared type is what has
+    /// to decide the rest.
+    /// </para>
     /// </remarks>
     private static VBTypedValue? TypedValue(IRuntimeValue argument) => argument switch
     {
