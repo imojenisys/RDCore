@@ -134,6 +134,82 @@ public sealed class StdLibDispatchTests
     }
 
     [TestMethod]
+    public void TheErrorObject_ReportsTheErrorThatWasRaised()
+    {
+        var output = Run("10 On Error Resume Next", "20 Error 11", "30 Debug.Print Err.Number", "40 Debug.Print Err.Description");
+
+        Assert.HasCount(2, output, string.Join(" / ", output));
+        Assert.Contains("11", output[0]);
+        Assert.Contains("Division by zero", output[1]);
+    }
+
+    [TestMethod]
+    public void ACallOnTheErrorObject_RaisesTheErrorItIsGiven()
+    {
+        // MS-VBAL 6.1.3.2.1.2: Raise is a Sub of the error object, called with arguments, and the error it raises is
+        // the one a handler sees. Erl is the statement that raised it.
+        var output = Run(
+            "10 On Error Resume Next",
+            "20 Err.Raise(5)",
+            "30 Debug.Print Err.Number",
+            "40 Debug.Print Err.Description");
+
+        Assert.HasCount(2, output, string.Join(" / ", output));
+        Assert.Contains("5", output[0]);
+        Assert.Contains("Invalid procedure call or argument", output[1]);
+    }
+
+    [TestMethod]
+    public void ABareCallOnTheErrorObject_RaisesTheErrorItIsGiven()
+    {
+        // the unparenthesized form carries its arguments on the statement, not on the callee.
+        var output = Run("10 On Error Resume Next", "20 Err.Raise 5", "30 Debug.Print Err.Number");
+
+        Assert.HasCount(1, output, string.Join(" / ", output));
+        Assert.Contains("5", output[0]);
+    }
+
+    [TestMethod]
+    [DataRow("Err.Raise (13 + 1)", "14", DisplayName = "a parenthesized expression")]
+    [DataRow("Err.Raise (5)", "5", DisplayName = "a parenthesized literal")]
+    [DataRow("Err.Raise(13 + 1)", "14", DisplayName = "an argument list, no space")]
+    public void ACallOnTheErrorObject_WithAParenthesizedArgument_RaisesTheErrorItIsGiven(string call, string expected)
+    {
+        // `Err.Raise (13 + 1)` is a bare call whose one argument is a parenthesized expression, and
+        // `Err.Raise(13 + 1)` is a call whose parentheses are the argument list; both raise error 14.
+        var output = Run("10 On Error Resume Next", $"20 {call}", "30 Debug.Print Err.Number");
+
+        Assert.HasCount(1, output, string.Join(" / ", output));
+        Assert.Contains(expected, output[0]);
+    }
+
+    [TestMethod]
+    [Ignore("A procedure-local variable does not work in this harness yet: `Dim n As Long` / `n = 13` / `Debug.Print n` " +
+        "is an internal error before the call under test is reached. Un-ignore when local variables land " +
+        "(feature/implicit-locals); the argument under test is a variable, which is what makes it a parenthesized " +
+        "variable rather than a parenthesized expression.")]
+    public void ACallOnTheErrorObject_WithAParenthesizedVariable_RaisesTheErrorItHolds()
+    {
+        var output = Run("10 On Error Resume Next", "15 Dim n As Long", "20 n = 13", "30 Err.Raise (n)", "40 Debug.Print Err.Number");
+
+        Assert.HasCount(1, output, string.Join(" / ", output));
+        Assert.Contains("13", output[0]);
+    }
+
+    [TestMethod]
+    public void ACallOnTheErrorObject_WithNoArguments_ClearsTheError()
+    {
+        var output = Run(
+            "10 On Error Resume Next",
+            "20 Error 11",
+            "30 Err.Clear",
+            "40 Debug.Print Err.Number");
+
+        Assert.HasCount(1, output, string.Join(" / ", output));
+        Assert.Contains("0", output[0]);
+    }
+
+    [TestMethod]
     public void AMemberNothingImplementsYet_IsARunTimeError_NotAnInternalOne()
     {
         // most of the library, today. The symbol resolves and the call is well-formed; the platform has not
