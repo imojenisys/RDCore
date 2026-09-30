@@ -115,10 +115,18 @@ public sealed record class WriteOutputEvaluator(RuntimeExpressionEvaluator Expre
         };
     }
 
-    // a Variant's own TypeInfo mirrors whatever it wraps, so a pattern match on it would answer for the
-    // wrapped value's type while the value in hand is still the Variant. Unwrap first, always.
+    // a Variant's own wrapped value is what is written; the wrapper never is. Neither its TypeInfo, which
+    // mirrors what it wraps, nor its storage, which boxes the wrapped value's managed value and not the typed
+    // value, says what is in hand - TypedValue does, through as many Variants as it takes.
     private static VBTypedValue Unwrapped(VBTypedValue value)
-        => value is VBVariantValue && value.Handle.Value.BoxedValue is VBTypedValue wrapped ? wrapped : value;
+    {
+        while (value is VBVariantValue { TypedValue: var wrapped })
+        {
+            value = wrapped;
+        }
+
+        return value;
+    }
 
     private static bool IsTrue(VBBooleanValue value) => Convert.ToBoolean(value.Handle.Value.BoxedValue);
 
