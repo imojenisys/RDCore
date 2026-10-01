@@ -119,6 +119,38 @@ in the class type's `SuperTypes` array
 ([VBClassType](../api/RDCore.SDK.Model.Types.Complex.VBClassType.html);
 [**RD-VBAL §2.4.2** Non-intrinsic Types](rd-vbal.2.4.2.non-intrinsic-types.md)).
 
+A class module also implements `Class` implicitly, which is among its implemented interfaces without a directive
+([**RD-VBAL §5.3.1.10**](rd-vbal.5.3.1.10.lifecycle-handler-declarations.md)). The directives below are the ones the source writes:
+its `ImplementedInterfaceNames`.
+
+### Static Semantics
+
+[ImplementsSemantics](../api/RDCore.SDK.Semantics.Static.ImplementsSemantics.html) checks the directives of a class module and what they
+require of it.
+
+- The class a directive names must exist (`VBC09311` otherwise, as for any type that does not), cannot be the class of the
+  module itself, and cannot be named by more than one directive of the module. A class whose public variables or methods
+  have an underscore in their names cannot be an interface class, and the implemented interface name prefix of an
+  interface, its name and an underscore, cannot begin that of another: [VBC09328](../diagnostics/vbc09328.md).
+- The module must declare an implemented name declaration, `InterfaceName_MemberName`, for each public method of the interface class,
+  of the same kind, and for each public variable the property accessors its declared type calls for: a `Property Get` and a `Property Let`, a
+  `Property Set` in place of the `Let` when the variable is an `Object` or a class, and all three when it is a `Variant`:
+  [VBC09329](../diagnostics/vbc09329.md). The `Private` members of the interface class are not part of its interface.
+
+What an implemented name declaration must be is [**RD-VBAL §5.3.1.9**](rd-vbal.5.3.1.9.implemented-name-declarations.md).
+
+What is wrong with a directive is reported where the directive is written: the class module symbol carries the range of each directive
+(`VBClassModuleSymbol.ImplementedInterfaceRanges`, one for each of the `ImplementedInterfaceNames`), and an interface the module does not
+implement completely is reported at the directive that names it. A symbol that was not read from source has no ranges, and is reported at the module.
+
+A directive in an extensible module (`VB_Extensible = True`, [**RD-VBAL §3.1.1.8**](rd-vbal.3.1.1.attributes.md)) is invalid:
+[VBC09328](../diagnostics/vbc09328.md).
+
+The environment host learns of the directives from the language server: `DefineSymbolsParams.ImplementedInterfaceNames` carries the
+interface names a module's directives name, and the host composes the module's class symbol from them and from the members it has been
+sent (`ISessionSymbols.TryComposeClassModule`), resolving the interfaces again over every class module it knows whenever one is
+composed, so the order the modules are defined in does not matter.
+
 > [!WARNING]
 > Extensible ("document") modules cannot specify any `Implements` directives.
 >

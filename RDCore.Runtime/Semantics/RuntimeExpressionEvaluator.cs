@@ -17,6 +17,8 @@ using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Model.Values;
 using RDCore.SDK.Runtime.Abstract;
+using RDCore.SDK.Semantics.Static;
+using RDCore.SDK.Semantics.Static.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
@@ -437,7 +439,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
         }
 
         // a Property Get, Function or Sub of the object is an invocation with no arguments of its own; a field is a read.
-        return TryResolveInvocableMember(session, owner, memberName) is { } found
+        return TryResolveInvocableMember(session, context, memberAccess.Owner, owner, memberName) is { } found
             ? InvokeProcedure(session, context, found.Member, [], found.Receiver)
             : EvaluateInstanceField(session, owner, memberName);
     }
@@ -476,7 +478,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
     /// considered.
     /// </remarks>
     private static (IRuntimeValue Receiver, VBTypeMemberSymbol Member)? TryResolveInvocableMember(
-        IRuntimeSession session, VBTypedValue owner, string memberName)
+        IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode? ownerExpression, VBTypedValue owner, string memberName)
     {
         if (UnwrappedOwner(owner) is not VBObjectValue { } objectValue || objectValue.IsNothing()
             || !session.Symbols.TryGetInstance(objectValue.Value, out var instance))
@@ -484,11 +486,200 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             return null;
         }
 
+        // MS-VBAL §5.3.1.9: "When the target object of an invocation has a declared type that is an interface class of
+        // the actual target object's class and the method name is the name of an interface member of that interface
+        // class then the actual invoked method is the method defined by the corresponding implemented method declaration
+        // of target's object's class."
+        if (ImplementationThroughDeclaredInterface(session, context, ownerExpression, instance.ClassModule, memberName) is { } implementation)
+        {
+            return (objectValue.RuntimeValue, implementation);
+        }
+
+        // a Property Let or Set derives from the subroutine's symbol and is not one: reading the property is its Get.
         var member = instance.ClassModule.DefaultInterfaceMembers.FirstOrDefault(candidate =>
-            candidate is VBPropertyGetMemberSymbol or VBFunctionMemberSymbol or VBProcedureMemberSymbol
+            candidate is VBPropertyGetMemberSymbol or VBFunctionMemberSymbol or VBProcedureMemberSymbol and not (VBPropertyLetMemberSymbol or VBPropertySetMemberSymbol)
             && string.Equals(candidate.Name, memberName, StringComparison.OrdinalIgnoreCase));
 
         return member is null ? null : (objectValue.RuntimeValue, member);
+    }
+
+    // What the expression an object is reached through is declared as is what decides which of its interfaces a member
+    // is a member of: the value carries the object, and nothing of how it was declared. So the declaration is asked of
+    // the same rules that type the expression at compile time. It is asked only of an object whose class implements an
+    // interface it declares, since for any other the answer would be its own class.
+    private static VBTypeMemberSymbol? ImplementationThroughDeclaredInterface(
+        IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode? ownerExpression, VBClassModuleSymbol actual, string memberName)
+    {
+        if (DeclaredInterfaceOf(session, context, ownerExpression, actual) is not { } implementedInterface)
+        {
+            return null;
+        }
+
+        // a public variable or a method: not a Property Let or Set, which are an assignment's business, and not an event.
+        var interfaceMember = implementedInterface.Members.FirstOrDefault(candidate
+            => string.Equals(candidate.Name, memberName, StringComparison.OrdinalIgnoreCase)
+            && (candidate is VBPropertyGetMemberSymbol or VBFunctionMemberSymbol or VBProcedureMemberSymbol and not (VBPropertyLetMemberSymbol or VBPropertySetMemberSymbol)
+                || candidate.Kind == SymbolKindExt.Field));
+
+        return interfaceMember is null ? null : actual.FindImplementation(implementedInterface, interfaceMember);
+    }
+
+    // the interface class an expression is declared as, when the object it holds is an instance of a class that implements
+    // it and the expression is not declared as that class: what the object's members are looked up in.
+    private static VBClassModuleSymbol? DeclaredInterfaceOf(
+        IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode? ownerExpression, VBClassModuleSymbol actual)
+    {
+        // a with-relative member (`.Area`) is a member of the target of the With block, which is declared as whatever its expression is.
+        ownerExpression ??= context.EnclosingWithTargetExpression;
+
+        var lifecycle = ClassLifecycleInterface.Interface.Uri.AbsoluteUri;
+        if (ownerExpression is null || !actual.ImplementedInterfaces.Any(implemented => implemented.Uri.AbsoluteUri != lifecycle))
+        {
+            return null;
+        }
+
+        var scope = new LexicalScope(context.Scope, LexicalScopeKind.Procedure, null, []);
+        var declared = ExpressionStaticSemanticsEvaluator.Evaluate(new StaticEvaluationContext(session.Symbols.Resolver, scope), ownerExpression);
+        return declared.Result is VBClassType { Symbol: var declaredClass }
+            ? actual.ImplementedInterfaces.FirstOrDefault(implemented => implemented.Uri.AbsoluteUri == declaredClass.Uri.AbsoluteUri)
+            : null;
+    }
+
+    /// <summary>
+    /// What a member of an object that is assigned to is: a field, which is the storage of the object it is a field of, or a
+    /// <c>Property Let</c> or <c>Property Set</c>, which the assignment invokes.
+    /// </summary>
+    /// <param name="Field">The field, when it is one.</param>
+    /// <param name="Instance">The object the field is a field of.</param>
+    /// <param name="Accessor">The accessor, when it is one.</param>
+    /// <param name="Receiver">The object the accessor is invoked on.</param>
+    public readonly record struct AssignableMember(
+        VBTypeMemberSymbol? Field, IObjectInstance? Instance, VBTypeMemberSymbol? Accessor, IRuntimeValue? Receiver);
+
+    /// <summary>
+    /// Finds the member <paramref name="memberName"/> of <paramref name="owner"/> that an assignment writes to
+    /// (<strong>MS-VBAL §5.4.3.8</strong>, <strong>§5.4.3.9</strong>).
+    /// </summary>
+    /// <remarks>
+    /// A public variable is the storage it names, and a property is assigned by its <c>Property Let</c>, or by its
+    /// <c>Property Set</c> in a <c>Set</c> assignment. Through a declared interface (<strong>§5.3.1.9</strong>) the
+    /// accessor is the one the object's class implements it with, and a public variable of the interface, which the
+    /// class implements with properties, is assigned through the property that implements it.
+    /// </remarks>
+    /// <param name="session">The session the objects live in.</param>
+    /// <param name="context">The scope of the assignment.</param>
+    /// <param name="ownerExpression">The expression the object is reached through, which says how it is declared.</param>
+    /// <param name="owner">The object.</param>
+    /// <param name="memberName">The member's name.</param>
+    /// <param name="isSet">Whether it is a <c>Set</c> assignment.</param>
+    /// <returns>The member, or <see langword="null"/> when the object has none that can be assigned.</returns>
+    public AssignableMember? ResolveAssignableMember(
+        IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode? ownerExpression, VBObjectValue owner, string memberName, bool isSet)
+    {
+        if (owner.IsNothing() || !session.Symbols.TryGetInstance(owner.Value, out var instance))
+        {
+            return null;
+        }
+
+        var actual = instance.ClassModule;
+        var access = isSet ? ImplementationAccess.Set : ImplementationAccess.Let;
+        var receiver = owner.RuntimeValue;
+
+        if (DeclaredInterfaceOf(session, context, ownerExpression, actual) is { } implementedInterface)
+        {
+            var interfaceMembers = implementedInterface.Members
+                .Where(candidate => string.Equals(candidate.Name, memberName, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var interfaceMember = interfaceMembers.FirstOrDefault(candidate => candidate.Kind == SymbolKindExt.Field)
+                ?? interfaceMembers.FirstOrDefault(candidate => isSet ? candidate is VBPropertySetMemberSymbol : candidate is VBPropertyLetMemberSymbol);
+
+            if (interfaceMember is not null && actual.FindImplementation(implementedInterface, interfaceMember, access) is { } implementation)
+            {
+                return new AssignableMember(null, null, implementation, receiver);
+            }
+        }
+
+        var candidates = actual.DefaultInterfaceMembers
+            .Where(candidate => string.Equals(candidate.Name, memberName, StringComparison.OrdinalIgnoreCase)).ToArray();
+
+        if (candidates.FirstOrDefault(candidate => isSet ? candidate is VBPropertySetMemberSymbol : candidate is VBPropertyLetMemberSymbol) is { } accessor)
+        {
+            return new AssignableMember(null, null, accessor, receiver);
+        }
+
+        return candidates.FirstOrDefault(candidate => candidate.Kind == SymbolKindExt.Field) is { } field
+            ? new AssignableMember(field, instance, null, null)
+            : null;
+    }
+
+    /// <summary>
+    /// Invokes the <c>Property Let</c> or <c>Property Set</c> an assignment to a property is, with the index arguments written
+    /// after the property's name and the value assigned as the last argument (<strong>MS-VBAL §5.3.1.7</strong>).
+    /// </summary>
+    /// <param name="session">The session the call runs in.</param>
+    /// <param name="context">The scope the arguments are written in.</param>
+    /// <param name="accessor">The accessor.</param>
+    /// <param name="receiver">The object it is invoked on.</param>
+    /// <param name="indexArguments">The arguments written between the property's name and the assignment.</param>
+    /// <param name="value">The value assigned, which is Let- or Set-coerced to the type of the accessor's value parameter.</param>
+    /// <param name="source">The expression the value came from, for the location of an error.</param>
+    /// <param name="isSet">Whether it is a <c>Set</c> assignment.</param>
+    public RuntimeSemanticsEvaluationResult InvokeAssignment(
+        IRuntimeSession session, RuntimeEvaluationContext context, VBTypeMemberSymbol accessor, IRuntimeValue receiver,
+        ImmutableArray<ExpressionNode> indexArguments, VBTypedValue value, ExpressionNode source, bool isSet)
+    {
+        var parameters = RuntimeProcedureInvoker.GetParameters(accessor);
+        parameters = parameters is [{ Name: "Me" }, ..] ? parameters.RemoveAt(0) : parameters;
+        if (ProcedureInvoker is null || LetCoercionProvider is null || parameters.IsEmpty)
+        {
+            // static semantics rejects a Property Let or Set with no value parameter (VBC09321).
+            return RuntimeSemanticsEvaluationResult.InternalError();
+        }
+
+        // the value parameter is the last one, and the ones before it are what the property is indexed by.
+        var valueParameter = parameters[^1];
+        if (BindArguments(session, context, parameters.RemoveAt(parameters.Length - 1), indexArguments, out var arguments) is { } bindingError)
+        {
+            return bindingError;
+        }
+
+        VBTypedValue coerced;
+        if (isSet)
+        {
+            if (SetCoercion is null)
+            {
+                return RuntimeSemanticsEvaluationResult.InternalError();
+            }
+
+            var setResult = SetCoercion.EvaluateSetCoercion(session, source, value, valueParameter.ResolvedType);
+            if (!setResult.IsSuccess)
+            {
+                return RuntimeSemanticsEvaluationResult.Error(setResult.ErrorInfo!);
+            }
+
+            coerced = setResult.Result!;
+        }
+        else
+        {
+            var letResult = LetCoercionProvider.EvaluateLetCoercionSemantics(
+                session.Symbols.Resolver, source,
+                new LetCoercionStackFrame(source.Identity, InputIndex.CoercionSourceValue, value, new VBTypeDescValue(valueParameter.ResolvedType)));
+            if (!letResult.IsApplicable)
+            {
+                return RuntimeSemanticsEvaluationResult.InternalError();
+            }
+
+            if (!letResult.IsSuccess)
+            {
+                return RuntimeSemanticsEvaluationResult.Error(letResult.ErrorInfo!);
+            }
+
+            coerced = letResult.Result!;
+        }
+
+        IRuntimeValue[] callArguments = [receiver, .. arguments, coerced.RuntimeValue];
+        return Bindings is { } bindings
+            ? bindings.ForMember(accessor).Call(session.Symbols.Resolver, callArguments)
+            : ProcedureInvoker.Invoke(accessor, session.Symbols.Resolver, callArguments);
     }
 
     // A late-bound Variant/Object member, and a call through a Property/Function/Sub member, are both
@@ -506,7 +697,8 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
                 : RuntimeSemanticsEvaluationResult.InternalError();
         }
 
-        if (owner is not VBObjectValue objectValue || objectValue.IsNothing()
+        // an object held by a Variant - an element of an array of Variant, a Variant parameter - is the object.
+        if (UnwrappedOwner(owner) is not VBObjectValue objectValue || objectValue.IsNothing()
             || !session.Symbols.TryGetInstance(objectValue.Value, out var instance))
         {
             return RuntimeSemanticsEvaluationResult.InternalError();
@@ -578,7 +770,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
                 return notSet;
             }
 
-            if (TryResolveInvocableMember(session, ownerResult.Result!, qualified.Member.IdentifierName) is { } found)
+            if (TryResolveInvocableMember(session, context, qualified.Owner, ownerResult.Result!, qualified.Member.IdentifierName) is { } found)
             {
                 return InvokeProcedure(session, context, found.Member, indexExpression.Arguments, found.Receiver);
             }
@@ -610,19 +802,9 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             return RuntimeSemanticsEvaluationResult.InternalError();
         }
 
-        var subscripts = new int[indexExpression.Arguments.Length];
-        for (var i = 0; i < indexExpression.Arguments.Length; i++)
+        if (EvaluateSubscripts(session, context, indexExpression.Arguments, out var subscripts) is { } subscriptFailure)
         {
-            var argumentResult = EvaluateIndexArgument(session, indexExpression.Arguments[i], context);
-            if (argumentResult is { } evaluated && !evaluated.IsSuccess)
-            {
-                return evaluated;
-            }
-            if (argumentResult is null || !TryGetIntegralSubscript(argumentResult.Value.Result, out var subscript))
-            {
-                return RuntimeSemanticsEvaluationResult.InternalError();
-            }
-            subscripts[i] = subscript;
+            return subscriptFailure;
         }
 
         var element = array[subscripts];
@@ -630,6 +812,39 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             ? RuntimeSemanticsEvaluationResult.Success(element)
             : RuntimeSemanticsEvaluationResult.Error(VBRuntimeErrorInfo.For(VBRuntimeErrorId.SubscriptOutOfRange, expression.Location,
                 string.Join(", ", subscripts)));
+    }
+
+    /// <summary>
+    /// Evaluates the subscripts of an element of an array, <c>a(i, j)</c>, to the integers that select it.
+    /// </summary>
+    /// <param name="session">The session the expressions are evaluated in.</param>
+    /// <param name="context">The scope of the expressions.</param>
+    /// <param name="arguments">The subscript expressions, one per dimension.</param>
+    /// <param name="subscripts">What each evaluated to; empty when evaluating failed.</param>
+    /// <returns>The error or internal error that stopped it, or <see langword="null"/> when every subscript has a value.</returns>
+    public RuntimeSemanticsEvaluationResult? EvaluateSubscripts(
+        IRuntimeSession session, RuntimeEvaluationContext context, ImmutableArray<ExpressionNode> arguments, out int[] subscripts)
+    {
+        subscripts = [];
+        var evaluated = new int[arguments.Length];
+        for (var i = 0; i < arguments.Length; i++)
+        {
+            var argumentResult = EvaluateIndexArgument(session, arguments[i], context);
+            if (argumentResult is { } failed && !failed.IsSuccess)
+            {
+                return failed;
+            }
+
+            if (argumentResult is null || !TryGetIntegralSubscript(argumentResult.Value.Result, out var subscript))
+            {
+                return RuntimeSemanticsEvaluationResult.InternalError();
+            }
+
+            evaluated[i] = subscript;
+        }
+
+        subscripts = evaluated;
+        return null;
     }
 
     private static VBTypeMemberSymbol? TryResolveCallableSub(IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode callee)
@@ -971,6 +1186,13 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
     // always considered satisfied even with nothing collected (an empty array, not error 449).
     private static ArgumentMapResult MapArguments(ImmutableArray<VBParameterSymbol> parameters, ImmutableArray<ExpressionNode> argumentNodes)
     {
+        // `Area()` is a call that supplies nothing; the parser reads the empty parentheses as one omitted argument, which a
+        // procedure that takes none has no parameter for.
+        if (parameters.IsEmpty && argumentNodes is [MissingArgumentNode])
+        {
+            argumentNodes = [];
+        }
+
         var paramArrayIndex = parameters.Length > 0 && parameters[^1] is ParamArrayParameterSymbol ? parameters.Length - 1 : -1;
         var mapped = new ExpressionNode?[parameters.Length];
         var paramArrayArguments = ImmutableArray.CreateBuilder<ExpressionNode>();

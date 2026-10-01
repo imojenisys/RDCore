@@ -13,6 +13,7 @@ using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("RDCore.Tests")]
@@ -214,6 +215,12 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
     private readonly Dictionary<SymbolIdentity, Symbol> _instanceSymbols = [];
     private readonly Dictionary<SymbolIdentity, Symbol> _localSymbols = [];
 
+    /// <inheritdoc/>
+    public IVariableDefaults? Defaults { get; set; }
+
+    private VBTypedValue DefaultValueOf(Symbol variable)
+        => Defaults?.DefaultValueOf(variable) ?? ((ITypedSymbol)variable).ResolvedType.DefaultValue;
+
     /// <summary>
     /// What makes two definitions the same declaration: the symbol's own semantic identity, plus its
     /// concrete type.
@@ -274,10 +281,10 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
         // it keeps its value between calls instead of being torn down when its frame pops.
         var isStaticLocal = scope is ScopeKind.Local && symbol is VBLocalVariableSymbol { IsStatic: true };
         if ((scope is ScopeKind.Module or ScopeKind.Global || isStaticLocal)
-            && symbol is ITypedSymbol { ResolvedType: var type }
+            && symbol is ITypedSymbol
             && symbol.Kind is SymbolKindExt.Field or SymbolKindExt.Variable)
         {
-            _ = SessionBindings.TryAllocate(symbol, type.DefaultValue, out _);
+            _ = SessionBindings.TryAllocate(symbol, DefaultValueOf(symbol), out _);
         }
 
         return true;
@@ -325,6 +332,52 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
         return true;
     }
 
+    public bool TryComposeClassModule(
+        string moduleName, ImmutableArray<string> implementedInterfaceNames, ImmutableArray<SourceRange> implementedInterfaceRanges = default)
+    {
+        var module = AllSymbols().OfType<VBClassModuleSymbol>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, moduleName, StringComparison.OrdinalIgnoreCase));
+        if (module is null)
+        {
+            return false;
+        }
+
+        // what the class declares: every member defined under its identity.
+        var composed = module with { Members = [.. MembersOf(module.Uri)], ImplementedInterfaceNames = implementedInterfaceNames,
+            ImplementedInterfaceRanges = implementedInterfaceRanges.IsDefault ? [] : implementedInterfaceRanges,
+        };
+        Replace(module, composed with { DefaultInterfaceMembers = VBClassType.FromClassModule(composed).Members });
+
+        // every class that names an interface is resolved again, whichever it is that has just been composed: it may be the
+        // interface another holds, as it was.
+        var classModules = AllSymbols().OfType<VBClassModuleSymbol>().ToList();
+        var resolved = ImplementedInterfaceResolution.Resolve(classModules);
+        foreach (var classModule in classModules)
+        {
+            if (resolved.TryGetValue(classModule.Uri.AbsoluteUri, out var withInterfaces))
+            {
+                Replace(classModule, withInterfaces);
+            }
+        }
+
+        return true;
+    }
+
+    public IReadOnlyList<VBTypeMemberSymbol> MembersOf(Uri moduleUri)
+        => [.. AllSymbols().OfType<VBTypeMemberSymbol>().Where(member => member.ParentUri.AbsoluteUri == moduleUri.AbsoluteUri)];
+
+    private IEnumerable<Symbol> AllSymbols()
+        => _globalSymbols.Values.Concat(_workspaceSymbols.Values).Concat(_instanceSymbols.Values).Concat(_localSymbols.Values).ToList();
+
+    // a class module symbol holds no storage and is keyed by its identity, which the newer one shares.
+    private void Replace(Symbol existing, Symbol replacement)
+    {
+        if (TryUndefine(existing, existing.ScopeKind))
+        {
+            TryDefine(replacement, replacement.ScopeKind);
+        }
+    }
+
     public ISymbolResolver Resolver => Bindings;
 
     public bool TryResolveValue(string name, Symbol scope, out Symbol? symbol)
@@ -358,7 +411,7 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
 
         foreach (var field in fields)
         {
-            instance.Push(field, ((ITypedSymbol)field).ResolvedType.DefaultValue);
+            instance.Push(field, DefaultValueOf(field));
         }
 
         _instances[objectId] = instance;
