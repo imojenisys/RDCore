@@ -21,6 +21,7 @@ using RDCore.SDK.ConsoleIO;
 using RDCore.SDK.Client.Connection;
 using RDCore.SDK.Model;
 using RDCore.SDK.Platform;
+using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Server;
 using RDCore.SDK.Server.Configuration;
 using RDCore.SDK.Server.Services;
@@ -101,11 +102,10 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
     protected override IEnumerable<(string, string?)> ConfigureOverrides(string[] initialArgs, SdkAppCommandLineArgs baseArgs) 
         => [
             ("CLI:UnsafeDevMode", baseArgs.UnsafeDevMode?.ToString() ?? false.ToString()),
-            // an interactive shell is a BASIC: a variable that a line assigns is the same one the next line reads, and
-            // a program's variables can be looked at once it has run. The server is told, when it is started, and
-            // declares an undeclared name at module level instead of in the procedure.
-            // TODO say so by advertising it as a client capability, which is what this stands in for: a dial.
-            ("Configuration:Workspace:ImplicitDeclarationScope", nameof(ImplicitDeclarationScope.Module)),
+            // an interactive shell is written in the platform's BASIC, and the language is what decides the rest: a variable that a line
+            // assigns is the one the next line reads, the standard library is RDC rather than VBA, and a bare Print is a statement. The
+            // servers are told, when they are started and in the initializationOptions of the initialize request.
+            ("Configuration:Workspace:Language", SupportedLanguages.BASIC.Id),
         ];
 
     protected override void ConfigureAdditionalExternalServices(IServiceCollection services, IConfiguration configuration)
@@ -351,7 +351,12 @@ internal class RDCoreConsoleEnvironmentHost : RDCorePlatformServerHost<RDCoreCon
         services
             .Configure<VerboseMessageOptions>(configuration.GetSection("Configuration:VerboseMessages"))
             .AddVerboseMessages()
-            .AddSingleton<IEnvironmentSessionProvider, EnvironmentSessionProvider>();
+            // the name of the standard library is the language's to say, and the language is what the language server was started with.
+            .AddSingleton<IEnvironmentSessionProvider>(provider => new EnvironmentSessionProvider(
+                provider.GetRequiredService<IRuntimeEnvironmentProfile>(),
+                provider.GetRequiredService<IFileSystem>(),
+                provider.GetRequiredService<ILogger<EnvironmentSessionProvider>>(),
+                () => provider.GetRequiredService<IOptions<SdkAppOptions>>().Value.Workspace.SupportedLanguage.StandardLibraryName));
     }
 
     protected override void ConfigureExternalLogging(IServiceCollection services, ILoggingBuilder builder, IConfiguration configuration)

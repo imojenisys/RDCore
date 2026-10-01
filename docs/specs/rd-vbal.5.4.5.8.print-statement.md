@@ -8,14 +8,36 @@
 |Form|AST node|Instruction kind(s)|Notes|
 |---|---|---|---|
 |`Print #`|[PrintStatementNode](../api/RDCore.SDK.Model.AST.Statements.PrintStatementNode.html)|`Simple`|The file-number form. `Token`: `Print`.|
+|`Print`|[PrintStatementNode](../api/RDCore.SDK.Model.AST.Statements.PrintStatementNode.html)|`Simple`|The bare form, with no file number (`FileNumber` is `null`): `Print "x"`. See below.|
 |`Owner.Print`|[ObjectPrintExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.ObjectPrintExpressionNode.html)|—|The object-qualified form.|
 |`Debug.Print`|[DebugPrintStatementNode](../api/RDCore.SDK.Model.AST.Statements.DebugPrintStatementNode.html)|`Simple`|The object-qualified form whose owner is `Debug`.|
 
 The output list these nodes carry is described in [5.4.5.8.1 Output Lists](#54581-output-lists) below. See
 [**RD-VBAL §3.4.3** File Statements](rd-vbal.3.4.3.file-statements.md).
 
+### The bare `Print`
+
+Whether there is a bare `Print` at all is the language's to say
+([`SupportedLanguage.HasBarePrint`](../api/RDCore.SDK.Workspace.SupportedLanguage.html)):
+
+|Language|A `Print` with no file number|
+|---|---|
+|RD-VBA|Undefined. VBA has no such statement: it is the member of a form or a report, and there is none for it to be a member of. It is [`VBC09331`](../diagnostics/vbc09331.md), the same as any other name the language does not declare.|
+|VB6|Undefined, for now: it is the `Print` member of the form or report it is written in, and the platform has no forms yet.|
+|BASIC|A statement. It writes to the session's own output - the one `Debug.Print` writes to - by the same output rules ([5.4.5.8.1](#54581-output-lists)).|
+
+In BASIC it differs from `Debug.Print` in one way: it is not a debug statement, and is lowered in a release build, where `Debug.Print` leaves no
+instruction at all ([**RD-VBAL §3.5.1** InstructionList](rd-vbal.3.5.1.instructionlist.md)). It is what an interactive shell - which is written in BASIC -
+writes its output with: the shell's `?` shorthand expands to it.
+
+Instruction-list lowering is told the language the body is written in (`InstructionLoweringOptions.Language`, from the environment's
+`IRuntimeEnvironmentProfile.Language`) and reports the undefined form; a body lowered for no language is lowered as written.
+
 > [!NOTE]
-> **Not implemented.** The `?` shorthand for `Print` has no lexer or grammar token.
+> **Not implemented.** `StatementStaticSemanticsEvaluator` does not report it, having no language to ask: the language server has no live caller of it yet. A document
+> module (a form, a report) with a `Print` member of its own is not yet the target of a bare `Print` written in it.
+>
+> The `?` shorthand has no lexer or grammar token: the shell expands it before the line is parsed.
 
 ## Static Semantics
 

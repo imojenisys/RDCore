@@ -52,7 +52,10 @@ internal sealed class SymbolSyncService(
 {
     // where the variable an undeclared name declares lives is the environment's to say, and every extraction pass
     // - the resolver's own two, and the one that defines the symbols - has to agree on it.
-    private ImplicitDeclarationScope ImplicitScope => options.Value.Workspace.ImplicitDeclarationScope;
+    private ImplicitDeclarationScope ImplicitScope => options.Value.Workspace.SupportedLanguage.ImplicitDeclarationScope;
+
+    // and so is the name of the standard library, which is the language the workspace is written in to say.
+    private string StandardLibraryName => options.Value.Workspace.SupportedLanguage.StandardLibraryName;
 
     public async Task<Uri> SyncModuleAsync(string moduleName, ModuleParseResult parseResult, CancellationToken token)
     {
@@ -62,7 +65,8 @@ internal sealed class SymbolSyncService(
         var workspaceRoot = new Uri(documents.WorkspaceRoot);
         var moduleUri = new UriBuilder(workspaceRoot) { Fragment = moduleName }.Uri;
         var workspaceResolver = WorkspaceSymbolResolver.Compose(
-            workspaceRoot, [(moduleUri, ModuleType.StdModule, parseResult)], resolver, implicitScope: ImplicitScope);
+            workspaceRoot, [(moduleUri, ModuleType.StdModule, parseResult)], resolver, implicitScope: ImplicitScope,
+            standardLibraryName: StandardLibraryName);
 
         // a module the client keeps editing is defined again every time it is run, so the newest
         // definition has to win rather than being skipped as a duplicate. Its parse result travels with the request to
@@ -116,7 +120,7 @@ internal sealed class SymbolSyncService(
 
             var workspaceResolver = WorkspaceSymbolResolver.Compose(
                 workspaceRoot, modules.Select(module => (module.Uri, module.Kind, module.Parse)), resolver,
-                implicitScope: ImplicitScope);
+                implicitScope: ImplicitScope, standardLibraryName: StandardLibraryName);
 
             var totalDefined = 0;
             foreach (var module in modules)
