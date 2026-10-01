@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using RDCore.LanguageServer;
 using RDCore.LanguageServer.Parsing;
@@ -7,9 +8,11 @@ using RDCore.LanguageServer.Workspace;
 using RDCore.LanguageServer.Workspace.Services;
 using RDCore.Parsing;
 using RDCore.SDK.Client;
+using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Platform.Protocol;
+using RDCore.SDK.Server.Configuration;
 
 namespace RDCore.Tests.LanguageServer;
 
@@ -23,7 +26,8 @@ public sealed class SymbolSyncServiceTests
         => new ModuleParser().Parse(new Uri(Path.Combine(Root, "src", "Mod1.bas")), source);
 
     private static (SymbolSyncService Sut, IRDCoreClientApp Host) Build(
-        ModuleParseResult? cached, bool providesCapability = true, DefineSymbolsResult? response = null)
+        ModuleParseResult? cached, bool providesCapability = true, DefineSymbolsResult? response = null,
+        ImplicitDeclarationScope implicitScope = ImplicitDeclarationScope.Procedure)
     {
         var host = Substitute.For<IRDCoreClientApp>();
         host.WaitForReadyAsync(Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
@@ -54,9 +58,16 @@ public sealed class SymbolSyncServiceTests
             });
 
         var sut = new SymbolSyncService(
-            orchestration, parsing, documents, new IntrinsicSymbolResolver(), NullLogger<SymbolSyncService>.Instance);
+            orchestration, parsing, documents, new IntrinsicSymbolResolver(), Options(implicitScope),
+            NullLogger<SymbolSyncService>.Instance);
         return (sut, host);
     }
+
+    private static IOptions<SdkAppOptions> Options(ImplicitDeclarationScope implicitScope = ImplicitDeclarationScope.Procedure)
+        => Microsoft.Extensions.Options.Options.Create(new SdkAppOptions
+        {
+            Workspace = new SdkWorkspaceOptions { ImplicitDeclarationScope = implicitScope },
+        });
 
     [TestMethod]
     public async Task SendsModuleDescriptors_ForEachCachedDocument()
@@ -70,6 +81,38 @@ public sealed class SymbolSyncServiceTests
                 p.ModuleName == "Mod1"
                 && p.Symbols.Length == 2
                 && p.WorkspaceRoot!.ToString() == new Uri(Root).ToString()),
+            Arg.Any<CancellationToken>());
+    }
+
+    private const string UndeclaredName = "Public Sub Foo()\r\nA = 42\r\nEnd Sub";
+
+    [TestMethod]
+    public async Task AtModuleScope_AnUndeclaredName_IsSentAsAVariableOfTheModule_NotALocal()
+    {
+        // the symbols the host defines have to agree with the dial, however many extraction passes got them there:
+        // the third pass runs over a resolver that already holds the first two's variable, and has to declare it anyway.
+        var (sut, host) = Build(Parse(UndeclaredName), implicitScope: ImplicitDeclarationScope.Module);
+
+        await sut.SyncWorkspaceAsync(CancellationToken.None);
+
+        await host.Received(1).SendRequestAsync<DefineSymbolsParams, DefineSymbolsResult>(
+            Arg.Is<DefineSymbolsParams>(p =>
+                p.Symbols.Any(symbol => symbol.Name == "A" && symbol.Kind == SymbolDescriptorKind.ModuleField)
+                && p.Symbols.Single(symbol => symbol.Name == "Foo").Locals.IsDefaultOrEmpty),
+            Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    public async Task ByDefault_AnUndeclaredName_IsSentAsALocalOfItsProcedure()
+    {
+        var (sut, host) = Build(Parse(UndeclaredName));
+
+        await sut.SyncWorkspaceAsync(CancellationToken.None);
+
+        await host.Received(1).SendRequestAsync<DefineSymbolsParams, DefineSymbolsResult>(
+            Arg.Is<DefineSymbolsParams>(p =>
+                !p.Symbols.Any(symbol => symbol.Kind == SymbolDescriptorKind.ModuleField)
+                && p.Symbols.Single(symbol => symbol.Name == "Foo").Locals.Any(local => local.Name == "A")),
             Arg.Any<CancellationToken>());
     }
 
@@ -133,7 +176,7 @@ public sealed class SymbolSyncServiceTests
                 return false;
             });
 
-        var sut = new SymbolSyncService(orchestration, parsing, documents, new IntrinsicSymbolResolver(), NullLogger<SymbolSyncService>.Instance);
+        var sut = new SymbolSyncService(orchestration, parsing, documents, new IntrinsicSymbolResolver(), Options(), NullLogger<SymbolSyncService>.Instance);
 
         await sut.SyncWorkspaceAsync(CancellationToken.None);
 
