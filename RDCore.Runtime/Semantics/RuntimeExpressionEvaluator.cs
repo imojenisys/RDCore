@@ -649,7 +649,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
     private RuntimeSemanticsEvaluationResult EvaluateMemberAccess(IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode expression, MemberAccessExpressionNode memberAccess)
     {
         // MS-VBAL §5.6.12: a member of a project or a procedural module is not a member of a value - there is
-        // no object to evaluate. `Strings.vbCrLf`, `Information.Erl`, `VBA.Strings.LenB`: the name is resolved
+        // no object to evaluate. `Constants.vbCrLf`, `Information.Erl`, `VBA.Strings.LenB`: the name is resolved
         // in the namespace and means what it would unqualified.
         if (memberAccess.Owner is { } namespaceExpression
             && TryClassifyNamespace(session, context, namespaceExpression) is { } qualifier)

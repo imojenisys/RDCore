@@ -272,6 +272,69 @@ public sealed class StdLibSymbolReaderTests
     }
 
     [TestMethod]
+    public void TheConstantsModule_IsReadWithEveryConstantOfItsSpecification()
+    {
+        // MS-VBAL 6.1.2.2: eleven constants and nothing else, in the order of the specification's table, which
+        // is the order they are declared in.
+        var members = MembersOf(Module("Constants"));
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "vbBack", "vbCr", "vbCrLf", "vbFormFeed", "vbLf", "vbNewLine", "vbNullChar", "vbTab",
+                "vbVerticalTab", "vbNullString", "vbObjectError",
+            },
+            members.Select(member => member.Name).ToArray());
+        Assert.IsTrue(members.All(member => member is VBConstantMemberSymbol));
+    }
+
+    [TestMethod]
+    [DataRow("vbCrLf", VBTypeNames.VBString, "\r\n")]
+    [DataRow("vbObjectError", VBTypeNames.VBLong, -2147221504)]
+    public void AModuleConstant_IsAPublicConstant_WithItsTypeAndValue(string name, string typeName, object expected)
+    {
+        // Public, because a Const with no modifier would not reach the project scope, and an unqualified vbCrLf has
+        // to resolve; its type is the type of the value it is declared as, and the symbol carries that value.
+        var constant = (VBConstantMemberSymbol)MembersOf(Module("Constants")).Single(member => member.Name == name);
+
+        Assert.AreEqual(AccessModifier.Public, constant.AccessModifier);
+        Assert.AreEqual(typeName, constant.ResolvedType.Name);
+        Assert.AreEqual(expected, Assert.IsInstanceOfType<LiteralExpressionNode>(constant.Value).StaticValue.Handle.Value.BoxedValue);
+    }
+
+    [TestMethod]
+    public void TheNullStringConstant_IsANullPointerNotAZeroLengthString()
+    {
+        var constant = (VBConstantMemberSymbol)MembersOf(Module("Constants")).Single(member => member.Name == "vbNullString");
+
+        var value = (VBStringValue)((LiteralExpressionNode)constant.Value!).StaticValue;
+        Assert.IsTrue(value.IsNullString);
+    }
+
+    [TestMethod]
+    public void TheNewLineConstant_IsCrLf_WhateverTheHost()
+    {
+        // MS-VBAL 6.1.2.2 leaves vbNewLine implementation-defined; a VBA String's line break is CrLf on any host.
+        var constant = (VBConstantMemberSymbol)MembersOf(Module("Constants")).Single(member => member.Name == "vbNewLine");
+
+        Assert.AreEqual("\r\n", ((VBStringValue)((LiteralExpressionNode)constant.Value!).StaticValue).Value);
+    }
+
+    [TestMethod]
+    [DataRow(typeof(IStdLibWithAConstField), "Answer")]
+    [DataRow(typeof(IStdLibWithAPrimitiveField), "Answer")]
+    [DataRow(typeof(IStdLibWithAMutableField), "Greeting")]
+    public void AModuleFieldThatIsNoConstantOfAVBAType_IsRefused(Type declaration, string field)
+    {
+        // a module constant is declared as the value it is: a C# const is a primitive, whose VBA type would be a
+        // guess, a static readonly primitive is the same guess, and a field that is not readonly is no constant.
+        var reader = new StdLibSymbolReader(Root);
+
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => reader.Read([declaration]));
+        Assert.Contains(field, exception.Message);
+    }
+
+    [TestMethod]
     public void AnEnumTypedParameter_KeepsItsDefaultConstant()
     {
         // MS-VBAL 6.1.2.11.1.36: StrComp(..., Optional Compare As VbCompareMethod = vbBinaryCompare).
@@ -493,5 +556,23 @@ public sealed class StdLibSymbolReaderTests
     private interface IStdLibWithAnOptionalArray
     {
         RuntimeSemanticsEvaluationResult<VBDoubleValue> Sum([StdLibArray(typeof(VBDoubleValue))] VBResizableArrayValue? values = default);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAConstField
+    {
+        public const int Answer = 42;
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAPrimitiveField
+    {
+        public static readonly int Answer = 42;
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAMutableField
+    {
+        public static VBStringValue Greeting = new("hi");
     }
 }

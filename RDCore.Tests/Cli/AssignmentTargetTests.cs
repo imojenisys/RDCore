@@ -56,6 +56,11 @@ public sealed class AssignmentTargetTests
     [DataRow("Private Items As New Collection", "For Each vbSunday In Items\r\nNext", "the constant vbSunday", DisplayName = "The control variable of a For Each statement")]
     [DataRow("", "Mid$(Left$, 1, 1) = \"x\"", "the function Left$ of the VBA library", DisplayName = "The target of a Mid statement")]
     [DataRow("Private Const Left = \"c\"", "Left$ = \"x\"", "the constant Left", DisplayName = "A constant of the module named like a function of the library, by its name with a type character")]
+    [DataRow("", "vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module")]
+    [DataRow("", "Constants.vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module, qualified by its module")]
+    [DataRow("", "VBA.vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module, qualified by its library")]
+    [DataRow("", "LSet vbCrLf = \"x\"", "the constant vbCrLf", DisplayName = "A constant of the Constants module, the target of an LSet statement")]
+    [DataRow("Private Items As New Collection", "For Each vbCrLf In Items\r\nNext", "the constant vbCrLf", DisplayName = "A constant of the Constants module, the control variable of a For Each statement")]
     public async Task AnAssignment_ToWhatIsNotAVariable_IsAVariableRequiredError(string declarations, string body, string what)
         => await AssertVariableRequiredAsync(Program(declarations, body), what);
 
@@ -65,6 +70,8 @@ public sealed class AssignmentTargetTests
     [DataRow("Private Const Limit = 10", "ReDim Limit(1)", "the constant Limit", DisplayName = "The target of a ReDim statement")]
     [DataRow("Private Const Limit = 10", "Erase Limit", "the constant Limit", DisplayName = "An element of an Erase statement")]
     [DataRow("", "Erase vbSunday", "the constant vbSunday", DisplayName = "An element of an Erase statement, a constant of a library's Enum")]
+    [DataRow("", "Erase vbCrLf", "the constant vbCrLf", DisplayName = "An element of an Erase statement, a constant of the Constants module")]
+    [DataRow("", "Erase vbTab", "the constant vbTab", DisplayName = "An element of an Erase statement, another constant of the Constants module")]
     public async Task AnArrayStatement_OnAConstant_IsAVariableRequiredError(string declarations, string body, string what)
         => await AssertVariableRequiredAsync(Program(declarations, body), what);
 
@@ -83,6 +90,7 @@ public sealed class AssignmentTargetTests
 
     [TestMethod]
     [DataRow("vbSunday = 5", "the constant vbSunday", DisplayName = "A constant of a library's Enum")]
+    [DataRow("vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module")]
     public async Task AnAssignment_ToALibraryConstant_WithoutOptionExplicit_IsTheSameError(string body, string what)
         // without Option Explicit an undeclared name is a variable of its own, but the constant's name is declared.
         => await AssertVariableRequiredAsync(Program(string.Empty, body, optionExplicit: false), what);
@@ -105,6 +113,7 @@ public sealed class AssignmentTargetTests
     [DataRow("", "Dim Left As String\r\nLeft = \"x\"\r\nDebug.Print Left", "x", DisplayName = "A variable named like a function of the library")]
     [DataRow("Private Sub Show(ByVal Left As String)\r\nLeft = Left & \"y\"\r\nDebug.Print Left\r\nEnd Sub", "Show \"x\"", "xy", DisplayName = "A parameter named like a function of the library")]
     [DataRow("", "Dim vbSunday As Long\r\nvbSunday = 3\r\nDebug.Print vbSunday", "3", DisplayName = "A variable named like a constant of the library")]
+    [DataRow("Private vbCrLf As Long", "vbCrLf = 5\r\nDebug.Print vbCrLf", "5", DisplayName = "A variable of the module named like a constant of the Constants module")]
     [DataRow("", "Err.Number = 5\r\nDebug.Print Err.Number", "5", DisplayName = "A property of the object a function of the library returns")]
     public async Task AnAssignment_ToAVariableOrAResult_StillRuns(string declarations, string body, string expected)
         => CollectionAssert.AreEqual(new[] { expected }, await RunAsync([], Program(declarations, body)));

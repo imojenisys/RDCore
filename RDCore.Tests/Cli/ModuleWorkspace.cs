@@ -95,6 +95,14 @@ internal static class ModuleWorkspace
         => RunCoreAsync(classes, program, errorsOnly: false, libraries: libraries);
 
     /// <summary>
+    /// Runs <c>Program.Main</c> like <see cref="RunAsync"/>, in a workspace that has other standard modules besides <c>Program</c>, for a project that
+    /// references libraries, or only the standard library when <paramref name="libraries"/> is <see langword="null"/>.
+    /// </summary>
+    public static Task<string[]> RunAsync(
+        IReadOnlyList<(string Name, string Source)> classes, IReadOnlyList<(string Name, string Source)> modules, string program, WorkspaceLibraries? libraries)
+        => RunCoreAsync(classes, program, errorsOnly: false, libraries: libraries, modules: modules);
+
+    /// <summary>
     /// Loads the workspace like <see cref="LoadErrorsAsync"/>, and asks the host what the semantic analysis pass found out about it, as the language server does.
     /// </summary>
     /// <param name="classes">The class modules of the workspace.</param>
