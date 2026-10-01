@@ -18,8 +18,28 @@
 
 The event name is not a variable and is never resolved as one: it is not an undefined name under `Option Explicit`. Each argument is an expression like any other, and is evaluated by the expression rules.
 
+The grammar of the statement is `event-argument = expression`: an argument cannot be written with `ByVal`. The keyword is valid
+only in the argument list of an external procedure's invocation ([**RD-VBAL §5.6.13.1**](rd-vbal.5.6.13.index-expressions.md)),
+which a `RaiseEvent` never is, so it is a syntax error ([VBC00001](../diagnostics/vbc00001.md)) at the parser, and not a
+compile error. The tree keeps it all the same, as a `ByValArgumentExpressionNode`.
+
+Compatibility follows the static rules for each mapped parameter of procedure invocation
+([**RD-VBAL §5.3.1.11**](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)):
+
+|Parameter|Takes|
+|---|---|
+|`ByVal`, of a type that is neither a class nor `Object`|An argument that can be Let-coerced to its type.|
+|`ByVal`, a specific class or `Object`|An object of a specific class or `Object`, or a `Variant`.|
+|`ByRef`, of a type that is not a class, `Object` or `Variant`|A variable of exactly its declared type.|
+|`ByRef`, a specific class or `Object`|An object of a specific class or `Object`.|
+|`ByRef`, `Variant`|An argument of any type.|
+
 > [!NOTE]
-> **Not implemented.** A `ByRef` parameter whose declared type does not exactly match the variable passed to it, and an object argument for a parameter declared as a class, are not checked.
+> **Interpretation.** The static text asks for an exact type match of a `ByRef` parameter without saying what the argument is.
+> The runtime semantics of the same section is that an argument that is a value (a literal, an operator's result) is Let-assigned to
+> a new local variable, and only one that is a variable is referred to. The exact type is therefore required of a variable:
+> `RaiseEvent Bump(5)` is valid for `ByRef Count As Long`, and `RaiseEvent Bump(anInteger)` is not. A member access that names a
+> field is a variable too, and is taken for a value for now: it is not checked.
 
 ## Runtime Semantics
 
@@ -30,8 +50,10 @@ The event name is not a variable and is never resolved as one: it is not an unde
 - An event nothing handles, and a source nothing is attached to, is not an error: `RaiseEvent` does nothing.
 - An error a handler leaves unhandled stops the invocations, and is the error of the `RaiseEvent` statement.
 
-> [!NOTE]
-> **Not implemented.** A `ByRef` parameter whose argument is not a variable is a fresh local for each handler, so what one handler leaves in it is not the next one's argument.
+A `ByRef` parameter whose argument is not a variable (`RaiseEvent Bump(5)`) has no variable to leave a value in, so the raiser
+cannot see what a handler did to it. The handlers can: it is given a location of its own for the duration of the statement,
+so that what one handler leaves in the parameter is what the next starts with. The location is freed when the statement
+ends, and the next `RaiseEvent` starts from its argument again.
 
 ---
 > ⏮️ [**RD-VBAL §5.4.2.19** Exit Property Statement](rd-vbal.5.4.2.19.exit-property-statement.md) | ⏭️ [**RD-VBAL §5.4.2.21** With Statement](rd-vbal.5.4.2.21.with-statement.md)

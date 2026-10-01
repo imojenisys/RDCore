@@ -132,6 +132,9 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             ArrayBoundExpressionNode arrayBound => EvaluateArrayBound(session, context, arrayBound),
             VBBinaryOperatorExpressionNode binaryOperator => EvaluateBinaryOperator(session, context, binaryOperator),
             VBUnaryOperatorExpressionNode unaryOperator => EvaluateUnaryOperator(session, context, unaryOperator),
+            // ByVal flags how the argument is passed, which is what a node that is not a variable is: a value, never
+            // aliased to a ByRef parameter (see TryResolveByRefArgument).
+            ByValArgumentExpressionNode byVal => Evaluate(session, byVal.Operand, context),
             _ => RuntimeSemanticsEvaluationResult.InternalError(),
         };
 
@@ -735,26 +738,52 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             return bindingError;
         }
 
-        foreach (var subscription in session.Objects.EventSubscribers(source))
+        // MS-VBAL §5.4.2.20: the next invocation's argument for a ByRef parameter is what the parameter last contained.
+        // An argument that names a variable is that variable; any other has nowhere to be left a value in, so it is
+        // given a location of its own for the handlers of this one event.
+        var temporaries = new List<MemoryAddress>();
+        for (var i = 0; i < raised.Parameters.Length; i++)
         {
-            if (!session.Symbols.TryGetInstance(subscription.Subscriber, out var subscriber)
-                || subscription.Variable is not VBTypeMemberSymbol variable
-                || subscriber.ClassModule.FindEventHandler(variable, raised) is not { } handler)
+            var parameter = raised.Parameters[i];
+            if (RuntimeProcedureInvoker.IsByRef(parameter.ParameterKind) && parameter is not ParamArrayParameterSymbol
+                && arguments[i] is not VBRuntimeReference
+                && session.Storage.TryAllocate(parameter.ResolvedType.DefaultValue.Size, new ValueBindingHandle(arguments[i]), out var temporary))
             {
-                continue;
-            }
-
-            IRuntimeValue[] callArguments = [new VBObjectValue(subscription.Subscriber).RuntimeValue, .. arguments];
-            var handled = Bindings is { } bindings
-                ? bindings.ForMember(handler).Call(session.Symbols.Resolver, callArguments)
-                : ProcedureInvoker.Invoke(handler, session.Symbols.Resolver, callArguments);
-            if (!handled.IsSuccess)
-            {
-                return handled;
+                temporaries.Add(temporary);
+                arguments[i] = new VBRuntimeReference(temporary);
             }
         }
 
-        return RuntimeSemanticsEvaluationResult.Success(VBVoidValue.Void);
+        try
+        {
+            foreach (var subscription in session.Objects.EventSubscribers(source))
+            {
+                if (!session.Symbols.TryGetInstance(subscription.Subscriber, out var subscriber)
+                    || subscription.Variable is not VBTypeMemberSymbol variable
+                    || subscriber.ClassModule.FindEventHandler(variable, raised) is not { } handler)
+                {
+                    continue;
+                }
+
+                IRuntimeValue[] callArguments = [new VBObjectValue(subscription.Subscriber).RuntimeValue, .. arguments];
+                var handled = Bindings is { } bindings
+                    ? bindings.ForMember(handler).Call(session.Symbols.Resolver, callArguments)
+                    : ProcedureInvoker.Invoke(handler, session.Symbols.Resolver, callArguments);
+                if (!handled.IsSuccess)
+                {
+                    return handled;
+                }
+            }
+
+            return RuntimeSemanticsEvaluationResult.Success(VBVoidValue.Void);
+        }
+        finally
+        {
+            foreach (var temporary in temporaries)
+            {
+                session.Storage.TryDeallocate(temporary);
+            }
+        }
     }
 
     /// <summary>
