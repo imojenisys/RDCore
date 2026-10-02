@@ -22,7 +22,7 @@ Whether there is a bare `Print` at all is the language's to say
 
 |Language|A `Print` with no file number|
 |---|---|
-|RD-VBA|Undefined. VBA has no such statement: it is the member of a form or a report, and there is none for it to be a member of. It is [`VBC09331`](../diagnostics/vbc09331.md), the same as any other name the language does not declare.|
+|RD-VBA|Not a statement. `Print` is a reserved identifier of VBA, illegal as a name and with no semantics, and it is no recognized statement inside a procedure. (Only the Immediate window accepts it, as `Debug.Print`; that is not procedure scope.) It is [`VBC09331`](../diagnostics/vbc09331.md), the same as any other name the language does not declare.|
 |VB6|Undefined, for now: it is the `Print` member of the form or report it is written in, and the platform has no forms yet.|
 |BASIC|A statement. It writes to the session's own output - the one `Debug.Print` writes to - by the same output rules ([5.4.5.8.1](#54581-output-lists)).|
 
