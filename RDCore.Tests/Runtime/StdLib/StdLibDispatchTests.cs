@@ -125,6 +125,78 @@ public sealed class StdLibDispatchTests
     }
 
     [TestMethod]
+    [DataRow("Hex$(255)", "FF")]
+    [DataRow("Oct$(8)", "10")]
+    [DataRow("Str$(1)", " 1")]
+    [DataRow("Error$(11)", "Division by zero")]
+    public void ATypedCall_ReachesTheStringTwin(string call, string expected)
+    {
+        // MS-VBAL 5.6.10 matches a simple name without its type character, and the library declares each $ function as a
+        // member of its own: when Hex binds the library's Hex, Hex$ binds the library's Hex$.
+        var output = new RuntimeOutputBuffer();
+        var (_, outcome) = RuntimeSourceHarness.Run(fileSystem: null, [], output, standardLibrary: true, $"Debug.Print {call}");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual(expected, output.Lines.Single().TrimEnd('\r', '\n'));
+    }
+
+    [TestMethod]
+    [DataRow("Hex$")]
+    [DataRow("Oct$")]
+    [DataRow("Str$")]
+    public void ATypedCall_GivenNull_IsInvalidUseOfNull(string member)
+    {
+        // what tells the twins apart: "the function Hex$ raises error 94, "Invalid use of Null" and the function Hex
+        // returns the data value Null", and the same for Oct$ and Str$.
+        var (_, outcome) = RuntimeSourceHarness.Run(
+            fileSystem: null, [], output: null, standardLibrary: true, $"Debug.Print {member}(Null)");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual((int)VBRuntimeErrorId.InvalidUseOfNull, outcome.ErrorInfo!.ErrorId, outcome.ErrorInfo.Verbose);
+    }
+
+    [TestMethod]
+    [DataRow("Hex")]
+    [DataRow("Oct")]
+    [DataRow("Str")]
+    public void AnUntypedCall_GivenNull_StillReachesTheVariantMember(string member)
+    {
+        var output = Run($"Debug.Print {member}(Null)");
+
+        Assert.AreEqual("Null", output.Single().TrimEnd('\r', '\n'));
+    }
+
+    [TestMethod]
+    public void ABareTypedCall_ReachesTheStringTwin()
+    {
+        // a call statement's callee is a simple name too, written without the parentheses: Hex$ given Null raises 94
+        // where Hex returns Null.
+        var (_, typed) = RuntimeSourceHarness.Run(fileSystem: null, [], output: null, standardLibrary: true, "Hex$ Null");
+        var (_, untyped) = RuntimeSourceHarness.Run(fileSystem: null, [], output: null, standardLibrary: true, "Hex Null");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, typed.Kind, typed.ErrorInfo?.Verbose);
+        Assert.AreEqual((int)VBRuntimeErrorId.InvalidUseOfNull, typed.ErrorInfo!.ErrorId, typed.ErrorInfo.Verbose);
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, untyped.Kind, untyped.ErrorInfo?.Verbose);
+    }
+
+    [TestMethod]
+    [DataRow("Left$ \"abc\", 1", DisplayName = "a bare call")]
+    [DataRow("Debug.Print Left$(\"abc\", 1)", DisplayName = "an argument list")]
+    public void ATypedCall_ReachesTheTwinOfAMemberNothingImplementsYet(string statement)
+    {
+        // Strings' twins are declared like Conversion's; which member a call reached is what the dispatcher was handed.
+        RuntimeSourceHarness.RecordingDispatcher? spy = null;
+        var (_, outcome) = RuntimeSourceHarness.Run(
+            fileSystem: null, [], output: null, standardLibrary: true, arrange: null,
+            new RuntimeSourceHarness.Surroundings { Dispatcher = inner => spy = new RuntimeSourceHarness.RecordingDispatcher(inner) },
+            statement);
+
+        Assert.AreEqual("Left$", spy!.Requests.Single().Member.Name);
+        // 🚧 TODO when Left$ is written: the call completes.
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind, outcome.ErrorInfo?.Verbose);
+    }
+
+    [TestMethod]
     public void TheErrorFunction_AndTheErrorStatement_AreDifferentThingsThatShareAName()
     {
         // MS-VBAL 5.4.4.3 is a statement, run by the interpreter as if by Err.Raise; 6.1.2.3.1.15 is a function of
