@@ -43,7 +43,26 @@ internal static class ModuleWorkspace
     public static Task<string[]> LoadErrorsAsync(IReadOnlyList<(string Name, string Source)> classes, string program)
         => RunCoreAsync(classes, program, errorsOnly: true);
 
-    private static async Task<string[]> RunCoreAsync(IReadOnlyList<(string Name, string Source)> classes, string program, bool errorsOnly)
+    /// <summary>
+    /// Loads the workspace like <see cref="LoadErrorsAsync"/>, and asks the host what the semantic analysis pass found out about it, as the language server does.
+    /// </summary>
+    /// <param name="classes">The class modules of the workspace.</param>
+    /// <param name="program">The source of the <c>Program</c> standard module.</param>
+    /// <param name="moduleName">The module whose model is asked for, or empty for the models of every module.</param>
+    public static async Task<SemanticsPayload> SemanticsAsync(IReadOnlyList<(string Name, string Source)> classes, string program, string moduleName = "")
+    {
+        SemanticsPayload? payload = null;
+        await RunCoreAsync(classes, program, errorsOnly: true, async sessionProvider =>
+        {
+            var result = await new HostSemanticsHandler(sessionProvider).Handle(new HostSemanticsParams { ModuleName = moduleName }, CancellationToken.None);
+            payload = PlatformJson.Deserialize<SemanticsPayload>(result.Json);
+        });
+
+        return payload!;
+    }
+
+    private static async Task<string[]> RunCoreAsync(
+        IReadOnlyList<(string Name, string Source)> classes, string program, bool errorsOnly, Func<EnvironmentSessionProvider, Task>? afterLoading = null)
     {
         var loadErrors = new List<string>();
         (string Name, string Extension, ModuleType Type, string Source)[] modules =
@@ -78,10 +97,11 @@ internal static class ModuleWorkspace
         var resolver = WorkspaceSymbolResolver.Compose(
             workspaceRoot, parsed.Select(module => (module.Uri, module.Module.Type, module.Parse)), new IntrinsicSymbolResolver());
 
+        // as the language server does: every module is defined, and then the code of each is sent.
         foreach (var module in parsed)
         {
             var symbols = new SyntaxTreeSymbolProvider(workspaceRoot, module.Uri, module.Module.Type, module.Parse, resolver, withImplicitDeclarations: true).ProvideSymbols();
-            var defined = await new DefineSymbolsHandler(sessionProvider, Substitute.For<IVerboseMessageBuilder>(), NullLogger<DefineSymbolsHandler>.Instance)
+            await new DefineSymbolsHandler(sessionProvider, Substitute.For<IVerboseMessageBuilder>(), NullLogger<DefineSymbolsHandler>.Instance)
                 .Handle(new DefineSymbolsParams
                 {
                     WorkspaceRoot = workspaceRoot,
@@ -91,8 +111,23 @@ internal static class ModuleWorkspace
                     Directives = module.Parse.SyntaxTree.GetModuleDirectives(),
                     ImplementedInterfaceNames = module.Parse.SyntaxTree.GetImplementedInterfaceNames(),
                     ImplementedInterfaceRanges = module.Parse.SyntaxTree.GetImplementedInterfaceRanges(),
-                    ParseResultJson = PlatformJson.Serialize(module.Parse),
                     Replace = true,
+                }, CancellationToken.None);
+        }
+
+        foreach (var module in parsed)
+        {
+            var defined = await new DefineSymbolsHandler(sessionProvider, Substitute.For<IVerboseMessageBuilder>(), NullLogger<DefineSymbolsHandler>.Instance)
+                .Handle(new DefineSymbolsParams
+                {
+                    WorkspaceRoot = workspaceRoot,
+                    ModuleUri = module.Uri,
+                    ModuleName = module.Module.Name,
+                    Directives = module.Parse.SyntaxTree.GetModuleDirectives(),
+                    ImplementedInterfaceNames = module.Parse.SyntaxTree.GetImplementedInterfaceNames(),
+                    ImplementedInterfaceRanges = module.Parse.SyntaxTree.GetImplementedInterfaceRanges(),
+                    ParseResultJson = PlatformJson.Serialize(module.Parse),
+                    CodeOnly = true,
                 }, CancellationToken.None);
 
             if (errorsOnly)
@@ -106,6 +141,11 @@ internal static class ModuleWorkspace
 
         if (errorsOnly)
         {
+            if (afterLoading is not null)
+            {
+                await afterLoading(sessionProvider);
+            }
+
             return [.. loadErrors];
         }
 
