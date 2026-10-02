@@ -167,7 +167,7 @@ public enum VBCompileErrorId
     ExitFunctionNotAllowedInSubOrProperty = 9314,
     /// <summary>
     /// <c>Exit</c> statement must match the <em>kind</em> of procedure in which it occurs.<br/>
-    /// <a href="https://learn.microsoft.com/office/vba/language/reference/user-interface-help/exit-sub-not-allowed-in-function-or-property">learn.microsoft.com</a>
+    /// <a href="https://learn.microsoft.com/office/vba/language/reference/user-interface-help/exit-property-not-allowed-in-function-or-sub">learn.microsoft.com</a>
     /// </summary>
     ExitPropertyNotAllowedInSubOrFunction = 9315,
     /// <summary>
@@ -228,6 +228,88 @@ public enum VBCompileErrorId
     /// ℹ️ Unable to find an official <c>learn.microsoft.com</c> documentation link for this error.
     /// </remarks>
     ArgumentRequiredForPropertyLetOrSet = 9321,
+    /// <summary>
+    /// A <c>RaiseEvent</c> statement names an event that the class module it is written in does not declare, or is not
+    /// written in a class module at all.<br/>
+    /// <strong>MS-VBAL §5.4.2.20</strong> RaiseEvent Statement.
+    /// </summary>
+    EventNotDefined = 9322,
+    /// <summary>
+    /// The arguments of a <c>RaiseEvent</c> statement are not compatible with the parameter list of the event it
+    /// raises: there are too many or too few, or one cannot be passed to its parameter.<br/>
+    /// <strong>MS-VBAL §5.4.2.20</strong> RaiseEvent Statement.
+    /// </summary>
+    EventArgumentsIncompatible = 9323,
+    /// <summary>
+    /// A <c>WithEvents</c> variable is not declared as a specific class that has at least one event, or is declared as
+    /// the class of the module that contains it.<br/>
+    /// <strong>MS-VBAL §5.2.3.1.2</strong> WithEvents Variable Declarations.
+    /// </summary>
+    InvalidWithEventsType = 9324,
+    /// <summary>
+    /// The name of an <c>Event</c> declaration contains an underscore, which is what separates the name of a
+    /// <c>WithEvents</c> variable from the name of the event in the name of a handler.<br/>
+    /// <strong>MS-VBAL §5.2.4.3</strong> Event Declaration.
+    /// </summary>
+    InvalidEventName = 9325,
+    /// <summary>
+    /// A procedure named for a <c>WithEvents</c> variable and one of the events of its class is not a valid handler of
+    /// the event: it is not a subroutine, or its parameter list is not compatible with the event's.<br/>
+    /// <strong>MS-VBAL §5.3.1.8</strong> Event Handler Declarations.
+    /// </summary>
+    InvalidEventHandler = 9326,
+    /// <summary>
+    /// An argument is written with the <c>ByVal</c> keyword in an argument list that is not that of an invocation of an
+    /// external procedure.<br/>
+    /// <strong>MS-VBAL §5.6.13.1</strong> Argument Lists.
+    /// </summary>
+    ByValArgumentNotAllowed = 9327,
+    /// <summary>
+    /// An <c>Implements</c> directive names a class that cannot be an interface class: the class module itself, a class
+    /// another directive of the module already names, one whose public members have an underscore in their names, or one
+    /// whose name collides with another interface's; or two interfaces have names one of which begins with the other
+    /// followed by an underscore.<br/>
+    /// <strong>MS-VBAL §5.2.4.2</strong> Implements Directive.
+    /// </summary>
+    InvalidImplementsDirective = 9328,
+    /// <summary>
+    /// A class module that implements an interface does not declare the implemented name that corresponds to one of the
+    /// interface's public variables or methods.<br/>
+    /// <strong>MS-VBAL §5.2.4.2</strong> Implements Directive.
+    /// </summary>
+    InterfaceMemberNotImplemented = 9329,
+    /// <summary>
+    /// A procedure named for an interface member (<c>InterfaceName_MemberName</c>) does not correspond to it: it is not the
+    /// kind of declaration the member needs, or its parameters or its type are not equivalent to the member's.<br/>
+    /// <strong>MS-VBAL §5.3.1.9</strong> Implemented Name Declarations.
+    /// </summary>
+    InvalidImplementedMember = 9330,
+    /// <summary>
+    /// The code calls a procedure, or uses a statement, that the language it is written in does not have: <c>Print "x"</c> in
+    /// a language where a bare <c>Print</c> is the member of a form there is none of, or a symbol only another language's library
+    /// declares.<br/>
+    /// <a href="https://learn.microsoft.com/office/vba/language/reference/user-interface-help/sub-or-function-not-defined">learn.microsoft.com</a>
+    /// </summary>
+    SubOrFunctionNotDefined = 9331,
+    /// <summary>
+    /// <c>Exit Sub</c> is only valid within a <c>Sub</c>: the <c>Exit</c> statement must match the <em>kind</em> of procedure in which it occurs.<br/>
+    /// <a href="https://learn.microsoft.com/office/vba/language/reference/user-interface-help/exit-sub-not-allowed-in-function-or-property">learn.microsoft.com</a>
+    /// </summary>
+    ExitSubNotAllowedInFunctionOrProperty = 9332,
+    /// <summary>
+    /// An expression that is not a variable is where a variable is required: the target of a <c>Mid</c> statement, the variable a
+    /// <c>Line Input #</c>, <c>Input #</c> or <c>Get</c> statement reads into.<br/>
+    /// <a href="https://learn.microsoft.com/office/vba/language/reference/user-interface-help/variable-required-cant-assign-to-this-expression">learn.microsoft.com</a>
+    /// </summary>
+    VariableRequired = 9333,
+    /// <summary>
+    /// The <c>Access</c> clause of an <c>Open</c> statement is not one its <c>For</c> mode allows: <c>Output</c> is only
+    /// <c>Write</c>, <c>Input</c> only <c>Read</c>, and <c>Append</c> is <c>Read Write</c> or <c>Write</c>.
+    /// </summary>
+    /// <remarks>
+    /// 👉 <strong>MS-VBAL §5.4.5.1</strong> states the rule and names no error: the message is the platform's.
+    /// </remarks>
+    FileAccessNotValidForMode = 9334,
 
 
     /***********************************************************************************************

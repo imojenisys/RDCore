@@ -4,6 +4,7 @@ using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
+using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
 using System.Collections.Immutable;
@@ -32,6 +33,9 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
 
     /// <inheritdoc/>
     public int Pc { get; set; }
+
+    /// <inheritdoc/>
+    public VBRuntimeObjectId? Target { get; set; }
 
     /// <inheritdoc/>
     public ErrorHandlerState ErrorHandler { get; set; } = ErrorHandlerState.Disabled;
@@ -152,6 +156,12 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
     /// <inheritdoc/>
     public bool TryGetAddress(Symbol symbol, out MemoryAddress address)
         => _byRefAliases.TryGetValue(symbol.SemanticId, out address) || _addresses.TryGetAddress(symbol, out address);
+
+    /// <inheritdoc/>
+    public bool IsByRefParameter(Symbol symbol) => _byRefAliases.ContainsKey(symbol.SemanticId);
+
+    /// <inheritdoc/>
+    public bool LocksAddress(MemoryAddress address) => _byRefAliases.ContainsValue(address);
 
     /// <summary>
     /// Frees every local this frame allocated. Called when the frame is popped off the

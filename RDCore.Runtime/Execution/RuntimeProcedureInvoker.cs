@@ -8,7 +8,9 @@ using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Values;
+using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
+using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
@@ -62,7 +64,20 @@ public sealed class RuntimeProcedureInvoker(IRuntimeSession Session, IReadOnlyDi
         }
 
         var staticSymbol = new StaticSymbol(procedure.Name, procedure.Kind, procedure.ResolvedType);
-        var frame = (CallStackFrame)Session.Symbols.CreateFrame(new SyntaxNodeId(procedure.Uri.AbsolutePath, []), staticSymbol);
+
+        // MS-VBAL 5.2.1: a procedure's code runs under the Option directives of the module declaring it,
+        // whichever module called it. A StaticSymbol has no link back to its module, so the frame is what
+        // carries them - and it was never given any, so Option Compare Text and Option Base 1 both read
+        // back as their defaults everywhere the runtime consults them.
+        var frame = (CallStackFrame)Session.Symbols.CreateFrame(
+            new SyntaxNodeId(procedure.Uri.AbsolutePath, []), staticSymbol, DeclaringModuleDirectives(procedure));
+
+        // the first parameter of a member of a class is its Me, and the object the member is a call on is what its
+        // fields are the storage of.
+        if (GetParameters(procedure) is [{ Name: "Me" }, ..] && arguments is [VBRuntimeValue<VBRuntimeObjectId> { StoredValue: var target }, ..])
+        {
+            frame.Target = target;
+        }
 
         if (!Session.CallStack.TryPush(frame))
         {
@@ -103,6 +118,7 @@ public sealed class RuntimeProcedureInvoker(IRuntimeSession Session, IReadOnlyDi
         HoistLocals(Session, frame, GetLocals(procedure));
 
         var outcome = Executor.Run(Session, frame, body, new RuntimeEvaluationContext(procedure.Uri));
+        ReleaseLocals(frame, GetLocals(procedure));
         Session.CallStack.TryPop(out _);
 
         return outcome.Kind switch
@@ -116,6 +132,31 @@ public sealed class RuntimeProcedureInvoker(IRuntimeSession Session, IReadOnlyDi
             // ProcedureExecutor.Run can observe, which doesn't exist yet - deferred, not mismodeled.
             _ => RuntimeSemanticsEvaluationResult.InternalError(),
         };
+    }
+
+    // MS-VBAL §5.3.1.10: the procedure extent variables cease to exist with the activation, and an object that was
+    // held by one of them only is destroyed with it - which is where its Terminate runs. What the function returns
+    // is taken by whoever called it, so it is not let go of here (see ObjectReferences). A Static local outlives the
+    // activation and is not in the frame.
+    private void ReleaseLocals(CallStackFrame frame, ImmutableArray<BoundTypedSymbol> locals)
+    {
+        // a Variant result holds the object it was Set to, which is as much returned as an Object result is.
+        var result = frame.ReturnValue;
+        while (result is VBVariantValue { TypedValue: var wrapped })
+        {
+            result = wrapped;
+        }
+
+        var returned = result as VBObjectValue;
+        foreach (var local in locals)
+        {
+            if (local is not VBLocalVariableSymbol { IsStatic: false } variable || !frame.TryResolve(variable, out var handle))
+            {
+                continue;
+            }
+
+            ObjectReferences.Release(Session, handle, variable.ResolvedType.CreateValue(handle) as VBObjectValue, returned);
+        }
     }
 
     // MS-VBAL §5.4.3: "Create the function result variable and any procedure extent local variables
@@ -135,7 +176,11 @@ public sealed class RuntimeProcedureInvoker(IRuntimeSession Session, IReadOnlyDi
     // already allocated just gets a fresh, independent copy of the same default value - see its own
     // xmldoc), but only the FIRST call should actually happen: every later call must see whatever the
     // previous call's own body last wrote, not get reset back to the default.
-    private static void HoistLocals(IRuntimeSession session, CallStackFrame frame, ImmutableArray<BoundTypedSymbol> locals)
+    // what a variable's storage starts as: its type's default, except for an array, which is as big as it was declared.
+    private static VBTypedValue DefaultValueOf(IRuntimeSession session, VBLocalVariableSymbol variable)
+        => session.Symbols.Defaults?.DefaultValueOf(variable) ?? variable.ResolvedType.DefaultValue;
+
+    internal static void HoistLocals(IRuntimeSession session, CallStackFrame frame, ImmutableArray<BoundTypedSymbol> locals)
     {
         foreach (var local in locals)
         {
@@ -153,15 +198,24 @@ public sealed class RuntimeProcedureInvoker(IRuntimeSession Session, IReadOnlyDi
             {
                 if (!session.Symbols.Resolver.TryGetAddress(variable, out _))
                 {
-                    session.Symbols.Resolver.TryAllocate(variable, ((ITypedSymbol)variable).ResolvedType.DefaultValue, out _);
+                    session.Symbols.Resolver.TryAllocate(variable, DefaultValueOf(session, variable), out _);
                 }
             }
             else
             {
-                frame.Push(variable, ((ITypedSymbol)variable).ResolvedType.DefaultValue);
+                frame.Push(variable, DefaultValueOf(session, variable));
             }
         }
     }
+
+    // the module a procedure is declared in is its symbol's parent. A procedure whose parent is not a
+    // module symbol — one the session has no module for — runs under the defaults, which is what every
+    // activation used to do.
+    private ModuleDirectives DeclaringModuleDirectives(VBTypeMemberSymbol procedure)
+        => Session.Symbols.TryResolveValue(procedure.ParentUri.Fragment.TrimStart('#'), GlobalSymbols.UnresolvedSymbol, out var parent)
+            && parent is VBModuleSymbol module
+                ? module.Directives
+                : ModuleDirectives.None;
 
     internal static bool IsByRef(ParameterKind kind) => kind is ParameterKind.ImplicitByRef or ParameterKind.ExplicitByRef;
 

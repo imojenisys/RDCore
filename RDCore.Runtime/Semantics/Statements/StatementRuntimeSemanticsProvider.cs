@@ -1,8 +1,10 @@
 using RDCore.Runtime.Execution;
+using RDCore.Runtime.Execution.Frames;
 using RDCore.Runtime.Semantics.LetCoercion;
 using RDCore.SDK;
 using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST.Abstract;
+using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.AST.Expressions;
 using RDCore.SDK.Model.AST.Statements;
 using RDCore.SDK.Model.Symbols;
@@ -41,8 +43,10 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
     private readonly ConditionEvaluator _conditions;
     private readonly FileStatementRuntimeSemantics _files;
     private readonly FixedAssignmentRuntimeSemantics _fixedAssignment;
+    private readonly ArrayStatementRuntimeSemantics _arrays;
+    private readonly MidStatementRuntimeSemantics _mid;
 
-    public StatementRuntimeSemanticsProvider(RuntimeExpressionEvaluator expressionEvaluator, LetAssignmentEvaluator assignments, ISetCoercionRuntimeSemantics setCoercion, PrintOutputEvaluator printOutput, ConditionEvaluator conditions, FileStatementRuntimeSemantics files, FixedAssignmentRuntimeSemantics fixedAssignment)
+    public StatementRuntimeSemanticsProvider(RuntimeExpressionEvaluator expressionEvaluator, LetAssignmentEvaluator assignments, ISetCoercionRuntimeSemantics setCoercion, PrintOutputEvaluator printOutput, ConditionEvaluator conditions, FileStatementRuntimeSemantics files, FixedAssignmentRuntimeSemantics fixedAssignment, ArrayStatementRuntimeSemantics arrays, MidStatementRuntimeSemantics mid)
     {
         _expressionEvaluator = expressionEvaluator;
         _assignments = assignments;
@@ -51,6 +55,8 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
         _conditions = conditions;
         _files = files;
         _fixedAssignment = fixedAssignment;
+        _arrays = arrays;
+        _mid = mid;
     }
 
     /// <inheritdoc/>
@@ -61,6 +67,11 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
             AssignmentStatementNode { Kind: AssignmentKind.Set } assignment => ExecuteSetAssignment(session, context, assignment),
             // MS-VBAL §5.4.3.6-7: LSet and RSet fit a value into the target's own current width.
             AssignmentStatementNode { Kind: AssignmentKind.LSet or AssignmentKind.RSet } assignment => _fixedAssignment.Execute(session, context, assignment),
+            // MS-VBAL §5.4.3.5: Mid replaces a span of the characters (or bytes) of a string variable.
+            MidStatementNode mid => _mid.Execute(session, context, mid),
+            // MS-VBAL §5.4.3.3-4: the statements that change an array's shape.
+            RedimDeclarationNode redim => _arrays.ExecuteRedim(session, context, redim),
+            KeywordStatementNode { Token: Tokens.Erase } erase => _arrays.ExecuteErase(session, context, erase),
             // Debug.Print: MS-VBAL §5.4.5.8's output rules, against the session's output rather than a
             // file. The parser gives these a node of their own, so this is a type test rather than a
             // match on the spelling of a call's owner - and a build that lowers them away never gets
@@ -82,14 +93,33 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
             // MS-VBAL §5.4.5.3/.7: the statements that reposition a channel and set its line width.
             KeywordStatementNode { Token: Tokens.Seek } seek => _files.ExecuteSeek(session, context, seek),
             KeywordStatementNode { Token: Tokens.Width } width => _files.ExecuteWidth(session, context, width),
+            // RD-VBAL §5.4.5.13: Name renames a file or a directory; it is not in MS-VBAL.
+            KeywordStatementNode { Token: Tokens.Name } name => _files.ExecuteName(session, context, name),
             // MS-VBAL §5.4.5.11-12: the record statements, which move bytes rather than characters.
             KeywordStatementNode { Token: Tokens.Put } put => _files.ExecutePut(session, context, put),
             KeywordStatementNode { Token: Tokens.Get } get => _files.ExecuteGet(session, context, get),
             // MS-VBAL §5.4.5.4-5: Lock and Unlock, which share a node because they share a record range.
             FileLockStatementNode fileLock => _files.ExecuteLock(session, context, fileLock),
+            // MS-VBAL §5.4.2.20: invokes the procedures that handle an event of the object whose code this is.
+            KeywordStatementNode { Token: Tokens.RaiseEvent } raise => ExecuteRaiseEvent(session, context, raise),
             CallStatementNode call => ExecuteCall(session, context, call),
             _ => RuntimeExecutionOutcome.InternalError,
         };
+
+    // the parser gives the event's name as the first input, a bare name that is not an expression to evaluate, and the
+    // arguments after it.
+    private RuntimeExecutionOutcome ExecuteRaiseEvent(IRuntimeSession session, RuntimeEvaluationContext context, KeywordStatementNode raise)
+    {
+        if (raise.Inputs is not [SimpleNameExpressionNode eventName, ..var arguments])
+        {
+            return RuntimeExecutionOutcome.InternalError;
+        }
+
+        var result = _expressionEvaluator.RaiseEvent(session, context, eventName.IdentifierName, [.. arguments.OfType<ExpressionNode>()]);
+        return result.IsSuccess
+            ? RuntimeExecutionOutcome.Next
+            : result.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Error(result.ErrorInfo!);
+    }
 
     // Debug.Assert: suspends execution when its expression is False, which is what Break means here -
     // the same outcome a Stop statement produces. An expression that cannot be coerced to Boolean is a
@@ -107,19 +137,20 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
             : RuntimeExecutionOutcome.Next;
     }
 
-    // MS-VBAL §5.4.2.1: both the explicit Call Foo(...) form and the bare Foo(...)/Foo form evaluate
-    // Callee (its own argument list, if any, already part of its tree - see CallStatementNode's own
-    // doc) and discard whatever it returns; a Sub's own Void result discards just as cleanly as a real
-    // one would. The bare, unparenthesized multi-argument form (Foo 1, 2, populating Arguments directly
-    // instead) isn't wired yet - S9a's own scope is the parenthesized/no-argument shapes only.
+    // MS-VBAL §5.4.2.1, and whatever the call returns is discarded - a Sub's own Void result discards
+    // just as cleanly as a real one would.
+    //
+    // The two shapes differ in where the arguments are. `Call Foo(1, 2)` carries them inside the
+    // Callee's own IndexExpressionNode, so evaluating the Callee is the whole call. The bare
+    // `Foo 1, 2` has no parenthesized lExpression equivalent in the grammar, so its arguments are the
+    // statement's own (see CallStatementNode) and the call is made from here - which is what S9a left
+    // undone, on the ordinary VBA call form.
     private RuntimeExecutionOutcome ExecuteCall(IRuntimeSession session, RuntimeEvaluationContext context, CallStatementNode call)
     {
-        if (!call.Arguments.IsEmpty)
-        {
-            return RuntimeExecutionOutcome.InternalError;
-        }
+        var result = call.Arguments.IsEmpty
+            ? _expressionEvaluator.Evaluate(session, call.Callee, context)
+            : _expressionEvaluator.Invoke(session, context, call.Callee, call.Arguments);
 
-        var result = _expressionEvaluator.Evaluate(session, call.Callee, context);
         return result.IsSuccess ? RuntimeExecutionOutcome.Next
             : result.IsInternalError ? RuntimeExecutionOutcome.InternalError
             : RuntimeExecutionOutcome.Error(result.ErrorInfo!);
@@ -139,10 +170,26 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
         return _assignments.Assign(session, context, assignment, assignment.Target, assignment.Value, valueResult.Result!);
     }
 
-    // MS-VBAL §5.4.3.9. Same target scope limitation as Let: a member-access or indexed target needs
-    // procedure-invocation machinery (a Property Set call) that doesn't exist yet.
+    // MS-VBAL §5.4.3.9. The target is a variable, or a member of an object: a public variable of its class, or a property,
+    // which its Property Set is invoked for.
     private RuntimeExecutionOutcome ExecuteSetAssignment(IRuntimeSession session, RuntimeEvaluationContext context, AssignmentStatementNode assignment)
     {
+        if (assignment.Target is MemberAccessExpressionNode or IndexExpressionNode { Callee: MemberAccessExpressionNode })
+        {
+            var memberValue = _expressionEvaluator.Evaluate(session, assignment.Value, context);
+            return memberValue.IsSuccess
+                ? _assignments.AssignObjectMember(session, context, assignment, assignment.Target, assignment.Value, memberValue.Result!, isSet: true)
+                : memberValue.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Error(memberValue.ErrorInfo!);
+        }
+
+        if (assignment.Target is IndexExpressionNode element)
+        {
+            var elementValue = _expressionEvaluator.Evaluate(session, assignment.Value, context);
+            return elementValue.IsSuccess
+                ? _assignments.AssignArrayElement(session, context, element.Callee, element.Arguments, assignment.Value, elementValue.Result!, isSet: true)
+                : elementValue.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Error(elementValue.ErrorInfo!);
+        }
+
         if (assignment.Target is not SimpleNameExpressionNode simpleName)
         {
             return RuntimeExecutionOutcome.InternalError;
@@ -168,6 +215,15 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
             return RuntimeExecutionOutcome.Error(coercionResult.ErrorInfo!);
         }
 
+        // MS-VBAL §5.3.1: `Set Foo = obj` inside Foo's own body Set-assigns its function result variable, as `Foo = value` Let-assigns it
+        // (LetAssignmentEvaluator): it is not a real addressable symbol with a binding, but the activation's own result.
+        if (target is VBFunctionMemberSymbol or VBPropertyGetMemberSymbol
+            && ((Symbol)target).Uri.AbsoluteUri == context.Scope.AbsoluteUri && session.CallStack.Current is { } enclosing)
+        {
+            ((CallStackFrame)enclosing).ReturnValue = coercionResult.Result!;
+            return RuntimeExecutionOutcome.Next;
+        }
+
         var handle = session.Symbols.Resolver.GetValue((Symbol)target);
         if (!handle.BindingCapabilities.HasFlag(BindingCapabilities.SetValue))
         {
@@ -176,7 +232,30 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
             return RuntimeExecutionOutcome.InternalError;
         }
 
+        // a value is a view of its handle, which is about to be written to: what the variable held is its object's
+        // identity as of now.
+        var previous = target.ResolvedType.CreateValue(handle) is VBObjectValue held ? new VBObjectValue(held.Value) : null;
+
+        // MS-VBAL §5.4.3.9: a WithEvents variable's handlers are detached from the object it holds before the
+        // assignment, and attached to the object it is given after it.
+        var variable = (Symbol)target;
+        var withEvents = variable.GetProperty(SymbolProperties.WithEvents);
+        if (withEvents)
+        {
+            EventAttachments.Detach(session, context, variable, previous);
+        }
+
         handle.SetValue(session.Symbols.Resolver, coercionResult.Result!.RuntimeValue);
+
+        // MS-VBAL §5.3.1.10: the object the variable held loses a reference, and Terminate runs when it was the last.
+        // The variable already holds the new one by now, so a handler that reads it sees what the program wrote.
+        ObjectReferences.Rebind(session, handle, previous, coercionResult.Result as VBObjectValue);
+
+        if (withEvents)
+        {
+            EventAttachments.Attach(session, context, variable, coercionResult.Result as VBObjectValue);
+        }
+
         return RuntimeExecutionOutcome.Next;
     }
 }

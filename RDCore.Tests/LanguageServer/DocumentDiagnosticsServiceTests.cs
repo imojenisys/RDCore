@@ -5,11 +5,13 @@ using OmniSharp.Extensions.LanguageServer.Protocol.Models;
 using RDCore.LanguageServer;
 using RDCore.LanguageServer.Diagnostics;
 using RDCore.LanguageServer.Parsing;
+using RDCore.LanguageServer.Symbols;
 using RDCore.LanguageServer.Workspace;
 using RDCore.LanguageServer.Workspace.Services;
 using RDCore.Parsing;
 using RDCore.SDK.Client;
 using RDCore.SDK.Extensibility;
+using RDCore.SDK.Model.AST;
 using RDCore.SDK.Platform.Protocol;
 using Range = OmniSharp.Extensions.LanguageServer.Protocol.Models.Range;
 
@@ -23,9 +25,10 @@ public sealed class DocumentDiagnosticsServiceTests
     private readonly IWorkspaceDocumentService _documents = Substitute.For<IWorkspaceDocumentService>();
     private readonly IParsingClientService _parsing = Substitute.For<IParsingClientService>();
     private readonly IPlatformOrchestrationService _orchestration = Substitute.For<IPlatformOrchestrationService>();
+    private readonly ISymbolSyncService _symbols = Substitute.For<ISymbolSyncService>();
 
     private DocumentDiagnosticsService Sut()
-        => new(_documents, _parsing, _orchestration, NullLogger<DocumentDiagnosticsService>.Instance);
+        => new(_documents, _parsing, _orchestration, _symbols, NullLogger<DocumentDiagnosticsService>.Instance);
 
     private static WorkspaceDocument Document(int version = 1)
         => new("src/Mod1.bas", Root, "Public Sub Foo()\r\nEnd Sub", version);
@@ -185,5 +188,150 @@ public sealed class DocumentDiagnosticsServiceTests
         var result = await Sut().GetAsync(document.Id.Uri.ToUri(), previousResultId: null, CancellationToken.None);
 
         Assert.AreEqual(1, result.Diagnostics.Count);
+    }
+
+    private IRDCoreClientApp HostThatProvidesSemantics(string json)
+    {
+        var host = Substitute.For<IRDCoreClientApp>();
+        host.PlatformInfo.Returns(new PlatformInitializeResult { Provided = [nameof(SemanticAnalysis)] });
+        host.SendRequestAsync<HostSemanticsParams, HostSemanticsResult>(Arg.Any<HostSemanticsParams>(), Arg.Any<CancellationToken>())
+            .Returns(new HostSemanticsResult { Json = json });
+        _orchestration.RuntimeEnvironment.Returns(host);
+        return host;
+    }
+
+    private static DiagnoseDocumentPayload PayloadSentTo(IRDCoreClientApp provider)
+    {
+        var request = provider.ReceivedCalls().Single(call => call.GetMethodInfo().Name == nameof(IRDCoreClientApp.SendRequestAsync)).GetArguments()[0];
+        return PlatformJson.Deserialize<DiagnoseDocumentPayload>(((DiagnoseDocumentRequest)request!).Json);
+    }
+
+    [TestMethod]
+    public async Task WhatTheHostFoundOutAboutTheModule_IsHandedToTheProvider()
+    {
+        var document = Document();
+        WorkspaceHas(document);
+        ParseYields();
+        var module = new Uri("file://rdcore-test#Mod1");
+        var host = HostThatProvidesSemantics(PlatformJson.Serialize(new SemanticsPayload([new ModuleSemanticsDto(module, true, [], [], [])])));
+        var provider = Provider("RDCore.Diagnostics", 1);
+        ProvidersAre(provider);
+
+        await Sut().GetAsync(document.Id.Uri.ToUri(), previousResultId: null, CancellationToken.None);
+
+        var semantics = PayloadSentTo(provider).Semantics;
+        Assert.IsNotNull(semantics);
+        Assert.IsTrue(semantics.OptionExplicit);
+        await host.Received(1).SendRequestAsync<HostSemanticsParams, HostSemanticsResult>(
+            Arg.Is<HostSemanticsParams>(request => request.ModuleName.Contains("Mod1")), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    public async Task AHostThatDoesNotRunTheAnalysis_IsNotAsked_AndTheProviderHasNoSemantics()
+    {
+        var document = Document();
+        WorkspaceHas(document);
+        ParseYields();
+        var host = Substitute.For<IRDCoreClientApp>();
+        host.PlatformInfo.Returns(new PlatformInitializeResult { Provided = [] });
+        _orchestration.RuntimeEnvironment.Returns(host);
+        var provider = Provider("RDCore.Diagnostics", 1);
+        ProvidersAre(provider);
+
+        await Sut().GetAsync(document.Id.Uri.ToUri(), previousResultId: null, CancellationToken.None);
+
+        Assert.IsNull(PayloadSentTo(provider).Semantics);
+        await host.DidNotReceive().SendRequestAsync<HostSemanticsParams, HostSemanticsResult>(Arg.Any<HostSemanticsParams>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    public async Task AHostThatCannotAnswer_CostsTheProviderItsSemantics_AndNothingElse()
+    {
+        var document = Document();
+        WorkspaceHas(document);
+        ParseYields();
+        var host = HostThatProvidesSemantics("{}");
+        host.SendRequestAsync<HostSemanticsParams, HostSemanticsResult>(Arg.Any<HostSemanticsParams>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("the host is gone"));
+        var provider = Provider("RDCore.Diagnostics", 1, Diag(1));
+        ProvidersAre(provider);
+
+        var result = await Sut().GetAsync(document.Id.Uri.ToUri(), previousResultId: null, CancellationToken.None);
+
+        Assert.AreEqual(1, result.Diagnostics.Count);
+        Assert.IsNull(PayloadSentTo(provider).Semantics);
+    }
+
+    private static readonly Uri FragmentUri = new("file://rdcore-test#Program");
+
+    private void FragmentParses()
+        => _parsing.ParseFragmentAsync(Arg.Any<Uri>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ModuleParser().Parse(TestUri.TestModuleUri(), "Public Sub Foo()\r\nEnd Sub"));
+
+    [TestMethod]
+    public async Task AModuleTheClientSupplied_IsPutInTheHost_DefinedAndLoaded_BeforeItIsAskedAbout()
+    {
+        FragmentParses();
+        var host = HostThatProvidesSemantics(PlatformJson.Serialize(new SemanticsPayload([new ModuleSemanticsDto(FragmentUri, false, [], [], [])])));
+        var provider = Provider("RDCore.Diagnostics", 0);
+        ProvidersAre(provider);
+
+        await Sut().AnalyzeFragmentAsync(FragmentUri, "Public Sub Foo()\r\nEnd Sub", CancellationToken.None);
+
+        Received.InOrder(() =>
+        {
+            _symbols.SyncModuleAsync("Program", Arg.Any<ModuleParseResult>(), Arg.Any<CancellationToken>());
+            _symbols.LoadModuleCodeAsync("Program", Arg.Any<ModuleParseResult>(), Arg.Any<CancellationToken>());
+            host.SendRequestAsync<HostSemanticsParams, HostSemanticsResult>(
+                Arg.Is<HostSemanticsParams>(request => request.ModuleName == "Program"), Arg.Any<CancellationToken>());
+        });
+        Assert.AreEqual(false, PayloadSentTo(provider).Semantics!.OptionExplicit);
+    }
+
+    [TestMethod]
+    public async Task AModuleTheClientSupplied_IsNotPutInAHostThatDoesNotRunTheAnalysis()
+    {
+        FragmentParses();
+        var host = Substitute.For<IRDCoreClientApp>();
+        host.PlatformInfo.Returns(new PlatformInitializeResult { Provided = [] });
+        _orchestration.RuntimeEnvironment.Returns(host);
+        var provider = Provider("RDCore.Diagnostics", 0);
+        ProvidersAre(provider);
+
+        await Sut().AnalyzeFragmentAsync(FragmentUri, "Public Sub Foo()\r\nEnd Sub", CancellationToken.None);
+
+        await _symbols.DidNotReceive().SyncModuleAsync(Arg.Any<string>(), Arg.Any<ModuleParseResult>(), Arg.Any<CancellationToken>());
+        Assert.IsNull(PayloadSentTo(provider).Semantics);
+    }
+
+    [TestMethod]
+    public async Task AHostThatCannotBeTold_OfAModuleTheClientSupplied_CostsTheProviderItsSemantics_AndNothingElse()
+    {
+        FragmentParses();
+        HostThatProvidesSemantics("{}");
+        _symbols.SyncModuleAsync(Arg.Any<string>(), Arg.Any<ModuleParseResult>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("the host is gone"));
+        var provider = Provider("RDCore.Diagnostics", 0, Diag(1));
+        ProvidersAre(provider);
+
+        var (diagnostics, _) = await Sut().AnalyzeFragmentAsync(FragmentUri, "Public Sub Foo()\r\nEnd Sub", CancellationToken.None);
+
+        Assert.AreEqual(1, diagnostics.Count);
+        Assert.IsNull(PayloadSentTo(provider).Semantics);
+    }
+
+    [TestMethod]
+    public async Task AProgramOfTheBasic_HasItsDiagnosticsWhereTheyAreInTheText_NotInTheModuleItIs()
+    {
+        var program = new WorkspaceDocument("src/hello.rdc", Root, "100 X = 1\r\n110 Y = 2\r\n", version: 1);
+        WorkspaceHas(program);
+        _parsing.ParseDocumentAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>())
+            .Returns(new ModuleParser().Parse(TestUri.TestModuleUri(), "Public Sub Main()\r\n100 X = 1\r\n110 Y = 2\r\nEnd Sub"));
+        // the module has a header line the text does not: line 2 of the module is line 1 of the text.
+        ProvidersAre(Provider("RDCore.Diagnostics", 1, Diag(2)));
+
+        var result = await Sut().GetAsync(program.Id.Uri.ToUri(), previousResultId: null, CancellationToken.None);
+
+        Assert.AreEqual(1, result.Diagnostics.Single().Range.Start.Line);
     }
 }

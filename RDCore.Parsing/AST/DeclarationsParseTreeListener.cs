@@ -1,3 +1,4 @@
+using RDCore.SDK.Model.Symbols.Operators;
 ﻿using Antlr4.Runtime;
 using Antlr4.Runtime.Misc;
 using Antlr4.Runtime.Tree;
@@ -81,8 +82,13 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
     // can't itself contain a block-bearing construct). EnterBlock only ever decrements what one of
     // these constructs incremented; a procedure body's own `block` never touches this counter.
     private int _isCapturingLoopHeaderExpression = 0;
+    // a Const's value is part of its declaration wherever the declaration is, so a procedure-local one
+    // needs the same capture window a condition expression gets: without it the declaration node came
+    // out carrying only its As-type clause, and the constant had no value anywhere in the AST at all.
+    private int _isCapturingConstantExpression = 0;
     private bool IsDeclarationPassExpression => !_isInsideProcedure || !_isAfterArgsList
-        || _isCapturingConditionExpression > 0 || _isCapturingLoopHeaderExpression > 0;
+        || _isCapturingConditionExpression > 0 || _isCapturingLoopHeaderExpression > 0
+        || _isCapturingConstantExpression > 0;
 
     public override void EnterBooleanExpression([NotNull] VBAParser.BooleanExpressionContext context)
         => _isCapturingConditionExpression++;
@@ -210,13 +216,40 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         var parent = context.Parent?.Parent as VBAParser.VariableStmtContext;
         var modifier = NodeBuilder.ParseAccessModifier(parent?.visibility()?.GetText());
         var isStatic = parent?.STATIC() is not null;
-        OnExitParent(builder => builder.BuildVariableDeclaration(context, modifier, isStatic));
+
+        // the bounds of a fixed-size array are constant expressions (MS-VBAL §5.2.3.1.3), which only the listener can walk
+        // into nodes. Captured before the declaration's own builder is popped, over a subtree this Exit has already passed.
+        var bounds = CaptureDimBounds(context.arrayDim());
+        OnExitParent(builder => builder.BuildVariableDeclaration(context, modifier, isStatic, bounds));
+    }
+
+    // `dim-spec = [lower-bound "To"] upper-bound`, one per dimension; none for a dynamic array.
+    private ImmutableArray<(ExpressionNode? Lower, ExpressionNode? Upper)> CaptureDimBounds(VBAParser.ArrayDimContext? arrayDim)
+    {
+        if (arrayDim?.boundsList() is not { } boundsList)
+        {
+            return [];
+        }
+
+        var dimensions = ImmutableArray.CreateBuilder<(ExpressionNode?, ExpressionNode?)>();
+        foreach (var spec in boundsList.dimSpec())
+        {
+            dimensions.Add((
+                CaptureIsolatedExpression(spec.lowerBound()?.constantExpression()?.expression()),
+                CaptureIsolatedExpression(spec.upperBound()?.constantExpression()?.expression())));
+        }
+
+        return dimensions.ToImmutable();
     }
 
     public override void EnterConstSubStmt([NotNull] VBAParser.ConstSubStmtContext context)
-        => OnEnterParent();
+    {
+        _isCapturingConstantExpression++;
+        OnEnterParent();
+    }
     public override void ExitConstSubStmt([NotNull] VBAParser.ConstSubStmtContext context)
     {
+        _isCapturingConstantExpression--;
         var parent = context.Parent as VBAParser.ConstStmtContext;
         var modifier = NodeBuilder.ParseAccessModifier(parent?.visibility()?.GetText());
         OnExitParent(builder => builder.BuildConstDeclaration(context, _isInsideProcedure ? ConstKind.Local : ConstKind.ModuleMember, modifier));
@@ -236,8 +269,67 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
     {
         // recovery can leave Parent.Parent not pointing at the redimStmt that carries `Preserve`.
         var isPreserve = (context.Parent?.Parent as VBAParser.RedimStmtContext)?.PRESERVE() is not null;
-        OnExitParent(builder => builder.BuildRedimDeclaration(context, isPreserve));
+
+        // the bounds are captured here rather than inside the builder because a ReDim's are ordinary
+        // run-time expressions (MS-VBAL §5.4.3.3) and only the listener can walk a subtree into nodes. This
+        // runs before the redim's own builder is popped, over a subtree this Exit has already passed.
+        var bounds = CaptureRedimBounds(context);
+
+        // the target is an expression - `a`, `obj.Buffer`, `.Buffer` - to evaluate for the array it holds and to write the new one back through.
+        var target = CaptureIsolatedExpression(IndexedCallee(context.expression()));
+
+        OnExitParent(builder => builder.BuildRedimDeclaration(context, isPreserve, bounds, target));
     }
+
+    // the callee of an `x(...)` index expression, whichever of the two index shapes it took.
+    private static VBAParser.LExpressionContext? IndexedCallee(VBAParser.ExpressionContext? expression)
+        => (expression as VBAParser.LExprContext)?.lExpression() switch
+        {
+            VBAParser.IndexExprContext index => index.lExpression(),
+            VBAParser.WhitespaceIndexExprContext index => index.lExpression(),
+            _ => null,
+        };
+
+    // `dynamic-dim-spec = [dynamic-lower-bound "To"] dynamic-upper-bound`, one per dimension. They arrive as
+    // an index expression's argument list, `x(1 To n)` being indistinguishable from a call until the ReDim
+    // keyword says otherwise.
+    private ImmutableArray<RedimDimensionNode> CaptureRedimBounds(VBAParser.RedimVariableDeclarationContext context)
+    {
+        if (IndexedArguments(context.expression()) is not { } arguments)
+        {
+            return [];
+        }
+
+        var dimensions = ImmutableArray.CreateBuilder<RedimDimensionNode>();
+        foreach (var argument in arguments)
+        {
+            if (argument.positionalArgument()?.argumentExpression() is not { } expression)
+            {
+                continue;
+            }
+
+            var lower = CaptureIsolatedExpression(expression.lowerBoundArgumentExpression()?.expression());
+            var upper = CaptureIsolatedExpression(
+                expression.upperBoundArgumentExpression()?.expression() ?? expression.expression());
+
+            if (upper is not null)
+            {
+                dimensions.Add(new RedimDimensionNode(
+                    GetCurrentNodeId(), argument.GetSourceLocation(_rootUri), lower, upper));
+            }
+        }
+
+        return dimensions.ToImmutable();
+    }
+
+    // the argument list of an `x(...)` index expression, whichever of the two index shapes it took.
+    private static VBAParser.ArgumentContext[]? IndexedArguments(VBAParser.ExpressionContext? expression)
+        => ((expression as VBAParser.LExprContext)?.lExpression() switch
+        {
+            VBAParser.IndexExprContext index => index.argumentList(),
+            VBAParser.WhitespaceIndexExprContext index => index.argumentList(),
+            _ => null,
+        })?.argument();
 
     // `If`/`ElseIf`/`Else` (MS-VBAL §5.4.2.8) — each branch's own scope collects its condition (when
     // it has one) followed by whatever the branch body captures today (declarations only; the general
@@ -482,9 +574,25 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         }
         var id = GetCurrentNodeId();
         var eventName = new SimpleNameExpressionNode(id.Add(0), identifier.GetSourceLocation(_rootUri), identifier.Name());
-        var arguments = context.eventArgumentList()?.eventArgument().Select(argument => CaptureIsolatedExpression(argument.expression())) ?? [];
+        var arguments = context.eventArgumentList()?.eventArgument().Select((argument, index) => CaptureEventArgument(id.Add(0).Add(index), argument)) ?? [];
         var inputs = new ExpressionNode?[] { eventName }.Concat(arguments).Where(input => input is not null).Cast<SyntaxNode>().ToImmutableArray();
         CurrentBuilder.AddChild(new KeywordStatementNode(id, context.GetSourceLocation(_rootUri), Tokens.RaiseEvent, inputs));
+    }
+
+    // MS-VBAL §5.4.2.20: `event-argument = expression` - there is no ByVal in it, and RaiseEvent is never the invocation of
+    // an external procedure, the only argument list §5.6.13.1 lets one into. So the keyword is a token the grammar of
+    // this statement cannot place: a syntax error. It stays in the tree all the same, as it does anywhere it is written.
+    private ExpressionNode? CaptureEventArgument(SyntaxNodeId id, VBAParser.EventArgumentContext argument)
+    {
+        var expression = CaptureIsolatedExpression(argument.expression());
+        if (argument.BYVAL() is null)
+        {
+            return expression;
+        }
+
+        _errors.Report(argument.GetSourceLocation(_rootUri), VBCompileErrorId.SyntaxError,
+            "A RaiseEvent argument cannot be written with ByVal: the keyword is valid only in the argument list of an external procedure's invocation (MS-VBAL §5.6.13.1).");
+        return expression is null ? null : new ByValArgumentExpressionNode(id, argument.GetSourceLocation(_rootUri), expression);
     }
 
     public override void ExitCloseStmt([NotNull] VBAParser.CloseStmtContext context)
@@ -974,8 +1082,20 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         {
             return;
         }
-        var value = context.identifier().untypedIdentifier()?.GetText()
-            ?? context.identifier().typedIdentifier().untypedIdentifier().GetText();
+        // every link of this chain is optional on a recovered parse — `x = a$b` and `Foo Left$x` both
+        // reach here with a typedIdentifier carrying no untypedIdentifier. An NRE here is not contained
+        // to the expression: it unwinds the whole walk, and the module comes back with none of its
+        // members at all, the valid procedures after the bad line included.
+        var identifier = context.identifier();
+        var value = identifier?.untypedIdentifier()?.GetText()
+            ?? identifier?.typedIdentifier()?.untypedIdentifier()?.GetText();
+        if (value is null)
+        {
+            // no readable name, so there is no name to build a node around. The parse has already
+            // recorded a syntax error here, which is what makes this a non-event rather than silence.
+            return;
+        }
+
         var location = context.GetSourceLocation(_rootUri);
         OnExpression(new SimpleNameExpressionNode(GetCurrentNodeId(), location, value));
     }
@@ -1097,8 +1217,64 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         }
         CurrentBuilder.PopLastChildren(peeked.Length);
         var arguments = peeked.Skip(1).Cast<ExpressionNode>().ToImmutableArray();
+
+        // MS-VBAL 3.3.5.2: the LBound/UBound special forms are keywords the grammar lets through as identifiers,
+        // so what reaches here is an index expression on a name that is not one. The array is the construct's own
+        // operand rather than an argument to a call, and the name it was written with is dropped with the callee.
+        if (ArrayBoundKeywordOf(context) is { } kind && IsArrayBoundOperands(arguments))
+        {
+            CurrentBuilder.AddChild(new ArrayBoundExpressionNode(
+                GetCurrentNodeId(), context.GetSourceLocation(_rootUri), kind, arguments[0], arguments.Length > 1 ? arguments[1] : null));
+            return;
+        }
+
+        // the Array keyword, written unqualified: `Array(1, 2, 3)` is the construct, whose lower bound follows Option Base,
+        // and `VBA.Array(1, 2, 3)` is not - that is a call of the library's member, which reaches here as a member access
+        // and is left as one. The empty parentheses are one omitted argument to the grammar, which is no element either.
+        if (KeywordOf(context)?.ARRAY() is not null)
+        {
+            var elements = arguments is [MissingArgumentNode] ? [] : arguments;
+            if (elements.All(element => element is not (NamedArgumentNode or MissingArgumentNode)))
+            {
+                CurrentBuilder.AddChild(new ArrayExpressionNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri), elements));
+                return;
+            }
+        }
+
         CurrentBuilder.AddChild(new IndexExpressionNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri), callee, arguments));
     }
+
+    // the keyword a call is written on, by token: a name written [UBound], or typed with a hint, or a member called that, is
+    // an ordinary name and stays one.
+    private static VBAParser.KeywordContext? KeywordOf(VBABaseParserRuleContext context)
+    {
+        var callee = context switch
+        {
+            VBAParser.IndexExprContext index => index.lExpression(),
+            VBAParser.WhitespaceIndexExprContext spaced => spaced.lExpression(),
+            _ => null,
+        };
+
+        if (callee is not VBAParser.SimpleNameExprContext { } name || name.identifier()?.typedIdentifier() is not null)
+        {
+            return null;
+        }
+
+        return name.identifier()?.untypedIdentifier()?.identifierValue()?.keyword();
+    }
+
+    private static ArrayBoundKind? ArrayBoundKeywordOf(VBABaseParserRuleContext context)
+    {
+        var keyword = KeywordOf(context);
+        return keyword?.LBOUND() is not null ? ArrayBoundKind.Lower
+            : keyword?.UBOUND() is not null ? ArrayBoundKind.Upper
+            : null;
+    }
+
+    // one array and, optionally, the dimension: both positional. Anything else - no operand, three, a named or
+    // omitted one - is not this construct, and is left for the rules about calls to say what is wrong with it.
+    private static bool IsArrayBoundOperands(ImmutableArray<ExpressionNode> arguments)
+        => arguments.Length is 1 or 2 && arguments.All(argument => argument is not (NamedArgumentNode or MissingArgumentNode));
 
     // a positional argument's own `expression` (or ByVal-marked expression) flows through
     // transparently, same as `expression`'s `lExpr` alternative — no handler needed here. Only the
@@ -1117,6 +1293,24 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         }
         CurrentBuilder.PopLastChildren(1);
         CurrentBuilder.AddChild(new NamedArgumentNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri), context.unrestrictedIdentifier().Name(), value));
+    }
+
+    // MS-VBAL §5.6.13.1: `ByVal` flags the one argument as passed by value. It is a token of the source and stays one
+    // in the tree: dropped, `Foo ByVal x` was `Foo x`, an argument aliased to a ByRef parameter where it was written
+    // not to be. Whether it is valid is the callee's to say (only an external procedure's argument list may have it).
+    public override void ExitArgumentExpression([NotNull] VBAParser.ArgumentExpressionContext context)
+    {
+        if (!IsDeclarationPassExpression || context.BYVAL() is null)
+        {
+            return;
+        }
+        if (CurrentBuilder.PeekLastChildren(1) is not [ExpressionNode operand])
+        {
+            CurrentBuilder.AddChild(BuildUnbuiltExpressionTrivia(context, 1));
+            return;
+        }
+        CurrentBuilder.PopLastChildren(1);
+        CurrentBuilder.AddChild(new ByValArgumentExpressionNode(GetCurrentNodeId(), context.GetSourceLocation(_rootUri), operand));
     }
 
     public override void ExitMissingArgument([NotNull] VBAParser.MissingArgumentContext context)
@@ -1407,6 +1601,20 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         AddIfBuilt(BuildUnary(Tokens.NegationOp, context));
     }
 
+    // MS-VBAL 5.6.6: a parenthesized expression is a value expression — its parentheses are an operator,
+    // not punctuation, and this builds it. Erasing them made `Foo (x)` and `Foo x` the same tree, so an
+    // argument written to be passed by value was aliased to a ByRef parameter and mutated the caller's
+    // variable. What this operator yields is a value bound to nothing, which is what there being nothing
+    // to alias means; no rule anywhere says "forced ByVal".
+    public override void ExitParenthesizedExpr([NotNull] VBAParser.ParenthesizedExprContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+        AddIfBuilt(BuildUnary(OperatorSymbolNames.UnaryLetCoerceOp, context));
+    }
+
     public override void ExitPowOp([NotNull] VBAParser.PowOpContext context)
     {
         if (!IsDeclarationPassExpression)
@@ -1587,10 +1795,13 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         }
         else if (context.STRINGLITERAL() is ITerminalNode stringLiteral)
         {
+            // MS-VBAL 3.3.4: a doubled double-quote stands for one U+0022 in the data value. Slicing the
+            // delimiters off the token text alone left every embedded quote doubled in the literal's
+            // value, which is then what every consumer of the node downstream printed and compared.
             OnExpression(new LiteralExpressionNode(
-                GetCurrentNodeId(), 
+                GetCurrentNodeId(),
                 location,
-                new VBStringValue(stringLiteral.Symbol.Text[1..^1])));
+                VBStringValue.FromLiteralToken(stringLiteral.Symbol.Text)));
         }
     }
 

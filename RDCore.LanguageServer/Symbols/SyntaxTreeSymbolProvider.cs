@@ -1,3 +1,4 @@
+using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.AST.Directives;
@@ -29,11 +30,26 @@ namespace RDCore.LanguageServer.Symbols;
 /// resolves and every reference would declare a local, so it passes <c>false</c> and exists only to
 /// discover what the workspace declares.
 /// </param>
+/// <param name="implicitScope">
+/// Where the variable such a reference declares lives: a local of the procedure, as <strong>MS-VBAL §5.6.10</strong>
+/// has it, or a variable of the module, as a BASIC does.
+/// </param>
 internal sealed class SyntaxTreeSymbolProvider(
     Uri workspaceRoot, Uri moduleUri, ModuleType moduleType, ModuleParseResult parseResult, ISymbolResolver resolver,
-    bool withImplicitDeclarations = true) : ISymbolProvider
+    bool withImplicitDeclarations = true,
+    ImplicitDeclarationScope implicitScope = ImplicitDeclarationScope.Procedure) : ISymbolProvider
 {
-    public IEnumerable<Symbol> ProvideSymbols()
+    public IEnumerable<Symbol> ProvideSymbols() => ProvideDeclaredSymbols().Select(WithUserMemId);
+
+    // the id a member's own module gave it (`Attribute Item.VB_UserMemId = 0`): what marks the default member of a class and its enumeration member
+    // (`_NewEnum`, -4). It is stamped here, on what the provider yields, so that both of its consumers have it - the resolver that binds the workspace, and the
+    // host the symbols are defined to, which reads no source of its own to find it in.
+    private Symbol WithUserMemId(Symbol member)
+        => member is VBTypeMemberSymbol typeMember && parseResult.SyntaxTree?.GetMemberUserMemId(typeMember.Name) is { } userMemId
+            ? typeMember.With(SymbolProperties.UserMemId, userMemId)
+            : member;
+
+    private IEnumerable<Symbol> ProvideDeclaredSymbols()
     {
         // one identity (same uri, same concrete symbol type) can be declared once per #If branch —
         // collapse each such group into the first site, carrying every site in Definitions. the accessors
@@ -109,7 +125,7 @@ internal sealed class SyntaxTreeSymbolProvider(
                     break;
 
                 case MemberDeclarationNode member:
-                    foreach (var symbol in FromMember(builder, member, moduleScopeNames, directives, withImplicitDeclarations))
+                    foreach (var symbol in FromMember(builder, member, moduleScopeNames, directives, withImplicitDeclarations, implicitScope))
                     {
                         yield return symbol;
                     }
@@ -128,7 +144,7 @@ internal sealed class SyntaxTreeSymbolProvider(
 
     private static IEnumerable<Symbol> FromMember(
         SymbolBuilder builder, MemberDeclarationNode member, IReadOnlySet<string> moduleScopeNames,
-        ModuleDirectives directives, bool withImplicitDeclarations)
+        ModuleDirectives directives, bool withImplicitDeclarations, ImplicitDeclarationScope implicitScope)
     {
         switch (member.MemberKind)
         {
@@ -156,8 +172,10 @@ internal sealed class SyntaxTreeSymbolProvider(
                     outerScopeNames.Add(parameter.Name);
                 }
 
-                // procedure-local Dim/Static/Const + ReDim-introduced symbols parent to the procedure symbol.
-                foreach (var local in builder.BuildLocals(member, procedure.Uri, outerScopeNames, directives, withImplicitDeclarations))
+                // procedure-local Dim/Static/Const + ReDim-introduced symbols parent to the procedure symbol. An
+                // implicit declaration does too, unless the environment has it declared at module level - then it
+                // is a member of the module like any other variable of it, and arrives here with the rest.
+                foreach (var local in builder.BuildLocals(member, procedure.Uri, outerScopeNames, directives, withImplicitDeclarations, implicitScope))
                 {
                     yield return local;
                 }

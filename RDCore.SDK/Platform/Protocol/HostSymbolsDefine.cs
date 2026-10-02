@@ -2,10 +2,12 @@ using MediatR;
 using OmniSharp.Extensions.JsonRpc;
 using RDCore.SDK.Client;
 using RDCore.SDK.Model;
+using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.Source;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
+using RDCore.SDK.Model.Values.Abstract;
 using System.Collections.Immutable;
 
 namespace RDCore.SDK.Platform.Protocol;
@@ -49,6 +51,50 @@ public record class DefineSymbolsParams : IRequest, IRequest<DefineSymbolsResult
     public ImmutableArray<SymbolDescriptor> Symbols { get; init; } = [];
 
     /// <summary>
+    /// The module's own <c>Option</c> directives (<strong>MS-VBAL §5.2.1</strong>), which the host
+    /// applies to its module symbol.
+    /// </summary>
+    /// <remarks>
+    /// These are run-time dials, not only static ones: <c>Option Compare</c> decides how the relational
+    /// operators compare <c>String</c> values in the module's code, and <c>Option Base</c> decides what
+    /// an array dimension declared without a lower bound means. Both are read off the activation's own
+    /// call-stack frame, which gets them from the module symbol the procedure is declared in.
+    /// </remarks>
+    public ModuleDirectives Directives { get; init; } = ModuleDirectives.None;
+
+    /// <summary>
+    /// The names of the interfaces the module's <c>Implements</c> directives name
+    /// (<strong>MS-VBAL §5.2.4.2</strong>), as written and in source order; empty for a module that has none, and for one that
+    /// is not a class module.
+    /// </summary>
+    /// <remarks>
+    /// The host composes the class from them once its members are defined
+    /// (<see cref="RDCore.SDK.Runtime.Abstract.Execution.ISessionSymbols.TryComposeClassModule"/>), resolving each to the class it
+    /// names among the class modules it has: an object of the class is then an object that implements the interface, which is
+    /// what a call through a variable declared as the interface is dispatched on (<strong>§5.3.1.9</strong>), and what a
+    /// <c>TypeOf ... Is</c> and a <c>Set</c> to such a variable are decided by.
+    /// </remarks>
+    public ImmutableArray<string> ImplementedInterfaceNames { get; init; } = [];
+
+    /// <summary>
+    /// Where each of <see cref="ImplementedInterfaceNames"/> is written in the module: the range of its <c>Implements</c> directive,
+    /// one for each name and in the same order, or empty when they are not known.
+    /// </summary>
+    public ImmutableArray<SourceRange> ImplementedInterfaceRanges { get; init; } = [];
+
+    /// <summary>
+    /// The <see cref="System.Text.Json"/> representation of the module's <see cref="RDCore.SDK.Model.AST.ModuleParseResult"/>
+    /// (see <see cref="PlatformJson"/>), or empty when the module is defined for its symbols alone.
+    /// </summary>
+    /// <remarks>
+    /// What gives the module's procedures code. A module the host is asked to run carries its parse result with that request
+    /// and is loaded then; a module of the workspace is never run as such, but its procedures are called by the ones that
+    /// are, and its class members by the objects that are made of it. The AST is polymorphic, which is why it rides a string
+    /// and not the transport's own serializer.
+    /// </remarks>
+    public string ParseResultJson { get; init; } = string.Empty;
+
+    /// <summary>
     /// Whether a descriptor replaces an already-defined symbol of the same identity rather than being
     /// skipped.
     /// </summary>
@@ -60,6 +106,17 @@ public record class DefineSymbolsParams : IRequest, IRequest<DefineSymbolsResult
     /// whatever locals and declared types they had.
     /// </remarks>
     public bool Replace { get; init; }
+
+    /// <summary>
+    /// Whether the module's symbols were defined by an earlier request, and this one is for its code alone: the host defines nothing, composes the class,
+    /// and loads the module's procedures from <see cref="ParseResultJson"/>.
+    /// </summary>
+    /// <remarks>
+    /// A module's code is checked against what the whole workspace declares (<strong>RD-VBAL §5.0.1</strong>), and the host is told of the modules one at a
+    /// time: a module that names one that comes after it cannot be checked until that one is defined. The language server defines every module first, and
+    /// then sends the code of each.
+    /// </remarks>
+    public bool CodeOnly { get; init; }
 }
 
 /// <summary>
@@ -82,6 +139,12 @@ public record class DefineSymbolsResult
     /// defined, with <c>VBUnknownType</c>; a later resolver pass can bind them.
     /// </summary>
     public IReadOnlyList<string> UnresolvedTypeNames { get; init; } = [];
+
+    /// <summary>
+    /// The descriptions of the errors found lowering the module's procedures when <see cref="DefineSymbolsParams.ParseResultJson"/>
+    /// was given. The module's symbols are defined all the same; its procedures have no code, and what had before is kept.
+    /// </summary>
+    public IReadOnlyList<string> CodeErrors { get; init; } = [];
 
     /// <summary>
     /// The number of already-defined symbols that were replaced, when
@@ -126,9 +189,16 @@ public record class SymbolDescriptor
     /// <summary>
     /// The declared type's name — from an <c>As</c> clause or a type-declaration character — or
     /// <c>null</c> when there is none, or the type reference is not a simple name (a qualified name
-    /// or an array definition needs a later semantic pass).
+    /// or an array definition needs a later semantic pass). For an array, the name of its <em>element</em> type, and
+    /// <see cref="Array"/> says what kind of array it is.
     /// </summary>
     public string? DeclaredTypeName { get; init; }
+
+    /// <summary>
+    /// What is declared is an array of <see cref="DeclaredTypeName"/>: how it is sized, which a type name has no room for.
+    /// <c>null</c> for anything that is not an array.
+    /// </summary>
+    public ArrayDescriptor? Array { get; init; }
 
     /// <summary>
     /// The source span of the whole declaration — the primary site (the first branch) when the
@@ -168,6 +238,41 @@ public record class SymbolDescriptor
     /// body that cannot assign to any of them.
     /// </remarks>
     public ImmutableArray<LocalDescriptor> Locals { get; init; } = [];
+
+    /// <summary>
+    /// The procedure-local <c>Const</c> declarations the member owns, for the procedure, function and
+    /// property kinds — and, for a <see cref="SymbolDescriptorKind.ModuleConstant"/> descriptor, the
+    /// single entry that is the module-level constant's own value.
+    /// </summary>
+    /// <remarks>
+    /// A constant is not a variable: it has no storage, so it cannot ride on <see cref="Locals"/>, whose
+    /// every entry an activation allocates frame storage for. It travels instead because it has no
+    /// storage — with nowhere to read a value back from, the host can only substitute the declaration's
+    /// own expression at each use site, and needs that expression to do it.
+    /// </remarks>
+    public ImmutableArray<ConstantDescriptor> Constants { get; init; } = [];
+
+    /// <summary>
+    /// Whether a module field is declared <c>WithEvents</c> (<strong>MS-VBAL §5.2.3.1.2</strong>): the procedures of its
+    /// module named for it and an event of its class handle that event of the object it holds.
+    /// </summary>
+    public bool IsWithEvents { get; init; }
+
+    /// <summary>
+    /// The member's <c>VB_UserMemId</c> (<strong>MS-VBAL §5.2.1</strong>), when its module says one: <c>0</c> marks the default member of a class, <c>-4</c> its enumeration
+    /// member (<c>_NewEnum</c>). <see langword="null"/> for a member with none.
+    /// </summary>
+    /// <remarks>
+    /// It travels because the host finds the default member and the enumeration member of a class by it - for <c>c(1)</c> and for <c>For Each</c> - and the host reads no
+    /// source of its own to find the attribute in.
+    /// </remarks>
+    public int? UserMemId { get; init; }
+
+    /// <summary>
+    /// Whether a module field is an automatic instantiation variable (<strong>MS-VBAL §2.5.1</strong>): declared
+    /// <c>As New</c>, so that referring to it while it is <c>Nothing</c> creates the object.
+    /// </summary>
+    public bool IsAutoInstantiated { get; init; }
 
     /// <summary>
     /// Members parented to this descriptor rather than the module: <c>Enum</c> constants and
@@ -217,15 +322,24 @@ public record class LocalDescriptor
     public string Name { get; init; } = string.Empty;
 
     /// <summary>
-    /// The declared type's name, or <c>null</c> — resolved host-side like a member's.
+    /// The declared type's name, or <c>null</c> — resolved host-side like a member's. For an array, its element type's.
     /// </summary>
     public string? DeclaredTypeName { get; init; }
+
+    /// <summary>The array the variable is, when it is one: see <see cref="SymbolDescriptor.Array"/>.</summary>
+    public ArrayDescriptor? Array { get; init; }
 
     /// <summary>
     /// Whether the declaration carries the <c>Static</c> token (<strong>MS-VBAL §5.4.3.1</strong>):
     /// module-extent storage that outlives one activation, not procedure-extent.
     /// </summary>
     public bool IsStatic { get; init; }
+
+    /// <summary>
+    /// Whether the variable is an automatic instantiation variable (<strong>MS-VBAL §2.5.1</strong>): declared
+    /// <c>As New</c>.
+    /// </summary>
+    public bool IsAutoInstantiated { get; init; }
 
     /// <summary>
     /// How the variable entered the procedure scope — a real declaration, or an implicit one.
@@ -239,6 +353,43 @@ public record class LocalDescriptor
 
     /// <summary>
     /// The source span to select when navigating to the variable.
+    /// </summary>
+    public SourceRange SelectionRange { get; init; }
+}
+
+/// <summary>
+/// A transport-friendly projection of a <c>Const</c> declaration — a module-level
+/// <c>VBConstantMemberSymbol</c> or a procedure-local <c>VBLocalConstantSymbol</c>.
+/// </summary>
+public record class ConstantDescriptor
+{
+    /// <summary>
+    /// The constant's identifier name.
+    /// </summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The declared type's name, or <c>null</c> — resolved host-side like a member's.
+    /// </summary>
+    public string? DeclaredTypeName { get; init; }
+
+    /// <summary>
+    /// The declaration's own constant expression, or <c>null</c> when it carried none.
+    /// </summary>
+    /// <remarks>
+    /// The expression, not a value: a constant expression is not always a literal (<c>Const K = 3 * 5</c>,
+    /// or one constant written in terms of another), and the host is where the evaluator that can reduce
+    /// it lives.
+    /// </remarks>
+    public ExpressionNode? Value { get; init; }
+
+    /// <summary>
+    /// The source span of the declaration.
+    /// </summary>
+    public SourceRange Range { get; init; }
+
+    /// <summary>
+    /// The source span to select when navigating to the constant.
     /// </summary>
     public SourceRange SelectionRange { get; init; }
 }
@@ -269,14 +420,63 @@ public record class ParameterDescriptor
     public bool IsParamArray { get; init; }
 
     /// <summary>
+    /// The value of the parameter's <c>default-value</c> clause (MS-VBAL 5.3.1.5), or <c>null</c> when the
+    /// declaration has none — the host then falls back to the declared type's own default value.
+    /// </summary>
+    /// <remarks>
+    /// The expression, not a value: a constant expression is not always a literal (<c>Optional k As
+    /// Long = 3 * 5</c>, or one written in terms of a <c>Const</c>), and the host is where the evaluator
+    /// that can reduce it lives — the same reason <see cref="ConstantDescriptor.Value"/> travels
+    /// unreduced, and it is reduced by the same fold.
+    /// </remarks>
+    public ExpressionNode? DefaultValue { get; init; }
+
+    /// <summary>
     /// The declared type's name, or <c>null</c> — resolved host-side like a member's.
     /// </summary>
     public string? DeclaredTypeName { get; init; }
+
+    /// <summary>The array the parameter is, when it is one: see <see cref="SymbolDescriptor.Array"/>.</summary>
+    public ArrayDescriptor? Array { get; init; }
 
     /// <summary>
     /// The source span of the parameter declaration.
     /// </summary>
     public SourceRange Range { get; init; }
+}
+
+/// <summary>
+/// What an array declaration says beyond its element type (<strong>MS-VBAL §5.2.3.1.3</strong>): whether it is fixed-size, and the
+/// bounds it was declared with.
+/// </summary>
+public record class ArrayDescriptor
+{
+    /// <summary>
+    /// Whether the array is fixed-size - declared with bounds - rather than resizable, which has no dimensions until a <c>ReDim</c>
+    /// gives it some.
+    /// </summary>
+    public bool IsFixedSize { get; init; }
+
+    /// <summary>
+    /// The bounds of a fixed-size array, one for each dimension and outermost first; empty for a resizable one.
+    /// </summary>
+    public ImmutableArray<ArrayBoundDescriptor> Bounds { get; init; } = [];
+}
+
+/// <summary>
+/// The bounds of one dimension of a fixed-size array.
+/// </summary>
+/// <remarks>
+/// Expressions, not numbers: a bound is a constant expression that may name a <c>Const</c>, and the host is where the evaluator that
+/// reduces one lives (see <see cref="ConstantDescriptor.Value"/>).
+/// </remarks>
+public record class ArrayBoundDescriptor
+{
+    /// <summary>The lower bound, or <c>null</c> when the dimension was declared with an upper bound alone, which <c>Option Base</c> decides.</summary>
+    public ExpressionNode? Lower { get; init; }
+
+    /// <summary>The upper bound.</summary>
+    public ExpressionNode? Upper { get; init; }
 }
 
 /// <summary>

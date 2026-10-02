@@ -2,28 +2,25 @@ using RDCore.SDK.Model.Errors.Abstract;
 using Microsoft.Extensions.Logging;
 using RDCore.CLI.Host;
 using RDCore.Runtime.Execution;
-using RDCore.SDK.Model.AST.Declarations;
-using RDCore.SDK.Model.AST.Statements;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Platform.Protocol;
 using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
-using RDCore.SDK.Semantics.Instructions;
 using RDCore.SDK.Runtime.Shared;
 using RDCore.SDK.Services.VerboseMessages;
 
 namespace RDCore.CLI.Host.Handlers;
 
 /// <summary>
-/// Handles <c>rdcore/host/execute</c>: lowers the procedures of a parsed module and runs one of them
-/// in this host's runtime session, answering with everything it printed.
+/// Handles <c>rdcore/host/execute</c>: loads the procedures of a parsed module into the session's code and runs one of
+/// them in this host's runtime session, answering with everything it printed.
 /// </summary>
 /// <remarks>
 /// The language server has already parsed the module and defined its symbols by the time this
 /// arrives, so each procedure's body is keyed by the session symbol it belongs to — the same
 /// <c>SemanticId</c> the invoker looks a callee up by, which is what lets one procedure of the module
-/// call another.
+/// call another, and one of another module that was loaded before it.
 /// <para>
 /// The request's cancellation token reaches the interpreter's own fetch-decode loop, so cancelling
 /// the request stops a program that would otherwise never stop on its own.
@@ -42,7 +39,7 @@ internal sealed class HostExecuteHandler(
         }
 
         var payload = PlatformJson.Deserialize<HostExecutePayload>(request.Json);
-        if (payload?.ParseResult.SyntaxTree is not { } syntaxTree)
+        if (payload?.ParseResult.SyntaxTree is null)
         {
             return Task.FromResult(NotFound("the request carried no parsed module"));
         }
@@ -53,47 +50,28 @@ internal sealed class HostExecuteHandler(
             return Task.FromResult(NotFound($"module '{request.ModuleName}' is not defined in the session"));
         }
 
-        // every procedure of the module, lowered and keyed by the session symbol it belongs to, so a
-        // call from one to another resolves through the invoker like any other call would.
-        var bodies = new Dictionary<SemanticId, InstructionList>();
-        VBTypeMemberSymbol? entryPoint = null;
-        foreach (var member in syntaxTree.Children.OfType<MemberDeclarationNode>())
+        // every procedure of the module, lowered and loaded into the session's code under the symbol it belongs to, so a
+        // call from one to another - or from one module to another - resolves through the invoker like any other.
+        var errors = new ModuleLoader(session, sessionProvider.Image, messages).Load(module, payload.ParseResult);
+        if (errors.Length > 0)
         {
-            if (member.Name is not { Length: > 0 } name
-                || !session.Symbols.TryResolveValue(name, module, out var symbol)
-                || symbol is not VBTypeMemberSymbol procedure)
+            return Task.FromResult(new ExecuteSessionResult
             {
-                continue;
-            }
-
-            // the build decides whether Debug statements exist at all, and the build is what the DEBUG
-            // conditional compilation constant says it is.
-            var lowering = InstructionListLowering.Lower(
-                new StatementBlock([.. member.Children]),
-                new InstructionLoweringOptions(IsReleaseBuild: !session.IsDebugBuild()));
-            if (lowering.Errors.Length > 0)
-            {
-                return Task.FromResult(new ExecuteSessionResult
-                {
-                    Outcome = ExecutionOutcome.SyntaxError,
-                    Diagnostics = [.. lowering.Errors.Select(error => error.Description)],
-                });
-            }
-
-            bodies[procedure.SemanticId] = lowering.InstructionList;
-            if (string.Equals(name, request.EntryPoint, StringComparison.OrdinalIgnoreCase))
-            {
-                entryPoint = procedure;
-            }
+                Outcome = ExecutionOutcome.SyntaxError,
+                Diagnostics = [.. errors],
+            });
         }
 
-        if (entryPoint is null)
+        if (!session.Symbols.TryResolveValue(request.EntryPoint, module, out var entry) || entry is not VBTypeMemberSymbol entryPoint)
         {
             return Task.FromResult(NotFound($"'{request.ModuleName}.{request.EntryPoint}' is not a procedure of the module"));
         }
 
+        // the pipeline is composed per run: the cancellation is this run's own.
+        var pipeline = RuntimeExecutionPipeline.Create(session, sessionProvider.Image, messages, token);
+
         var output = new RuntimeOutputBuffer();
-        var result = Run(session, bodies, entryPoint, output, token);
+        var result = Run(session, pipeline, entryPoint, output, token);
 
         if (logger.IsEnabled(LogLevel.Information))
         {
@@ -106,7 +84,7 @@ internal sealed class HostExecuteHandler(
 
     private ExecuteSessionResult Run(
         IRuntimeSession session,
-        IReadOnlyDictionary<SemanticId, InstructionList> bodies,
+        RuntimeExecutionPipeline pipeline,
         VBTypeMemberSymbol entryPoint,
         RuntimeOutputBuffer output,
         CancellationToken token)
@@ -116,7 +94,6 @@ internal sealed class HostExecuteHandler(
         sessionProvider.Output.Target = output;
         try
         {
-            var pipeline = RuntimeExecutionPipeline.Create(session, bodies, messages, token);
             return Report(pipeline.Invoker.Invoke(entryPoint, session.Symbols.Resolver, []), session, output, token);
         }
         finally

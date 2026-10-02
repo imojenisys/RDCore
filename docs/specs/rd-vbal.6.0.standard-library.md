@@ -82,7 +82,8 @@ An attribute states what a declaration's signature cannot express, and is used o
 |[StdLibModuleAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibModuleAttribute.html)|Marks a declaration as a standard-library module, and may name it.|
 |[StdLibClassAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibClassAttribute.html)|Marks a declaration as a standard-library class, and may name it.|
 |[StdLibEnumAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibEnumAttribute.html)|Marks a declaration as a standard-library enum, and may name it. `FormShowConstants` is a name no naming convention recovers, so the attribute states it.|
-|[StdLibMemberAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibMemberAttribute.html)|Any of: a member name no naming convention recovers (for example `Hex` beside `Hex$`); an accessor kind ([StdLibMemberKind](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibMemberKind.html)); a return type that is a _class_ or an _enum_ rather than an intrinsic type.|
+|[StdLibMemberAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibMemberAttribute.html)|Any of: a member name no naming convention recovers (for example `Hex` beside `Hex$`); an accessor kind ([StdLibMemberKind](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibMemberKind.html)); a return type that is a _class_ or an _enum_ rather than an intrinsic type; whether the member is hidden; a `VB_UserMemId` (`0` for the default member of a class, `-4` for its enumeration member), which is what a workspace class says with `Attribute Item.VB_UserMemId = 0`.|
+|[StdLibArrayAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibArrayAttribute.html)|The element type of an array parameter (`ValueArray() As Double`), which `VBResizableArrayValue` alone reads as `Variant()`. It is refused on anything but a required `ByVal` array parameter.|
 
 ### Naming Conventions
 
@@ -104,6 +105,22 @@ A project has the standard library's symbols whether or not its `.rdproj` mentio
 
 `rdcore/host/symbols/define` resolves a declared type name against the standard library's own types as well as the
 intrinsic types ([**RD-VBAL §2.0.2** Client/Server Capabilities](rd-vbal.2.0.2.client-server-capabilities.md)).
+
+### Library Name
+
+The standard library is a project of its own, named `VBA` in every language
+([StdLibSymbolProvider.LibraryName](../api/RDCore.SDK.Runtime.StdLib.StdLibSymbolProvider.html)): it is what a project-qualified reference to the library names
+(`VBA.Strings.LenB`, `VBA.LenB`; [**MS-VBAL §5.6.12**](rd-vbal.5.6.12.member-access-expressions.md)), and what the library's members say they belong to
+(`SymbolProperties.Library`).
+
+VB6 loads the very same `VBA` library. The `VB` library of VB6 is another thing: the runtime library of its ActiveX controls (`VB.Form`, `VB.TextBox`...),
+which the platform does not model.
+
+> [!NOTE]
+> **Not implemented.** The library is the same whole in every language ([SupportedLanguage](../api/RDCore.SDK.Workspace.SupportedLanguage.html)). Where a
+> language has more or fewer members than another - VB6 has `VBA`-only members the platform does not hide from it, and a BASIC has no library of its own to
+> speak of - the intent is for the members to say which languages they belong to, with an attribute on the declaration, and not for the library to change
+> its name.
 
 ### Pointer Width
 

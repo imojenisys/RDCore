@@ -1,3 +1,5 @@
+using RDCore.SDK.Model.AST.Abstract;
+using RDCore.SDK.Model.AST.Expressions;
 using RDCore.SDK.Model;
 using RDCore.SDK.Model.Source;
 using RDCore.SDK.Model.Symbols;
@@ -111,9 +113,10 @@ public sealed class StdLibSymbolReader
     /// </param>
     /// <exception cref="InvalidOperationException">
     /// A marked declaration is not expressible as a VBA symbol — a parameter or return type that is
-    /// neither an intrinsic value nor a marked enumeration or class. That is a mistake in the
-    /// declaration rather than a condition to degrade over: the symbol it would produce would be
-    /// declared as a type nothing can bind.
+    /// neither an intrinsic value nor a marked enumeration or class, or an element type stated for a
+    /// parameter that is not a required ByVal array. That is a mistake in the declaration rather than a
+    /// condition to degrade over: the symbol it would produce would be declared as a type nothing can
+    /// bind.
     /// </exception>
     public ImmutableArray<Symbol> Read(IEnumerable<Type> declarations)
     {
@@ -133,12 +136,38 @@ public sealed class StdLibSymbolReader
 
         // then classes, so a module member declared as one — Information.Err() As ErrObject — binds a
         // class type that already knows its own members.
+        // A class that has a member declared as another class - Collection's _NewEnum returns an IEnumVARIANT - binds that class's type, which has to know its
+        // own members first: so a class is read after every class it names, whatever order the declarations are in.
         var classTypes = new Dictionary<Type, VBClassType>();
-        foreach (var declaration in Marked<StdLibClassAttribute>(all))
+        var marked = Marked<StdLibClassAttribute>(all);
+        var reading = new HashSet<Type>();
+        void ReadClassAfterItsDependencies(Type declaration)
         {
+            if (classTypes.ContainsKey(declaration))
+            {
+                return;
+            }
+
+            if (!reading.Add(declaration))
+            {
+                throw new InvalidOperationException(
+                    $"'{declaration.Name}' names itself through the classes its members are declared as: a class is read after every class it names, and this one has none to be read first.");
+            }
+
+            foreach (var named in ClassesNamedBy(declaration, marked))
+            {
+                ReadClassAfterItsDependencies(named);
+            }
+
             var symbol = ReadClass(declaration, enumTypes, classTypes);
             classTypes[declaration] = VBClassType.FromClassModule(symbol);
             symbols.Add(symbol);
+            reading.Remove(declaration);
+        }
+
+        foreach (var declaration in marked)
+        {
+            ReadClassAfterItsDependencies(declaration);
         }
 
         foreach (var declaration in Marked<StdLibModuleAttribute>(all))
@@ -157,6 +186,15 @@ public sealed class StdLibSymbolReader
         => [.. declarations
             .Where(type => type.GetCustomAttribute<TAttribute>() is not null)
             .OrderBy(type => type.MetadataToken)];
+
+    // the other marked classes a class's members are declared as: the type a member returns, or one of its parameters is.
+    private static IEnumerable<Type> ClassesNamedBy(Type declaration, Type[] markedClasses)
+        => MembersOf(declaration)
+            .SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType)
+                .Append(method.GetCustomAttribute<StdLibMemberAttribute>()?.ReturnType ?? method.ReturnType))
+            .Select(type => type.IsGenericType ? type.GetGenericArguments()[0] : type)
+            .Where(type => type != declaration && markedClasses.Contains(type))
+            .Distinct();
 
     private static MethodInfo[] MembersOf(Type declaration)
         => [.. declaration.GetMethods().OrderBy(method => method.MetadataToken)];
@@ -208,13 +246,15 @@ public sealed class StdLibSymbolReader
     private (VBStandardModuleSymbol Module, IEnumerable<Symbol> Members) ReadModule(
         Type declaration, Dictionary<Type, VBEnumType> enumTypes, Dictionary<Type, VBClassType> classTypes)
     {
-        var name = declaration.GetCustomAttribute<StdLibModuleAttribute>()!.Name ?? StdLibNames.ModuleName(declaration.Name);
+        var attribute = declaration.GetCustomAttribute<StdLibModuleAttribute>()!;
+        var name = attribute.Name ?? StdLibNames.ModuleName(declaration.Name);
         var module = new VBStandardModuleSymbol(_workspaceRoot, _workspaceRoot, name);
 
         // a standard module's members are separate symbols parented to it, which is what promotes the
-        // non-Private ones to the project scope so that `IsNumeric(x)` resolves unqualified.
+        // non-Private ones to the project scope so that `IsNumeric(x)` resolves unqualified. A hidden module's
+        // are hidden, which is a flag of each member and leaves them resolving just the same.
         var members = MembersOf(declaration)
-            .Select(method => ReadMember(method, module.Uri, ScopeKind.Module, enumTypes, classTypes))
+            .Select(method => ReadMember(method, module.Uri, ScopeKind.Module, enumTypes, classTypes, attribute.IsHidden))
             .ToArray();
 
         return (module, members);
@@ -222,7 +262,7 @@ public sealed class StdLibSymbolReader
 
     private Symbol ReadMember(
         MethodInfo method, Uri ownerUri, ScopeKind scope,
-        Dictionary<Type, VBEnumType> enumTypes, Dictionary<Type, VBClassType> classTypes)
+        Dictionary<Type, VBEnumType> enumTypes, Dictionary<Type, VBClassType> classTypes, bool ownerIsHidden = false)
     {
         var attribute = method.GetCustomAttribute<StdLibMemberAttribute>();
         var name = attribute?.Name ?? method.Name;
@@ -260,7 +300,17 @@ public sealed class StdLibSymbolReader
         // the declaration this was read off, carried on the symbol: the code that runs for this member is
         // not the workspace's, so there is no instruction list for it, and this is what an
         // IExternalDispatcher finds the implementation by. Nothing downstream could reconstruct it.
-        return member.With(SymbolProperties.ExternalTarget, ExternalTargetOf(method.DeclaringType!, method));
+        member = member.With(SymbolProperties.ExternalTarget, ExternalTargetOf(method.DeclaringType!, method));
+
+        // the default member of a class, and its enumeration member, are found by the id they carry - as the attributes of a workspace class say.
+        if (attribute is { UserMemId: not StdLibMemberAttribute.NoUserMemId })
+        {
+            member = member.With(SymbolProperties.UserMemId, attribute.UserMemId);
+        }
+
+        return ownerIsHidden || attribute?.IsHidden == true
+            ? member.With(SymbolProperties.MemberFlags, member.GetProperty(SymbolProperties.MemberFlags) | SymbolProperties.HiddenMemberFlag)
+            : member;
     }
 
     private ImmutableArray<VBParameterSymbol> ReadParameters(
@@ -282,20 +332,38 @@ public sealed class StdLibSymbolReader
         foreach (var parameter in parameters)
         {
             var name = StdLibNames.ParameterName(parameter.Name);
-            if (parameter.GetCustomAttribute<ParamArrayAttribute>() is not null)
+            var byRef = parameter.ParameterType.IsByRef;
+            var declared = byRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
+            var array = parameter.GetCustomAttribute<StdLibArrayAttribute>();
+            var paramArray = parameter.GetCustomAttribute<ParamArrayAttribute>() is not null;
+
+            // an element type makes the parameter an array of it, which only an array parameter can be - a Byte()
+            // being a type of its own, and a ParamArray always a Variant(). And the library declares no optional
+            // array and no ByRef one, so nothing models what an omitted one would be or marshals one back.
+            if (array is not null && (paramArray || parameter.IsOptional || byRef
+                || !(declared == typeof(VBResizableArrayValue)
+                    || declared == typeof(VBResizableByteArrayValue) && array.ElementType == typeof(VBByteValue))))
+            {
+                throw new InvalidOperationException(
+                    $"'{name}' in '{method.DeclaringType?.Name}.{method.Name}' states an element type, which only a required " +
+                    $"ByVal parameter declared as a {nameof(VBResizableArrayValue)} has, or a {nameof(VBResizableByteArrayValue)} " +
+                    $"stating {nameof(VBByteValue)}.");
+            }
+
+            if (paramArray)
             {
                 builder.Add(new ParamArrayParameterSymbol(
                     _workspaceRoot, memberUri, name, SourceRange.Empty, SourceRange.Empty, ParameterKind.ExplicitByVal));
                 continue;
             }
 
-            var byRef = parameter.ParameterType.IsByRef;
-            var declared = byRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
             builder.Add(new VBParameterSymbol(
                 _workspaceRoot, memberUri, name, SourceRange.Empty, SourceRange.Empty,
                 byRef ? ParameterKind.ExplicitByRef : ParameterKind.ExplicitByVal,
-                DeclaredTypeOf(declared, method, enumTypes, classTypes),
-                parameter.IsOptional, DefaultValueOf(parameter)));
+                array is not null
+                    ? ArrayTypeOf(DeclaredTypeOf(array.ElementType, method, enumTypes, classTypes))
+                    : DeclaredTypeOf(declared, method, enumTypes, classTypes),
+                parameter.IsOptional, DefaultValueOf(parameter, memberUri)));
         }
 
         return builder.ToImmutable();
@@ -352,11 +420,23 @@ public sealed class StdLibSymbolReader
             $"declaration states one with a {nameof(VBTypedValue)} implementation, or with a marked enumeration or class.");
     }
 
+    // the array type a Dim declares for the same element type, Byte's included: a Byte() is a type of its own.
+    private static VBType ArrayTypeOf(VBType elementType)
+        => elementType is VBByteType ? VBResizableByteArrayType.TypeInfo : new VBResizableArrayType(elementType);
+
     // only an enumeration constant is expressible as a C# default, and it is the only kind of
     // <default-value> clause the standard library has. Everything else optional is `= default`, which
     // is no clause at all: an unmapped argument then takes the declared type's own default value.
-    private static VBTypedValue? DefaultValueOf(ParameterInfo parameter)
+    //
+    // MS-VBAL 5.3.1.5 defines a default as a constant expression, which is what the symbol carries; a
+    // library parameter's is written in C# rather than in VBA source, and a literal node over the value
+    // it already is says exactly that — with the member's own uri for a location, there being no source
+    // position to point at.
+    private static ExpressionNode? DefaultValueOf(ParameterInfo parameter, Uri memberUri)
         => parameter is { IsOptional: true, DefaultValue: { } value } && parameter.ParameterType.IsEnum
-            ? new VBLongValue(Convert.ToInt32(value))
+            ? new LiteralExpressionNode(
+                new SyntaxNodeId(memberUri.AbsolutePath, []),
+                new SourceLocation(memberUri, SourceRange.Empty),
+                new VBLongValue(Convert.ToInt32(value)))
             : null;
 }

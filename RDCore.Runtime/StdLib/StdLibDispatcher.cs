@@ -1,3 +1,5 @@
+using RDCore.Runtime.Execution;
+using RDCore.SDK.Model;
 using RDCore.SDK.Model.Errors;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
@@ -41,18 +43,29 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     /// list somebody can read. An interface absent from it is a module nothing implements yet, and every
     /// member of it says so when called.
     /// <para>
-    /// 🚧 TODO as each module lands: <c>Conversion</c>, <c>Math</c>, <c>DateTime</c>,
+    /// 🚧 TODO as each module lands: <c>Math</c>, <c>DateTime</c>,
     /// <c>Interaction</c>, <c>Collection</c>, <c>RegExp</c>, and the constant modules.
     /// </para>
     /// </remarks>
     /// <param name="session">The session the implementations read their state from.</param>
     public static StdLibDispatcher For(IRuntimeSession session)
-        => new(new Dictionary<Type, object>
+    {
+        // a collection makes the enumerator its For Each is driven by, which is an object of a class of its own.
+        var enumerators = new StdEnumVariant(session);
+
+        return new(new Dictionary<Type, object>
         {
             [typeof(IStdInformationModule)] = new StdInformation(session),
             [typeof(IStdFileSystemModule)] = new StdFileSystem(session),
             [typeof(IStdStringsModule)] = new StdStrings(),
+            [typeof(IStdFinancialModule)] = new StdFinancial(),
+            [typeof(IStdErrClass)] = new ErrObject(session),
+            [typeof(IStdConversionModule)] = new StdConversion(session),
+            [typeof(IStdHiddenModule)] = new StdHidden(session),
+            [typeof(IStdCollectionClass)] = new StdCollection(session, enumerators),
+            [typeof(IStdEnumVariantClass)] = enumerators,
         });
+    }
 
     /// <summary>
     /// Creates the dispatcher over a set of implementations.
@@ -114,6 +127,13 @@ public sealed class StdLibDispatcher : IExternalCallProvider
                 $"'{request.Member.Name}' was called with arguments its implementation cannot accept."));
         }
 
+        // a class whose instances have state of their own is told which instance the call is on: the implementation is one object for the
+        // whole class, and what is in a collection is the collection's.
+        if (implementation is IStdLibReceiverBound bound)
+        {
+            bound.Receiver = HasReceiver(request.Member) && TypedValue(request.Arguments[0]) is VBObjectValue receiver ? receiver.Value : null;
+        }
+
         // an implementation returns the outcome rather than throwing, the same as the rest of the semantics
         // layer - so an exception escaping one is a bug in it, not a program error, and must not be dressed
         // up as one.
@@ -138,9 +158,17 @@ public sealed class StdLibDispatcher : IExternalCallProvider
         var parameters = method.GetParameters();
         arguments = new object?[parameters.Length];
 
+        // a member of a class is called on an object, which arrives as the implicit Me at parameter 0. The
+        // library's classes keep no state in the receiver - the error object is a view of the session's - so the
+        // implementation is written without it, and it is the arguments after it that marshal.
+        var supplied = HasReceiver(request.Member) ? request.Arguments[1..] : request.Arguments;
+
         // an argument the caller did not supply is an omitted Optional: the implementation's own default
-        // stands in, which for a VBTypedValue parameter is null - the "Missing" its signature declares.
-        if (request.Arguments.Length > parameters.Length)
+        // stands in, which for a VBTypedValue parameter is null - the "Missing" its signature declares. The
+        // interpreter itself never leaves one out: it fills an omitted Optional with the parameter's default
+        // value - Empty for a Variant, and a typed one's own type's default, such as False, never null - so an
+        // implementation reads null and Empty alike as omitted, and cannot tell a typed one from its default.
+        if (supplied.Length > parameters.Length)
         {
             return false;
         }
@@ -148,13 +176,13 @@ public sealed class StdLibDispatcher : IExternalCallProvider
         for (var index = 0; index < parameters.Length; index++)
         {
             var parameter = parameters[index];
-            if (index >= request.Arguments.Length)
+            if (index >= supplied.Length)
             {
                 arguments[index] = parameter.HasDefaultValue ? parameter.DefaultValue : null;
                 continue;
             }
 
-            if (!TryMarshal(request.Arguments[index], parameter.ParameterType, out arguments[index]))
+            if (!TryMarshal(supplied[index], parameter, out arguments[index]))
             {
                 return false;
             }
@@ -162,6 +190,43 @@ public sealed class StdLibDispatcher : IExternalCallProvider
 
         return true;
     }
+
+    // a ParamArray arrives as the one array the caller collected the rest of its arguments into, and is declared as `params`:
+    // what the implementation takes is an array of the element type, each element a Variant.
+    private static bool TryMarshal(IRuntimeValue argument, ParameterInfo parameter, out object? marshalled)
+    {
+        if (parameter.GetCustomAttribute<ParamArrayAttribute>() is null)
+        {
+            return TryMarshal(argument, parameter.ParameterType, out marshalled);
+        }
+
+        marshalled = null;
+        if (TypedValue(argument) is not VBArrayValue collected)
+        {
+            return false;
+        }
+
+        var elementType = parameter.ParameterType.GetElementType()!;
+        var elements = System.Array.CreateInstance(elementType, collected.Length);
+        for (var index = 0; index < collected.Length; index++)
+        {
+            if (collected.ElementAt(index) is not { } element
+                || (elementType == typeof(VBVariantValue) ? element as VBVariantValue ?? new VBVariantValue(element) : element) is not { } converted
+                || !elementType.IsInstanceOfType(converted))
+            {
+                return false;
+            }
+
+            elements.SetValue(converted, index);
+        }
+
+        marshalled = elements;
+        return true;
+    }
+
+    // the reader gives an instance member an implicit Me at parameter 0, exactly as a workspace class's members have.
+    private static bool HasReceiver(VBTypeMemberSymbol member)
+        => RuntimeProcedureInvoker.GetParameters(member) is [{ Name: "Me", ParameterKind: ParameterKind.ImplicitByRef }, ..];
 
     private static bool TryMarshal(IRuntimeValue argument, Type parameterType, out object? marshalled)
     {
@@ -173,19 +238,13 @@ public sealed class StdLibDispatcher : IExternalCallProvider
             return true;
         }
 
-        // a VBTypedValue argument is already the shape the signature asks for, unless it is the wrong one -
-        // which is a coercion the caller was supposed to have done, not something to do quietly here.
-        marshalled = argument.BoxedValue as VBTypedValue ?? WrappedValue(argument, parameterType);
+        // the caller Let-coerced the argument to the parameter's declared type, so what arrives is that type's
+        // storage - a boxed double for a Double, a boxed short for an Integer - and the typed value it is the
+        // storage of is all there is left to recover. One that is still the wrong type is a coercion the
+        // caller was supposed to have done, not something to do quietly here.
+        marshalled = parameterType == typeof(VBVariantValue) ? Variant(argument) : TypedValue(argument);
         return marshalled is not null && parameterType.IsInstanceOfType(marshalled);
     }
-
-    // a runtime value that is not itself a VBTypedValue still has to reach a typed parameter, and the type
-    // the signature names is the one that knows how to hold it.
-    private static VBTypedValue? WrappedValue(IRuntimeValue argument, Type parameterType)
-        => parameterType == typeof(VBVariantValue) ? Variant(argument)
-            : parameterType == typeof(VBStringValue) && argument.BoxedValue is string text ? new VBStringValue(text)
-            : parameterType == typeof(VBLongValue) && argument.BoxedValue is not null ? new VBLongValue(Convert.ToInt32(argument.BoxedValue))
-            : null;
 
     // a Variant parameter takes anything, that being what a Variant is - MS-VBAL 5.5.1.2.2's Let-coercion to
     // Variant has no failing case. Most of the library declares its parameters that way, so a Variant that
@@ -201,8 +260,16 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     /// type a member was called with has to be recovered here. It survives: each intrinsic stores its own exact
     /// managed type — <c>short</c> for <c>Integer</c> and <c>int</c> for <c>Long</c>, not one integer type for
     /// both — which is what lets <c>Len</c> answer "the number of bytes required to store a variable" instead
-    /// of guessing. <c>Date</c> and <c>Double</c> both store a <c>double</c> and are indistinguishable here,
-    /// which costs nothing: they are the same width, and nothing else about them is asked at this seam.
+    /// of guessing. <c>Date</c> and <c>Double</c> both store a <c>double</c> and are indistinguishable here.
+    /// <para>
+    /// 🚧 TODO with the first member that declares a <c>Date</c>, <c>Decimal</c>, <c>LongPtr</c> or <c>Object</c>
+    /// parameter. The first three store what another type stores — a <c>double</c>, a <c>decimal</c>, a
+    /// <c>long</c> or an <c>int</c> — so the argument recovers as a <c>Double</c>, a <c>Currency</c>, a
+    /// <c>LongLong</c> or a <c>Long</c>, which such a parameter refuses, and a <c>Decimal</c> beyond
+    /// <c>Currency</c>'s range throws instead; and an object reference has no case here at all, so it is refused
+    /// too. A <c>Variant</c> argument is unaffected, carrying its typed value whole. The declared type is what has
+    /// to decide the rest.
+    /// </para>
     /// </remarks>
     private static VBTypedValue? TypedValue(IRuntimeValue argument) => argument switch
     {
@@ -219,6 +286,8 @@ public sealed class StdLibDispatcher : IExternalCallProvider
         VBRuntimeCurrencyValue currency => new VBCurrencyValue(Convert.ToDecimal(currency.BoxedValue)),
         VBRuntimeDecimalValue @decimal => new VBDecimalValue(Convert.ToDecimal(@decimal.BoxedValue)),
         VBRuntimeHResult error => new VBErrorValue(Convert.ToInt32(error.BoxedValue)),
+        // an object is the identity of one: what the argument is the storage of, as with the rest.
+        VBRuntimeValue<VBRuntimeObjectId> identity => new VBObjectValue(identity.StoredValue),
         _ => argument.BoxedValue switch
         {
             // a Variant stores the whole typed value it wraps, and an array and a UDT are each boxed around

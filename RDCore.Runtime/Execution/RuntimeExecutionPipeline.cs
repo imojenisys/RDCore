@@ -113,7 +113,9 @@ public sealed class RuntimeExecutionPipeline
             assignments, new InputListEvaluator(assignments));
         var statements = new StatementRuntimeSemanticsProvider(
             expressions, assignments, setCoercion, print, conditions, files,
-            new FixedAssignmentRuntimeSemantics(expressions, stringCoercion, assignments));
+            new FixedAssignmentRuntimeSemantics(expressions, stringCoercion, assignments),
+            new ArrayStatementRuntimeSemantics(expressions, numericCoercion, assignments),
+            new MidStatementRuntimeSemantics(expressions, stringCoercion, numericCoercion, assignments));
 
         var executor = new ProcedureExecutor(
             statements,
@@ -143,7 +145,13 @@ public sealed class RuntimeExecutionPipeline
         // nothing assigned these, so every default-member Let-coercion reported an internal error.
         objectCoercion.ProcedureInvoker = invoker;
         objectCoercion.Bindings = bindings;
+        objectCoercion.Expressions = expressions;
         expressions.LetCoercionProvider = letCoercion;
+        expressions.SetCoercion = setCoercion;
+        // an object's lifecycle events run its class's handlers, which is code only this pipeline can run.
+        session.Lifecycle = new ClassLifecycle(session, bindings);
+        // a fixed-size array is as big as its declaration says, which takes evaluating its bounds: this is what can.
+        session.Symbols.Defaults = new DeclaredVariableDefaults(session, new ArrayBoundEvaluator(expressions, numericCoercion));
 
         return new RuntimeExecutionPipeline(expressions, letCoercion, statements, executor, invoker);
     }

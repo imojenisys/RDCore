@@ -25,13 +25,46 @@ split of the `Mid`/`Mid$` function overloads, which matters for static semantics
 
 ## Static Semantics
 
+The declared type of the target MUST be `String` or `Variant` (**MS-VBAL §5.4.3.5**); another is a `TypeMismatch`. The target is a variable: a literal, an operator's
+result or a constant is [`VBC09333`](../diagnostics/vbc09333.md) (`VariableRequired`).
+
+The position and the length are used as the runtime semantics uses them - as `Long` - and the value as a `String`, so each has to be Let-coercible to that
+([**RD-VBAL §5.5.1** Let-coercion](rd-vbal.5.5.1.let-coercion.md)).
+
+The rule is [MidStatementStaticSemantics](../api/RDCore.SDK.Semantics.Static.MidStatementStaticSemantics.html)'s, which
+[StatementStaticSemanticsEvaluator](../api/RDCore.SDK.Semantics.Static.StatementStaticSemanticsEvaluator.html) asks. An operand whose declared type is not known
+is deferred, not rejected.
+
 > [!NOTE]
-> Reserved. This section has no content yet.
+> A `Byte()` target is a run-time possibility the specification's static rule does not allow: it is a `TypeMismatch`.
 
 ## Runtime Semantics
 
-> [!NOTE]
-> Reserved. This section has no content yet.
+`Mid` replaces a span of the characters of a variable with characters of a value. The replacement never changes the length of the
+string: the number of characters replaced, `x`, is the least of the `length` asked for, the number of characters left in the target from
+`start` on, and the number of characters in the value.
+
+1. The target's value and the value to assign are each Let-coerced to `String` ([**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.let-statement.md)).
+   A `Variant` is what it holds.
+2. `start` and `length` are Let-coerced to `Long`.
+3. If `start` is less than or equal to 0, or greater than the length of the target, or if `length` is less than 0, runtime error 5
+   (Invalid procedure call or argument) is raised. A target with no characters has no `start` that is in it.
+4. The new string is Let-assigned to the target, so the target can be any variable expression a `Let` accepts, and a fixed-length `String`
+   target is given back at its own width.
+
+|Spelling|Counts in|
+|---|---|
+|`Mid`, `Mid$`|Characters.|
+|`MidB`, `MidB$`|Bytes of the string's in-memory form, two to a character, as `LenB` counts. A position can fall inside a character, which is split.|
+
+The `$` suffix changes nothing at run time.
+
+## Implementation
+
+|Type or member|Role|
+|---|---|
+|`RDCore.Runtime.Semantics.Statements.MidStatementRuntimeSemantics`|The runtime semantics of all four spellings (**RDCore.Runtime**).|
+|`RDCore.Runtime.Semantics.Statements.StatementRuntimeSemanticsProvider`|Dispatches a `MidStatementNode`; see [**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md).|
 
 ---
 > ⏮️ [**RD-VBAL §5.4.3.4** Erase Statement](rd-vbal.5.4.3.4.erase-statement.md) | ⏭️ [**RD-VBAL §5.4.3.6** LSet Statement](rd-vbal.5.4.3.6.lset-statement.md)

@@ -1,5 +1,7 @@
-﻿using RDCore.Runtime.Semantics.LetCoercion;
+﻿using RDCore.Runtime.Semantics.Conversion;
+using RDCore.Runtime.Semantics.LetCoercion;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK;
 using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.AST.Expressions;
@@ -115,6 +117,41 @@ public abstract record class LetCoercionRuntimeSemantics<TStrategy> : ILetCoerci
     protected VBRuntimeErrorInfo OnLetCoercionTypeMismatch(ExpressionNode expression, LetCoercionStackFrame frame) =>
         VBRuntimeErrorInfo.For(VBRuntimeErrorId.TypeMismatch, expression.Location,
             _formatterService.Format(Exceptions.LetCoercionRuntimeErrorExceptionTypeMismatch_Verbose, expression, [frame]));
+
+    /// <summary>
+    /// The frame with a <c>Variant</c> source replaced by the value it holds, at any depth of nesting.
+    /// </summary>
+    /// <remarks>
+    /// The conversions take the value, not the <c>Variant</c> that holds it, and the provider unwraps a source before it dispatches. A caller that
+    /// holds a strategy and calls it itself - a statement coercing its own operand - has no provider to do it, so the strategies that such callers
+    /// use say it of themselves, and a <c>Variant</c> operand is no different from the value in it.
+    /// </remarks>
+    protected static LetCoercionStackFrame WithoutVariant(LetCoercionStackFrame frame)
+    {
+        while (frame.SourceValue is VBVariantValue { TypedValue: { } wrapped })
+        {
+            frame = frame with { SourceValue = wrapped };
+        }
+
+        return frame;
+    }
+
+    /// <summary>
+    /// Reports the outcome of a <see cref="ValueConversions"/> conversion as the outcome of this coercion: the
+    /// conversion knows what the value becomes or which error it raises, and only the coercion knows where.
+    /// </summary>
+    protected LetCoercionResult FromConversion(ValueConversionResult conversion, ExpressionNode expression, LetCoercionStackFrame frame)
+        => conversion switch
+        {
+            { IsApplicable: false } => LetCoercionResult.NotApplicable(frame),
+            { Error: VBRuntimeErrorId.Overflow } => LetCoercionResult.Error(OnLetCoercionOverflow(expression, frame)),
+            { Error: VBRuntimeErrorId.TypeMismatch } => LetCoercionResult.Error(OnLetCoercionTypeMismatch(expression, frame)),
+            { Error: VBRuntimeErrorId.InvalidUseOfNull } => LetCoercionResult.Error(OnLetCoercionInvalidUseOfNull(expression, frame)),
+            { Error: not null } => throw new InvalidOperationException(
+                $"A conversion raised {conversion.Error}, which no let-coercion reports."),
+            { Value: { } value } => LetCoercionResult.Success(value),
+            _ => throw new InvalidOperationException("A conversion neither succeeded nor failed."),
+        };
 
     /// <summary>
     /// A helper method to get a <c>VBRuntimeErrorInfo</c> error metadata from derived types as needed.

@@ -1,3 +1,4 @@
+using RDCore.SDK.Model.AST.Expressions;
 using RDCore.SDK.Model.Source;
 using RDCore.SDK.Model;
 using RDCore.SDK.Model.Symbols;
@@ -202,6 +203,42 @@ public sealed class StdLibSymbolReaderTests
     }
 
     [TestMethod]
+    public void TheFinancialModule_IsReadWithEveryMemberOfItsSpecification()
+    {
+        // MS-VBAL 6.1.2.6.1: thirteen public functions, every one of them As Double.
+        var members = MembersOf(Module("Financial")).Cast<VBFunctionMemberSymbol>().ToArray();
+
+        CollectionAssert.AreEquivalent(
+            new[] { "DDB", "FV", "IPmt", "IRR", "MIRR", "NPer", "NPV", "Pmt", "PPmt", "PV", "Rate", "SLN", "SYD" },
+            members.Select(member => member.Name).ToArray());
+        Assert.IsTrue(members.All(member => member.ResolvedType == VBDoubleType.TypeInfo));
+    }
+
+    [TestMethod]
+    public void FVsPresentValueAndDue_AreOptional_WhateverTheSpecificationsDeclarationSays()
+    {
+        // MS-VBAL 6.1.2.6.1.2 declares "PV As Variant, Due As Variant" without Optional, where its own table says
+        // what an omitted one means - and every other annuity function declares its Due optional.
+        var fv = (VBFunctionMemberSymbol)MembersOf(Module("Financial")).Single(member => member.Name == "FV");
+
+        CollectionAssert.AreEqual(new[] { "PV", "Due" }, fv.Parameters.Where(parameter => parameter.IsOptional).Select(parameter => parameter.Name).ToArray());
+    }
+
+    [TestMethod]
+    public void PmtsParameters_AreNamedAsTheSpecificationSpellsThem()
+        // pV and fV in C#, so that they read as the specification's PV and FV rather than Pv and Fv.
+        => CollectionAssert.AreEqual(
+            new[] { "Rate", "NPer", "PV", "FV", "Due" },
+            ((VBFunctionMemberSymbol)MembersOf(Module("Financial")).Single(member => member.Name == "Pmt")).Parameters.Select(parameter => parameter.Name).ToArray());
+
+    [TestMethod]
+    public void MIRRsRates_AreNamedWithTheSpecificationsUnderscores()
+        // a named argument has to spell the name the specification declares: Finance_Rate:=, not FinanceRate:=.
+        => CollectionAssert.AreEqual(
+            new[] { "ValueArray", "Finance_Rate", "Reinvest_Rate" },
+            ((VBFunctionMemberSymbol)MembersOf(Module("Financial")).Single(member => member.Name == "MIRR")).Parameters.Select(parameter => parameter.Name).ToArray());
+
+    [TestMethod]
     public void TheDollarSuffixedPairs_AreTwoMembers_DifferingOnlyInReturnType()
     {
         // MS-VBAL 6.1.2.3.1.16: Function Hex(Number As Variant) / Function Hex$(Number As Variant) As
@@ -246,7 +283,7 @@ public sealed class StdLibSymbolReaderTests
         Assert.AreEqual("Compare", compare.Name);
         Assert.IsTrue(compare.IsOptional);
         Assert.AreEqual("VbCompareMethod", compare.ResolvedType.Name);
-        Assert.AreEqual((int)VBCompareMethod.VBBinaryCompare, Convert.ToInt32(compare.DefaultValue!.Handle.Value.BoxedValue));
+        Assert.AreEqual((int)VBCompareMethod.VBBinaryCompare, Convert.ToInt32(((LiteralExpressionNode)compare.DefaultValue!).StaticValue.Handle.Value.BoxedValue));
     }
 
     [TestMethod]
@@ -257,6 +294,32 @@ public sealed class StdLibSymbolReaderTests
         var join = (VBFunctionMemberSymbol)MembersOf(Module("Strings")).Single(member => member.Name == "Join");
 
         Assert.IsInstanceOfType<VBResizableArrayType>(join.Parameters.First().ResolvedType);
+    }
+
+    [TestMethod]
+    public void AnArrayParameter_MayStateItsElementType()
+    {
+        // MS-VBAL 6.1.2.6.1.7: NPV(Rate As Double, ValueArray() As Double). A VBResizableArrayValue alone reads
+        // as Variant(), so the declaration says what the elements are - and the call site coerces an argument
+        // to an array of those, rather than refusing a Double() for not being a Variant().
+        var sum = (VBFunctionMemberSymbol)new StdLibSymbolReader(Root).Read([typeof(IStdLibWithTypedArrays)])
+            .Single(symbol => symbol.Name == "Sum");
+
+        var type = (VBResizableArrayType)sum.Parameters.Single().ResolvedType;
+        Assert.AreEqual(VBDoubleType.TypeInfo, type.ItemType);
+    }
+
+    [TestMethod]
+    [DataRow("Checksum")]
+    [DataRow("Digest")]
+    public void AByteArrayParameter_IsTheByteArrayType(string member)
+    {
+        // a Byte() is a type of its own - the one a Dim with the same element type declares - whether the
+        // declaration takes the array of any element type or the byte array itself.
+        var function = (VBFunctionMemberSymbol)new StdLibSymbolReader(Root).Read([typeof(IStdLibWithTypedArrays)])
+            .Single(symbol => symbol.Name == member);
+
+        Assert.IsInstanceOfType<VBResizableByteArrayType>(function.Parameters.Single().ResolvedType);
     }
 
     [TestMethod]
@@ -348,6 +411,24 @@ public sealed class StdLibSymbolReaderTests
         Assert.Contains("TimeSpan", exception.Message);
     }
 
+    [TestMethod]
+    [DataRow(typeof(IStdLibWithAScalarElementType), "Scale")]
+    [DataRow(typeof(IStdLibWithAnOptionalArray), "Sum")]
+    [DataRow(typeof(IStdLibWithAByRefArray), "Fill")]
+    [DataRow(typeof(IStdLibWithAParamArrayElementType), "Total")]
+    [DataRow(typeof(IStdLibWithAByteArrayOfDoubles), "Average")]
+    public void AnElementTypeForAParameterThatIsNoRequiredArray_IsRefused(Type declaration, string member)
+    {
+        // an element type makes the parameter an array of it: stated for a scalar it would silently change the
+        // parameter's type, for an optional array it would declare an omission nothing gives a value, for a ByRef
+        // one a parameter no argument reaches, for a ParamArray a type it cannot have, and for a Byte() an array
+        // that could never hold its argument.
+        var reader = new StdLibSymbolReader(Root);
+
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => reader.Read([declaration]));
+        Assert.Contains(member, exception.Message);
+    }
+
     private interface IUnmarked
     {
         RuntimeSemanticsEvaluationResult<VBLongValue> Whatever();
@@ -357,5 +438,45 @@ public sealed class StdLibSymbolReaderTests
     private interface IStdLibWithABadParameter
     {
         RuntimeSemanticsEvaluationResult<VBLongValue> Nope(TimeSpan notAVBAType);
+    }
+
+    [StdLibModule("Arrays")]
+    private interface IStdLibWithTypedArrays
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Sum([StdLibArray(typeof(VBDoubleValue))] VBResizableArrayValue values);
+
+        RuntimeSemanticsEvaluationResult<VBLongValue> Checksum([StdLibArray(typeof(VBByteValue))] VBResizableArrayValue bytes);
+
+        RuntimeSemanticsEvaluationResult<VBLongValue> Digest([StdLibArray(typeof(VBByteValue))] VBResizableByteArrayValue bytes);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAScalarElementType
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Scale([StdLibArray(typeof(VBDoubleValue))] VBDoubleValue value);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAByRefArray
+    {
+        RuntimeSemanticsEvaluationResult Fill([StdLibArray(typeof(VBDoubleValue))] ref VBResizableArrayValue values);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAParamArrayElementType
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Total([StdLibArray(typeof(VBDoubleValue))] params VBVariantValue[] values);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAByteArrayOfDoubles
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Average([StdLibArray(typeof(VBDoubleValue))] VBResizableByteArrayValue values);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAnOptionalArray
+    {
+        RuntimeSemanticsEvaluationResult<VBDoubleValue> Sum([StdLibArray(typeof(VBDoubleValue))] VBResizableArrayValue? values = default);
     }
 }

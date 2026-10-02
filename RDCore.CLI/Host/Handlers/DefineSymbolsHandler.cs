@@ -8,6 +8,11 @@ using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Platform.Protocol;
+using RDCore.SDK.Runtime.Abstract.Execution;
+using RDCore.SDK.Model.AST;
+using RDCore.SDK.Services.VerboseMessages;
+using RDCore.Runtime.Execution;
+using System.Collections.Immutable;
 
 namespace RDCore.CLI.Host.Handlers;
 
@@ -19,6 +24,7 @@ namespace RDCore.CLI.Host.Handlers;
 /// </summary>
 internal sealed class DefineSymbolsHandler(
     IEnvironmentSessionProvider sessionProvider,
+    IVerboseMessageBuilder messages,
     ILogger<DefineSymbolsHandler> logger) : RDCoreRequestHandler<DefineSymbolsParams, DefineSymbolsResult>
 {
     protected override Task<DefineSymbolsResult> HandleAsync(DefineSymbolsParams request, CancellationToken token)
@@ -61,6 +67,8 @@ internal sealed class DefineSymbolsHandler(
             return null;
         }
 
+        ApplyDirectives(session, request);
+
         var defined = 0;
         var replaced = 0;
         var merged = 0;
@@ -69,7 +77,8 @@ internal sealed class DefineSymbolsHandler(
         // the language server already collapses #If-branch duplicates, but stay defensive: fuse any
         // that still arrive with the same identity (uri + concrete type) so the session never sees a
         // colliding define. Property Get/Let/Set share a uri but not a type, so they stay distinct.
-        foreach (var group in SymbolDescriptorReader.Read(request, ResolveType)
+        // a request for the code of a module that was defined by an earlier one defines nothing again.
+        foreach (var group in (request.CodeOnly ? [] : SymbolDescriptorReader.Read(request, ResolveType))
             .GroupBy(symbol => (symbol.Uri.ToString(), symbol.GetType())))
         {
             var sites = group.ToList();
@@ -80,12 +89,13 @@ internal sealed class DefineSymbolsHandler(
             {
                 defined++;
             }
-            else if (request.Replace && session.Symbols.TryUndefine(symbol, symbol.ScopeKind)
-                && session.Symbols.TryDefine(symbol, symbol.ScopeKind))
+            else if (request.Replace && session.Symbols.TryRedefine(symbol, symbol.ScopeKind))
             {
                 // the caller says this module has been re-read, so the newest definition wins: the
                 // previous one may have had different locals, a different declared type, or a body
-                // this one no longer has.
+                // this one no longer has. A variable declared as it was keeps what it holds - a shell
+                // re-reads the whole module for every line, and a value that did not survive that would
+                // not survive to the next line.
                 replaced++;
             }
             else
@@ -93,6 +103,13 @@ internal sealed class DefineSymbolsHandler(
                 skipped.Add(symbol.Name);
             }
         }
+
+        // a class module's symbol is composed from a project without being read; what makes it the class its members declare, and
+        // the one that implements the interfaces its directives name, is this. A module that is not a class has nothing to compose.
+        session.Symbols.TryComposeClassModule(request.ModuleName, request.ImplementedInterfaceNames, request.ImplementedInterfaceRanges);
+
+        // the module's procedures get their code now that everything they are keyed by is defined.
+        var loadErrors = LoadCode(session, request);
 
         if (logger.IsEnabled(LogLevel.Information))
         {
@@ -107,8 +124,66 @@ internal sealed class DefineSymbolsHandler(
             Replaced = replaced,
             Skipped = skipped,
             UnresolvedTypeNames = [.. unresolvedTypeNames],
+            CodeErrors = loadErrors,
             MergedDefinitions = merged,
         });
+    }
+
+    // a standard module is a value in the default binding context, and a class module is a type: the name of one binds only
+    // in the type binding context (MS-VBAL 5.6.4), unless the class has a default instance.
+    private static bool TryResolveModule(IRuntimeSession session, string moduleName, out Symbol module)
+    {
+        if ((session.Symbols.TryResolveValue(moduleName, GlobalSymbols.UnresolvedSymbol, out var resolved)
+                || session.Symbols.TryResolveType(moduleName, GlobalSymbols.UnresolvedSymbol, out resolved))
+            && resolved is VBModuleSymbol)
+        {
+            module = resolved;
+            return true;
+        }
+
+        module = GlobalSymbols.UnresolvedSymbol;
+        return false;
+    }
+
+    private ImmutableArray<string> LoadCode(IRuntimeSession session, DefineSymbolsParams request)
+    {
+        if (request.ParseResultJson.Length == 0
+            || PlatformJson.Deserialize<ModuleParseResult>(request.ParseResultJson) is not { } parseResult
+            || !TryResolveModule(session, request.ModuleName, out var module))
+        {
+            return [];
+        }
+
+        var errors = new ModuleLoader(session, sessionProvider.Image, messages).Load(module, parseResult);
+        foreach (var error in errors)
+        {
+            logger.LogWarning("{module} was not loaded: {error}", request.ModuleName, error);
+        }
+
+        return errors;
+    }
+
+    // MS-VBAL 5.2.1: the module symbol is composed from the .rdproj without parsing anything, so its
+    // Option directives are not known until the language server sends them here. They are what an
+    // activation of one of the module's procedures runs under - Option Compare decides how its
+    // relational operators compare Strings, Option Base what `Dim a(10)` means - and both were read off
+    // a frame that was never given any, so both silently took their default.
+    private static void ApplyDirectives(IRuntimeSession session, DefineSymbolsParams request)
+    {
+        if (!session.Symbols.TryResolveValue(request.ModuleName, GlobalSymbols.UnresolvedSymbol, out var resolved)
+            || resolved is not VBModuleSymbol module
+            || module.Directives == request.Directives)
+        {
+            return;
+        }
+
+        // the same undefine/define the Replace path uses: a module symbol allocates no storage of its
+        // own, and its members are keyed by their own Uris rather than held by it.
+        var updated = module with { Directives = request.Directives };
+        if (session.Symbols.TryUndefine(module, module.ScopeKind))
+        {
+            session.Symbols.TryDefine(updated, updated.ScopeKind);
+        }
     }
 
     // an `As` clause names a symbol; this is the type that symbol declares. A user-defined type is not

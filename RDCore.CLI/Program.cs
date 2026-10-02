@@ -1,4 +1,4 @@
-﻿using CommandLine;
+using CommandLine;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -19,7 +19,9 @@ using RDCore.SDK;
 using RDCore.SDK.Client;
 using RDCore.SDK.ConsoleIO;
 using RDCore.SDK.Client.Connection;
+using RDCore.SDK.Model;
 using RDCore.SDK.Platform;
+using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Server;
 using RDCore.SDK.Server.Configuration;
 using RDCore.SDK.Server.Services;
@@ -39,6 +41,8 @@ using System.Runtime.CompilerServices;
 [assembly: ProvidesCorePlatformClientCapability<SessionStatus>]
 [assembly: ProvidesCorePlatformClientCapability<SessionExecute>]
 [assembly: ProvidesCorePlatformClientCapability<SessionMemoryAccess>]
+// and it runs the semantic analysis pass over the code it holds, so it answers for what the pass found:
+[assembly: ProvidesCorePlatformClientCapability<SemanticAnalysis>]
 // native command-mode verbs provided by rdc.exe:
 [assembly: ProvidesCorePlatformClientCapability<CliCommand>]
 
@@ -100,7 +104,10 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
     protected override IEnumerable<(string, string?)> ConfigureOverrides(string[] initialArgs, SdkAppCommandLineArgs baseArgs) 
         => [
             ("CLI:UnsafeDevMode", baseArgs.UnsafeDevMode?.ToString() ?? false.ToString()),
-            // ...
+            // an interactive shell is written in the platform's BASIC, and the language is what decides the rest: a variable that a line
+            // assigns is the one the next line reads, the standard library is RDC rather than VBA, and a bare Print is a statement. The
+            // servers are told, when they are started and in the initializationOptions of the initialize request.
+            ("Configuration:Workspace:Language", SupportedLanguages.BASIC.Id),
         ];
 
     protected override void ConfigureAdditionalExternalServices(IServiceCollection services, IConfiguration configuration)
@@ -115,6 +122,7 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
             .AddSingleton<ShowSplashCommand>()
             // the interactive shell and everything it acts on:
             .AddSingleton<ReplProgram>()
+            .AddSingleton<ReplDocument>()
             .AddSingleton<IReplConsole, ReplConsole>()
             .AddSingleton<IReplPlatformClient>(provider => new ReplPlatformClient(provider.GetRequiredService<RDCoreConsoleClientApp>()))
             .AddSingleton<IReplCommand, HelpReplCommand>()
@@ -124,6 +132,8 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
             .AddSingleton<IReplCommand, PeekReplCommand>()
             .AddSingleton<IReplCommand, PokeReplCommand>()
             .AddSingleton<IReplCommand, NewReplCommand>()
+            .AddSingleton<IReplCommand, LoadReplCommand>()
+            .AddSingleton<IReplCommand, SaveReplCommand>()
             .AddSingleton<IReplCommand, ExitReplCommand>()
             .AddSingleton<IReplCommandDispatcher, ReplCommandDispatcher>()
             .AddSingleton<ReplShell>()
@@ -258,6 +268,15 @@ internal class RDCoreConsoleCommandHost : AppHost<RDCoreConsoleCommandApp>
     {
     }
 
+    // `rdc.exe <verb> <the verb's own options>` is not the platform's command line: --description and --overwrite are
+    // options of describe-ext, which the platform's parser has never heard of and would reject as mistakes before the
+    // verb ran. The verb parses - and answers for - its own.
+    protected override bool TryAnswerCommandLine(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        return false;
+    }
+
     protected override async Task BeforeAppStartAsync(IServiceProvider provider)
         => await provider.GetRequiredService<IAppThemeService>().InitializeAsync(CancellationToken.None);
 
@@ -366,6 +385,7 @@ internal class RDCoreConsoleEnvironmentHostApp(
             .WithHandler<DefineSymbolsHandler>()
             .WithHandler<HostSessionStatusHandler>()
             .WithHandler<HostExecuteHandler>()
+            .WithHandler<HostSemanticsHandler>()
             .WithHandler<HostPeekHandler>()
             .WithHandler<HostPokeHandler>();
 

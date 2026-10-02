@@ -6,9 +6,47 @@
   href: vbc00042.md
 - name: VBC09309 — Label not defined
   href: vbc09309.md
+- name: VBC09312 — Exit Do not within Do...Loop
+  href: vbc09312.md
+- name: VBC09313 — Exit For not within For...Next
+  href: vbc09313.md
+- name: VBC09314 — Exit Function not allowed in Sub or Property
+  href: vbc09314.md
+- name: VBC09315 — Exit Property not allowed in Sub or Function
+  href: vbc09315.md
 - name: VBC09319 — Duplicate label definition
   href: vbc09319.md
 - name: VBC09320 — Inconsistent property accessors
   href: vbc09320.md
 - name: VBC09321 — Argument required for Property Let or Property Set
   href: vbc09321.md
+- name: VBC09322 — Event not defined
+  href: vbc09322.md
+- name: VBC09323 — Wrong number of arguments or invalid argument for event
+  href: vbc09323.md
+- name: VBC09324 — Invalid type for WithEvents variable
+  href: vbc09324.md
+- name: VBC09325 — Invalid event name
+  href: vbc09325.md
+- name: VBC09326 — Invalid event handler
+  href: vbc09326.md
+- name: VBC09327 — ByVal argument not allowed here
+  href: vbc09327.md
+- name: VBC09328 — Invalid Implements directive
+  href: vbc09328.md
+- name: VBC09329 — Object module needs to implement all members of its interface
+  href: vbc09329.md
+- name: VBC09330 — Invalid implemented member
+  href: vbc09330.md
+- name: VBC09331 — Sub or Function not defined
+  href: vbc09331.md
+- name: VBC09332 — Exit Sub not allowed in Function or Property
+  href: vbc09332.md
+- name: VBC09333 — Variable required
+  href: vbc09333.md
+- name: VBC09334 — Access not valid for the file mode
+  href: vbc09334.md
+- name: RDC00101 — Implicit declarations enabled
+  href: rdc00101.md
+- name: RDC00302 — Obsolete Call statement
+  href: rdc00302.md

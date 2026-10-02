@@ -127,7 +127,9 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
                     kind,
                     context.OPTIONAL() is not null,
                     context.PARAMARRAY() is not null,
-                    [.. _children]);
+                    [.. _children],
+                    // `Items() As Long`: the parentheses after the name make it an array.
+                    context.LPAREN() is not null);
     }
     public SyntaxNode BuildPropertyGetDeclaration(VBAParser.PropertyGetStmtContext context)
     {
@@ -140,8 +142,9 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
             context.GetSourceLocation(_rootUri),
             [.. _children], 
             name,
-            MemberKind.PropertyGet, 
-            modifier);
+            MemberKind.PropertyGet,
+            modifier,
+            IsStatic: context.STATIC() is not null);
     }
     public SyntaxNode BuildPropertyLetDeclaration(VBAParser.PropertyLetStmtContext context)
     {
@@ -155,7 +158,8 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
             [.. _children],
             name,
             MemberKind.PropertyLet,
-            modifier);
+            modifier,
+            IsStatic: context.STATIC() is not null);
     }
     public SyntaxNode BuildPropertySetDeclaration(VBAParser.PropertySetStmtContext context)
     {
@@ -169,7 +173,8 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
             [.. _children],
             name,
             MemberKind.PropertySet,
-            modifier);
+            modifier,
+            IsStatic: context.STATIC() is not null);
     }
     public SyntaxNode BuildProcedureDeclaration(VBAParser.SubStmtContext context)
     {
@@ -183,7 +188,8 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
             [.. _children],
             name,
             MemberKind.Procedure,
-            modifier);
+            modifier,
+            IsStatic: context.STATIC() is not null);
     }
     public SyntaxNode BuildFunctionDeclaration(VBAParser.FunctionStmtContext context)
     {
@@ -197,10 +203,17 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
             [.. _children],
             name,
             MemberKind.Function,
-            modifier);
+            modifier,
+            IsStatic: context.STATIC() is not null);
     }
 
-    public SyntaxNode BuildVariableDeclaration(VBAParser.VariableSubStmtContext context, AccessModifier modifier, bool isStatic)
+    /// <param name="boundExpressions">
+    /// The array-dim bounds as expressions, one pair per dimension, which only the listener can walk a subtree into; empty
+    /// when the declaration has none.
+    /// </param>
+    public SyntaxNode BuildVariableDeclaration(
+        VBAParser.VariableSubStmtContext context, AccessModifier modifier, bool isStatic,
+        ImmutableArray<(ExpressionNode? Lower, ExpressionNode? Upper)> boundExpressions = default)
     {
         // the name can be an IDENTIFIER, a keyword (`Dim Name As String`) or a bracketed foreign
         // name — take the text the way the member builders do, not IDENTIFIER().Symbol.
@@ -214,7 +227,7 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
         var children = _children.ToList();
         if (context.arrayDim() is { } arrayDim)
         {
-            children.Add(BuildArrayBounds(arrayDim, children.Count));
+            children.Add(BuildArrayBounds(arrayDim, children.Count, boundExpressions));
         }
 
         return new VariableDeclarationNode(
@@ -232,7 +245,8 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
     // dimSpec is `[ constantExpression To ] constantExpression`. Bounds are kept as verbatim text —
     // they may reference `Const`s and an omitted lower bound follows `Option Base`, both resolved
     // by a later semantic pass.
-    private ArrayBoundsNode BuildArrayBounds(VBAParser.ArrayDimContext context, int childIndex)
+    private ArrayBoundsNode BuildArrayBounds(
+        VBAParser.ArrayDimContext context, int childIndex, ImmutableArray<(ExpressionNode? Lower, ExpressionNode? Upper)> expressions)
     {
         var location = context.GetSourceLocation(_rootUri);
         var identity = NodeId.Add(childIndex);
@@ -242,79 +256,51 @@ internal class DeclarationNodeBuilder(Uri rootUri, SyntaxNodeId nodeId) : NodeBu
             return new ArrayBoundsNode(identity, location, []);
         }
 
-        var bounds = boundsList.dimSpec().Select(spec => new ArrayDimensionBound(
+        var bounds = boundsList.dimSpec().Select((spec, index) => new ArrayDimensionBound(
             spec.lowerBound()?.constantExpression()?.GetText()?.Trim(),
-            spec.upperBound()?.constantExpression()?.GetText()?.Trim() ?? string.Empty));
+            spec.upperBound()?.constantExpression()?.GetText()?.Trim() ?? string.Empty,
+            expressions.IsDefault || index >= expressions.Length ? null : expressions[index].Lower,
+            expressions.IsDefault || index >= expressions.Length ? null : expressions[index].Upper));
 
         return new ArrayBoundsNode(identity, location, [.. bounds]);
     }
 
-    public SyntaxNode BuildRedimDeclaration(VBAParser.RedimVariableDeclarationContext context, bool isPreserve)
+    public SyntaxNode BuildRedimDeclaration(
+        VBAParser.RedimVariableDeclarationContext context, bool isPreserve, ImmutableArray<RedimDimensionNode> bounds,
+        ExpressionNode? target)
     {
-        var (name, qualifier, typeHint) = RedimTarget(context.expression());
+        var (name, typeHint) = RedimTarget(context.expression());
 
-        // ExitAsTypeClause has already put the optional `As` clause node in _children.
+        // ExitAsTypeClause has already put the optional `As` clause node in _children. The bounds were
+        // captured by the listener, which is the only thing that can turn a subtree into expression nodes.
         var children = _children.ToList();
-        children.Add(BuildRedimBounds(context, children.Count));
+        children.Add(new RedimBoundsNode(
+            NodeId.Add(children.Count), context.GetSourceLocation(_rootUri), bounds));
+
+        // the target is the expression the array is read from and written back through. A recovered parse can leave the listener with none to
+        // capture, and the name is then all there is of it.
+        target ??= new SimpleNameExpressionNode(NodeId.Add(children.Count), context.GetSourceLocation(_rootUri), name);
 
         return new RedimDeclarationNode(
             NodeId,
             context.GetSourceLocation(_rootUri),
-            name,
-            qualifier,
+            target,
             [.. children],
             isPreserve,
             typeHint);
     }
 
-    // the ReDim target is an index expression `lExpression '(' argumentList ')'`; take the callee's
-    // name, plus a qualifier for a member access and the type-declaration character for a simple name.
-    private static (string Name, string? Qualifier, string? TypeHint) RedimTarget(VBAParser.ExpressionContext? expression)
+    // the ReDim target is an index expression `lExpression '(' argumentList ')'`; take the callee's name, and the type-declaration character of a simple name.
+    private static (string Name, string? TypeHint) RedimTarget(VBAParser.ExpressionContext? expression)
         => Indexed(expression).Callee switch
         {
-            VBAParser.SimpleNameExprContext simple
-                => (simple.identifier().Name(), null, simple.identifier().TypeHint()),
-            VBAParser.MemberAccessExprContext member
-                => (member.unrestrictedIdentifier().Name(), member.lExpression()?.GetText(), null),
-            VBAParser.WithMemberAccessExprContext withMember
-                => (withMember.unrestrictedIdentifier().Name(), ".", null),
-            { } other => (other.GetText(), null, null),
-            _ => (expression?.GetText() ?? string.Empty, null, null),
+            VBAParser.SimpleNameExprContext simple => (simple.identifier().Name(), simple.identifier().TypeHint()),
+            VBAParser.MemberAccessExprContext member => (member.unrestrictedIdentifier().Name(), null),
+            VBAParser.WithMemberAccessExprContext withMember => (withMember.unrestrictedIdentifier().Name(), null),
+            { } other => (other.GetText(), null),
+            _ => (expression?.GetText() ?? string.Empty, null),
         };
 
-    // `ReDim x(1 To 10, n)` — one bound per argument: `lower To upper`, or a bare upper. These are
-    // ordinary run-time expressions kept verbatim; the declaration pass does not evaluate them.
-    private ArrayBoundsNode BuildRedimBounds(VBAParser.RedimVariableDeclarationContext context, int childIndex)
-    {
-        var identity = NodeId.Add(childIndex);
-        var location = context.GetSourceLocation(_rootUri);
-
-        var arguments = Indexed(context.expression()).Arguments?.argument();
-        if (arguments is null || arguments.Length == 0)
-        {
-            return new ArrayBoundsNode(identity, location, []);
-        }
-
-        var bounds = new List<ArrayDimensionBound>();
-        foreach (var argument in arguments)
-        {
-            if (argument.positionalArgument()?.argumentExpression() is not { } expression)
-            {
-                continue;
-            }
-
-            if (expression.lowerBoundArgumentExpression() is { } lower && expression.upperBoundArgumentExpression() is { } upper)
-            {
-                bounds.Add(new ArrayDimensionBound(lower.GetText().Trim(), upper.GetText().Trim()));
-            }
-            else if (expression.expression() is { } bound)
-            {
-                bounds.Add(new ArrayDimensionBound(null, bound.GetText().Trim()));
-            }
-        }
-
-        return new ArrayBoundsNode(identity, location, [.. bounds]);
-    }
 
     // the callee `lExpression` and argument list of an `x(...)` index expression, or (null, null).
     private static (VBAParser.LExpressionContext? Callee, VBAParser.ArgumentListContext? Arguments) Indexed(VBAParser.ExpressionContext? expression)

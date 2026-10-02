@@ -1,12 +1,18 @@
+using RDCore.SDK.Model.Symbols.Operators;
 ﻿using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.AST.Expressions;
 using RDCore.SDK.Model.Errors;
+using RDCore.SDK.Model.Symbols.Abstract;
+using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
+using RDCore.SDK.Model.Types.Complex;
+using RDCore.SDK.Semantics.Flags;
 using RDCore.SDK.Semantics.Static.Abstract;
 using RDCore.SDK.Semantics.Static.Expressions;
 using RDCore.SDK.Semantics.Static.Operators;
+using System.Collections.Immutable;
 
 namespace RDCore.SDK.Semantics.Static;
 
@@ -38,6 +44,18 @@ public static class ExpressionStaticSemanticsEvaluator
     /// same "not modeled yet, not wrong" convention every existing rule already uses for its own gaps.
     /// </returns>
     public static StaticSemanticsEvaluationResult Evaluate(StaticEvaluationContext context, ExpressionNode expression)
+    {
+        var result = EvaluateCore(context, expression);
+        if (context.Facts is { } facts)
+        {
+            // children are evaluated first, so what is known of an operand is known when the expression that has it is described.
+            facts.Record(ExpressionFactDescriber.Describe(context, facts, expression, result));
+        }
+
+        return result;
+    }
+
+    private static StaticSemanticsEvaluationResult EvaluateCore(StaticEvaluationContext context, ExpressionNode expression)
         => expression switch
         {
             LiteralExpressionNode => LiteralExpressionStaticSemantics.Instance.DetermineDeclaredType(context, expression),
@@ -50,14 +68,47 @@ public static class ExpressionStaticSemanticsEvaluator
             DictionaryAccessExpressionNode dictionaryAccess => EvaluateDictionaryAccess(context, expression, dictionaryAccess),
             // TypeExpression names a type, not a value - nothing to recurse into as an expression.
             TypeOfIsExpressionNode typeOfIs => EvaluateTypeOfIs(context, expression, typeOfIs),
+            ArrayBoundExpressionNode arrayBound => EvaluateArrayBound(context, arrayBound),
+            ArrayExpressionNode array => EvaluateArray(context, array),
             VBBinaryOperatorExpressionNode binaryOperator => EvaluateBinaryOperator(context, expression, binaryOperator),
             VBUnaryOperatorExpressionNode unaryOperator => EvaluateUnaryOperator(context, expression, unaryOperator),
+            // ByVal flags how an argument is passed; the argument is the expression it is written before.
+            ByValArgumentExpressionNode byVal => Evaluate(context, byVal.Operand),
+            // what is printed is an expression like any other, which can be wrong in its own right; an item of an output list has no type of its own.
+            PrintOutputItemNode item => EvaluateOperands(context, item.Value),
+            PrintSpcClauseNode spc => EvaluateOperands(context, spc.Count),
+            PrintTabClauseNode tab => EvaluateOperands(context, tab.Column),
+            ObjectPrintExpressionNode print => EvaluateOperands(context, [print.Owner, .. print.Items]),
             _ => StaticSemanticsEvaluationResult.Success(VBUnknownType.TypeInfo),
         };
+
+    // the operands of an expression that has no declared type of its own: the first of them that is an error, or nothing known of the expression itself.
+    private static StaticSemanticsEvaluationResult EvaluateOperands(StaticEvaluationContext context, params ExpressionNode?[] operands)
+    {
+        foreach (var operand in operands.OfType<ExpressionNode>())
+        {
+            var result = Evaluate(context, operand);
+            if (result.IsError)
+            {
+                return result;
+            }
+        }
+
+        return StaticSemanticsEvaluationResult.Success(VBUnknownType.TypeInfo);
+    }
 
     private static StaticSemanticsEvaluationResult EvaluateMemberAccess(
         StaticEvaluationContext context, ExpressionNode expression, MemberAccessExpressionNode memberAccess)
     {
+        // MS-VBAL §5.6.12: an owner that names a project or a procedural module (`Strings.LenB`, `VBA.LenB`) is a
+        // namespace, not a value: it has no declared type to look the member up in, and the member is resolved in
+        // the namespace instead.
+        if (memberAccess.Owner is { } namespaceExpression
+            && context.Resolver.NamespaceOf(namespaceExpression, context.Scope.Uri) is { } qualifier)
+        {
+            return EvaluateNamespaceMember(context, expression, qualifier, memberAccess);
+        }
+
         VBType ownerType;
         if (memberAccess.Owner is { } owner)
         {
@@ -84,6 +135,34 @@ public static class ExpressionStaticSemanticsEvaluator
         return MemberAccessExpressionStaticSemantics.Instance.DetermineDeclaredType(context, expression, ownerType);
     }
 
+    // MS-VBAL §5.6.12, an <l-expression> classified as a project or a procedural module: the member access is the
+    // member it resolves to, with that member's own declared type - a variable, property or function's, a value's, or
+    // none for a subroutine. A name the namespace does not have is as invalid as a member a value's type does not.
+    private static StaticSemanticsEvaluationResult EvaluateNamespaceMember(
+        StaticEvaluationContext context, ExpressionNode expression, Symbol qualifier, MemberAccessExpressionNode memberAccess)
+    {
+        var memberName = memberAccess.Member.IdentifierName;
+        var resolved = context.Resolver.ResolveMember(qualifier, memberName, context.Scope.Uri);
+
+        if (resolved.IsError)
+        {
+            return StaticSemanticsEvaluationResult.Error(
+                SimpleNameExpressionStaticSemantics.GetResolutionErrorInfo(expression, memberName, resolved.ErrorId!.Value, resolved.Candidates));
+        }
+
+        if (resolved.Symbol is not { } member)
+        {
+            return StaticSemanticsEvaluationResult.Error(
+                VBCompileErrorInfo.For(VBCompileErrorId.MethodOrDataMemberNotFound, expression.Location, memberName));
+        }
+
+        // 🚧 TODO a namespace that is the whole expression (`Debug.Print VBA`, `x = Strings`) is not a value, which
+        // §5.6.1's classification rules reject where a value is required; no diagnostic says so yet, so it is typed
+        // Unknown rather than rejected. One that is only the left-hand side of another member access never gets here.
+        return StaticSemanticsEvaluationResult.Success(
+            member is ITypedSymbol typed && !NamespaceExpressions.IsNamespace(member) ? typed.ResolvedType : VBUnknownType.TypeInfo);
+    }
+
     private static StaticSemanticsEvaluationResult EvaluateIndexExpression(
         StaticEvaluationContext context, ExpressionNode expression, IndexExpressionNode indexExpression)
     {
@@ -91,6 +170,14 @@ public static class ExpressionStaticSemanticsEvaluator
         if (calleeResult.IsError)
         {
             return calleeResult;
+        }
+
+        // MS-VBAL §5.6.13.1: "It is invalid for an argument list to contain a ByVal argument unless it is the argument
+        // list for an invocation of an external procedure." Only the callee says which it is.
+        if (ByValArgumentIn(indexExpression.Arguments) is { } byValArgument && !IsExternalProcedure(context, indexExpression.Callee))
+        {
+            return StaticSemanticsEvaluationResult.Error(VBCompileErrorInfo.For(VBCompileErrorId.ByValArgumentNotAllowed, byValArgument.Location,
+                "ByVal can only be written before an argument of an external procedure's invocation (MS-VBAL §5.6.13.1)."));
         }
 
         foreach (var argument in indexExpression.Arguments)
@@ -102,7 +189,89 @@ public static class ExpressionStaticSemanticsEvaluator
             }
         }
 
+        // an index of an array is no argument: any other callee may take what is written in its argument list by reference.
+        if (calleeResult.Result is not VBArrayType)
+        {
+            MarkPassedAsArguments(context, indexExpression.Arguments);
+        }
+
+        // MS-VBAL §5.6.13: the arguments are those of a call when the callee is a procedure, and the result of the call has the type the procedure
+        // returns - however that type is shaped: `Whole()` of a function that returns Long() is no element of an array. A procedure that declares no
+        // parameters is not given the arguments written after it: it is called, and they index what it returns.
+        if (ProcedureNamedBy(context, indexExpression.Callee) is { } procedure)
+        {
+            var indexesResult = procedure.Parameters.All(parameter => parameter.Name == "Me")
+                && indexExpression.Arguments is not ([] or [MissingArgumentNode]);
+            return indexesResult
+                ? IndexExpressionStaticSemantics.Instance.DetermineDeclaredType(context, expression, calleeResult.Result!)
+                : calleeResult;
+        }
+
         return IndexExpressionStaticSemantics.Instance.DetermineDeclaredType(context, expression, calleeResult.Result!);
+    }
+
+    /// <summary>
+    /// Flags the arguments of a call that may be taken by reference (<see cref="ValueExpressionSemanticFlags.PassedAsArgument"/>): not one written with
+    /// <c>ByVal</c>, which is a value bound to nothing, nor one that is not a value (the address of a procedure).
+    /// </summary>
+    internal static void MarkPassedAsArguments(StaticEvaluationContext context, IEnumerable<ExpressionNode> arguments)
+    {
+        if (context.Facts is not { } facts)
+        {
+            return;
+        }
+
+        foreach (var argument in arguments)
+        {
+            var passed = argument is NamedArgumentNode named ? named.Value : argument;
+            if (passed is ByValArgumentExpressionNode or AddressOfExpressionNode or MissingArgumentNode)
+            {
+                continue;
+            }
+
+            if (facts.TryGet(passed.Identity, out var fact))
+            {
+                facts.Record(fact with { Flags = fact.Flags | ValueExpressionSemanticFlags.PassedAsArgument });
+            }
+        }
+    }
+
+    // the Function or Property Get a callee names, by its bare name, qualified by the project or module that declares it, or as a member of an object
+    // of a class; null for anything that is not one (an array, a variable that holds an object, a Sub).
+    internal static VBReturningMemberSymbol? ProcedureNamedBy(StaticEvaluationContext context, ExpressionNode callee)
+    {
+        Symbol? symbol = callee switch
+        {
+            SimpleNameExpressionNode name => context.Resolver.ResolveValue(name.IdentifierName, ScopeKind.Local, context.Scope.Uri).Symbol,
+            MemberAccessExpressionNode { Owner: { } owner } access when context.Resolver.NamespaceOf(owner, context.Scope.Uri) is { } qualifier
+                => context.Resolver.ResolveMember(qualifier, access.Member.IdentifierName, context.Scope.Uri).Symbol,
+            MemberAccessExpressionNode { Owner: { } owner } access when Evaluate(context, owner) is { IsSuccess: true, Result: VBClassType classType }
+                => classType.Members.FirstOrDefault(member => string.Equals(member.Name, access.Member.IdentifierName, StringComparison.OrdinalIgnoreCase)
+                    && member is VBFunctionMemberSymbol or VBPropertyGetMemberSymbol),
+            _ => null,
+        };
+
+        return symbol as VBReturningMemberSymbol;
+    }
+
+    // an argument written with ByVal, whether it is positional or named.
+    private static ExpressionNode? ByValArgumentIn(ImmutableArray<ExpressionNode> arguments)
+        => arguments.FirstOrDefault(argument => argument is ByValArgumentExpressionNode
+            || argument is NamedArgumentNode { Value: ByValArgumentExpressionNode });
+
+    // whether the expression a call is written on names an external procedure, a Declare: by its bare name, or qualified
+    // by the project or module that declares it (MS-VBAL §5.6.12).
+    private static bool IsExternalProcedure(StaticEvaluationContext context, ExpressionNode callee)
+    {
+        var symbol = callee switch
+        {
+            SimpleNameExpressionNode name => context.Resolver.ResolveValue(name.IdentifierName, ScopeKind.Local, context.Scope.Uri).Symbol,
+            MemberAccessExpressionNode { Owner: { } owner } access when context.Resolver.NamespaceOf(owner, context.Scope.Uri) is { } qualifier
+                => context.Resolver.ResolveMember(qualifier, access.Member.IdentifierName, context.Scope.Uri).Symbol,
+            _ => null,
+        };
+
+        return symbol is VBExternalFunctionMemberSymbol or VBExternalSubMemberSymbol;
     }
 
     // MissingArgumentNode is a placeholder, not a value - nothing to evaluate. NamedArgumentNode and
@@ -113,6 +282,7 @@ public static class ExpressionStaticSemanticsEvaluator
         {
             MissingArgumentNode => null,
             NamedArgumentNode named => Evaluate(context, named.Value),
+            ByValArgumentExpressionNode byVal => Evaluate(context, byVal.Operand),
             AddressOfExpressionNode addressOf => Evaluate(context, addressOf.Target),
             _ => Evaluate(context, argument),
         };
@@ -144,6 +314,41 @@ public static class ExpressionStaticSemanticsEvaluator
         }
 
         return DictionaryAccessExpressionStaticSemantics.Instance.DetermineDeclaredType(context, expression, ownerType);
+    }
+
+    // MS-VBAL 3.3.5.2: LBound and UBound yield a Long whatever the array, so the result type needs nothing of the
+    // operands - but an operand is an expression like any other and can be wrong in its own right, which is the
+    // first rule to fail here.
+    // 🚧 TODO the array operand's declared type must be an array, or a Variant or Object that may hold one: MS-VBA
+    // refuses anything else when it compiles the expression. Nothing says that yet, so a non-array operand is only
+    // found out when the expression runs.
+    private static StaticSemanticsEvaluationResult EvaluateArrayBound(StaticEvaluationContext context, ArrayBoundExpressionNode arrayBound)
+    {
+        foreach (var operand in arrayBound.Inputs.OfType<ExpressionNode>())
+        {
+            var result = Evaluate(context, operand);
+            if (result.IsError)
+            {
+                return result;
+            }
+        }
+
+        return StaticSemanticsEvaluationResult.Success(VBLongType.TypeInfo);
+    }
+
+    // the Array keyword yields a Variant whatever its elements, which are expressions like any other and can be wrong in their own right.
+    private static StaticSemanticsEvaluationResult EvaluateArray(StaticEvaluationContext context, ArrayExpressionNode array)
+    {
+        foreach (var element in array.Elements)
+        {
+            var result = Evaluate(context, element);
+            if (result.IsError)
+            {
+                return result;
+            }
+        }
+
+        return StaticSemanticsEvaluationResult.Success(VBVariantType.TypeInfo);
     }
 
     private static StaticSemanticsEvaluationResult EvaluateTypeOfIs(
@@ -216,6 +421,10 @@ public static class ExpressionStaticSemanticsEvaluator
     {
         Tokens.NegationOp => new UnaryNegationOperatorStaticSemantics(),
         Tokens.LogicalNotOp => new UnaryLogicalOperatorStaticSemantics(),
+        // MS-VBAL 5.6.6: a pair of parentheses is an operator, and it leaves the declared type alone.
+        // Without a rule it falls through to the VBUnknownType above, which would lose the type of
+        // everything anyone ever wrote parentheses around.
+        OperatorSymbolNames.UnaryLetCoerceOp => new UnaryLetCoerceOperatorStaticSemantics(),
         _ => null,
     };
 }

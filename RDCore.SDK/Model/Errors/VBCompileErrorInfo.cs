@@ -80,5 +80,18 @@ public record class VBCompileErrorInfo : VBErrorInfo
         [VBCompileErrorId.DuplicateLabelDefinition] = Exceptions.VBCompileError_DuplicateLabelDefinition,
         [VBCompileErrorId.InconsistentPropertyAccessors] = Exceptions.VBCompileError_InconsistentPropertyAccessors,
         [VBCompileErrorId.ArgumentRequiredForPropertyLetOrSet] = Exceptions.VBCompileError_ArgumentRequiredForPropertyLetOrSet,
+        [VBCompileErrorId.EventNotDefined] = Exceptions.VBCompileError_EventNotDefined,
+        [VBCompileErrorId.EventArgumentsIncompatible] = Exceptions.VBCompileError_EventArgumentsIncompatible,
+        [VBCompileErrorId.InvalidWithEventsType] = Exceptions.VBCompileError_InvalidWithEventsType,
+        [VBCompileErrorId.InvalidEventName] = Exceptions.VBCompileError_InvalidEventName,
+        [VBCompileErrorId.InvalidEventHandler] = Exceptions.VBCompileError_InvalidEventHandler,
+        [VBCompileErrorId.ByValArgumentNotAllowed] = Exceptions.VBCompileError_ByValArgumentNotAllowed,
+        [VBCompileErrorId.InvalidImplementsDirective] = Exceptions.VBCompileError_InvalidImplementsDirective,
+        [VBCompileErrorId.InterfaceMemberNotImplemented] = Exceptions.VBCompileError_InterfaceMemberNotImplemented,
+        [VBCompileErrorId.InvalidImplementedMember] = Exceptions.VBCompileError_InvalidImplementedMember,
+        [VBCompileErrorId.SubOrFunctionNotDefined] = Exceptions.VBCompileError_SubOrFunctionNotDefined,
+        [VBCompileErrorId.ExitSubNotAllowedInFunctionOrProperty] = Exceptions.VBCompileError_ExitSubNotAllowedInFunctionOrProperty,
+        [VBCompileErrorId.VariableRequired] = Exceptions.VBCompileError_VariableRequired,
+        [VBCompileErrorId.FileAccessNotValidForMode] = Exceptions.VBCompileError_FileAccessNotValidForMode,
     };
 }

@@ -82,7 +82,9 @@ public sealed class ProcedureExecutorTests
         var assignments = new LetAssignmentEvaluator(letCoercion, formatter, expressionEvaluator);
         var statements = new StatementRuntimeSemanticsProvider(expressionEvaluator, assignments, new SetCoercionRuntimeSemantics(formatter), print, new ConditionEvaluator(expressionEvaluator, booleanCoercion),
             new FileStatementRuntimeSemantics(expressionEvaluator, print, new WriteOutputEvaluator(expressionEvaluator, new VBStringLetCoercionRuntimeSemantics(formatter)), numericCoercion, new VBStringLetCoercionRuntimeSemantics(formatter), assignments, new InputListEvaluator(assignments)),
-            new FixedAssignmentRuntimeSemantics(expressionEvaluator, new VBStringLetCoercionRuntimeSemantics(formatter), assignments));
+            new FixedAssignmentRuntimeSemantics(expressionEvaluator, new VBStringLetCoercionRuntimeSemantics(formatter), assignments),
+            new ArrayStatementRuntimeSemantics(expressionEvaluator, numericCoercion, assignments),
+            new MidStatementRuntimeSemantics(expressionEvaluator, new VBStringLetCoercionRuntimeSemantics(formatter), numericCoercion, assignments));
         var conditions = new ConditionEvaluator(expressionEvaluator, booleanCoercion);
         var withStatement = new WithStatementRuntimeSemantics(new SetCoercionRuntimeSemantics(formatter), letCoercion);
         var withTargets = new WithTargetEvaluator(expressionEvaluator, withStatement);
@@ -577,28 +579,6 @@ public sealed class ProcedureExecutorTests
 
         Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
         Assert.AreEqual((int)VBRuntimeErrorId.ObjectDoesntSupportThisPropertyOrMethod, outcome.ErrorInfo!.ErrorId);
-    }
-
-    [TestMethod]
-    public void ForEachLoop_OverAnObjectWithANewEnumMember_IsRecognized_ButDefersAsInternalError()
-        // VB_UserMemId = -4 ("_NewEnum") is structurally recognized, but actually enumerating it means
-        // invoking it and then the COM IEnumVARIANT-shaped methods on whatever it returns - real
-        // procedure invocation, which doesn't exist yet.
-    {
-        var list = Lower("For Each item In coll", "s = 999", "Next");
-        var newEnum = (VBTypeMemberSymbol)new VBFunctionMemberSymbol(Root, Root, "_NewEnum", ScopeKind.Module, SymbolKindExt.Function, VBObjectType.TypeInfo, R, R, AccessModifier.Public)
-            .With(SymbolProperties.UserMemId, WellKnownDispIds.NewEnum);
-        var widget = new VBClassModuleSymbol(Root, Root, "Widget") { Members = [newEnum] };
-        var item = Local("item", VBObjectType.TypeInfo);
-        var s = Local("s", VBLongType.TypeInfo);
-        var coll = Local("coll", VBObjectType.TypeInfo);
-        var session = ComposeSession(widget, newEnum, item, s, coll);
-        var instance = session.Symbols.CreateInstance(session.Objects.CreateObject(), widget);
-        var frame = PushFrame(session, (item, VBObjectValue.Nothing), (s, new VBLongValue(0)), (coll, new VBObjectValue(instance.ObjectId)));
-
-        var outcome = Executor().Run(session, frame, list, new RuntimeEvaluationContext(ProcedureUri));
-
-        Assert.AreEqual(RuntimeExecutionOutcomeKind.InternalError, outcome.Kind);
     }
 
     [TestMethod]

@@ -4,6 +4,7 @@ using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
 using System.Collections.Immutable;
 
@@ -32,6 +33,15 @@ public record class VBClassType(VBClassModuleSymbol Symbol, ImmutableArray<VBTyp
     /// </remarks>
     public static VBClassType FromClassModule(VBClassModuleSymbol classModule)
         => FromClassModule(classModule, [classModule.Uri.AbsoluteUri]);
+
+    /// <summary>
+    /// The type a name resolved to a class module is: its precomputed default interface (<see cref="VBClassModuleSymbol.DefaultInterfaceMembers"/>, which is
+    /// not built again) with what that interface does not carry - the interfaces the class implements, which an object of it may be Set to, and its default
+    /// member, which indexing an object of it calls.
+    /// </summary>
+    /// <param name="classModule">The class module, as the composition has it.</param>
+    public static VBClassType Of(VBClassModuleSymbol classModule)
+        => FromClassModule(classModule) with { Members = classModule.DefaultInterfaceMembers };
 
     // classModule.ImplementedInterfaces isn't itself validated yet (MS-VBAL §5.2.3.6 disallows a
     // circular Implements chain, but nothing enforces that today) - visited guards this recursion
@@ -87,6 +97,12 @@ public record class VBClassType(VBClassModuleSymbol Symbol, ImmutableArray<VBTyp
     private readonly static Lazy<VBObjectValue> _defaultValue = new(() => VBObjectValue.Nothing, LazyThreadSafetyMode.PublicationOnly);
     public override VBObjectValue DefaultValue => _defaultValue.Value;
 
+    /// <summary>
+    /// A variable declared as a class holds an object reference like one declared <c>As Object</c>: what makes it a
+    /// reference to an instance of this class is the object, not the variable's value.
+    /// </summary>
+    public override VBTypedValue CreateValue(IBindingHandle handle) => new VBObjectValue(handle);
+
     ImmutableArray<VBDeferredTypeMemberSymbol> IVBMemberOwnerType.DeferredMembers { get; init; } = [];
 
     public IVBMemberOwnerType WithMembers(IEnumerable<VBTypeMemberSymbol> members) => this with { Members = [.. members] };
@@ -96,4 +112,7 @@ public record class VBDeferredClassType(string Name, Uri Uri): VBDeferredType(Na
 {
     private static readonly Lazy<VBObjectValue> _defaultValue = new(() => VBNothingValue.Nothing, LazyThreadSafetyMode.PublicationOnly);
     public override VBTypedValue DefaultValue => _defaultValue.Value;
+
+    /// <inheritdoc cref="VBClassType.CreateValue"/>
+    public override VBTypedValue CreateValue(IBindingHandle handle) => new VBObjectValue(handle);
 }

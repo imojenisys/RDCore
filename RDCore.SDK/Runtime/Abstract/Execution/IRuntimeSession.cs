@@ -3,6 +3,7 @@ using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Runtime;
+using RDCore.SDK.Runtime.Shared;
 using System.Diagnostics.CodeAnalysis;
 
 namespace RDCore.SDK.Runtime.Abstract.Execution;
@@ -100,6 +101,17 @@ public interface IRuntimeSession
     /// </remarks>
     /// <returns><c>true</c> if the object was destroyed as a result of this call.</returns>
     bool ReleaseReference(VBRuntimeObjectId instance, IBindingHandle handle);
+
+    /// <summary>
+    /// What raises the lifecycle events of the session's objects, or <see langword="null"/> while nothing can run
+    /// user code against the session yet — a session whose symbols are only being defined. Set by whatever composes
+    /// the execution pipeline, which is what the handlers run through.
+    /// </summary>
+    /// <remarks>
+    /// While it is <see langword="null"/>, <see cref="ReleaseReference"/> destroys an object that has no references
+    /// left without raising <c>Terminate</c>.
+    /// </remarks>
+    IObjectLifecycle? Lifecycle { get; set; }
 }
 
 /// <summary>
@@ -128,6 +140,77 @@ public interface ISessionSymbols
     /// <param name="scope">The scope it was defined in.</param>
     /// <returns><c>false</c> if no such symbol was defined in that scope.</returns>
     bool TryUndefine(Symbol symbol, ScopeKind scope);
+
+    /// <summary>
+    /// Replaces the definition of a symbol that is already defined in <paramref name="scope"/> with
+    /// <paramref name="symbol"/>, and keeps the value its storage holds when that value is still the
+    /// declaration's own.
+    /// </summary>
+    /// <remarks>
+    /// What a live session needs when a module is read again but a variable in it was not touched:
+    /// a module-level variable, or a <c>Static</c> local, is the same declaration before and after, so what it
+    /// held is still what it holds. Redefining it with <see cref="TryUndefine"/> and <see cref="TryDefine"/>
+    /// instead would hand back its type's default every time anything else in the module changed.
+    /// <para>
+    /// The value is kept only when the declared type is identical. A variable redeclared as another type is not
+    /// the same variable, and its storage — sized for the old type — is freed and allocated again, as it would
+    /// be by <see cref="TryUndefine"/> followed by <see cref="TryDefine"/>. A symbol that holds no storage is
+    /// simply replaced.
+    /// </para>
+    /// </remarks>
+    /// <param name="symbol">The newest definition, which takes the place of the one with the same identity.</param>
+    /// <param name="scope">The scope it was defined in.</param>
+    /// <returns><c>false</c> if no symbol with that identity was defined in that scope.</returns>
+    bool TryRedefine(Symbol symbol, ScopeKind scope);
+
+    /// <summary>
+    /// Composes the class module <paramref name="moduleName"/> from the members the session now has defined for it: its
+    /// <see cref="VBClassModuleSymbol.Members"/>, its default interface, and the interfaces it implements
+    /// (<strong>MS-VBAL §5.2.4.2</strong>), resolved over every class module the session has.
+    /// </summary>
+    /// <remarks>
+    /// A module symbol is composed from a project without being read, and its members are defined one at a time, each
+    /// under its own identity: nothing links the symbol of a class to what it declares, which is what an object of the class
+    /// needs to find the members it is called on, the events it raises and handles, and the interfaces it implements. This
+    /// is the step that does, and it is one for the whole session rather than for the module: an interface defined after the
+    /// class that implements it, or defined again since, leaves the class holding it as it was.
+    /// </remarks>
+    /// <param name="moduleName">The name of the class module, which has been defined with its members.</param>
+    /// <param name="implementedInterfaceNames">The names of the interfaces its <c>Implements</c> directives name, as written.</param>
+    /// <returns><c>false</c> if the session has no class module of that name.</returns>
+    /// <param name="implementedInterfaceRanges">Where each directive is written, one for each name, or empty when that is not known.</param>
+    bool TryComposeClassModule(
+        string moduleName, System.Collections.Immutable.ImmutableArray<string> implementedInterfaceNames,
+        System.Collections.Immutable.ImmutableArray<RDCore.SDK.Model.Source.SourceRange> implementedInterfaceRanges = default);
+
+    /// <summary>
+    /// What the storage of a declared variable starts as, or <see langword="null"/> while nothing can reduce the constant
+    /// expressions of an array's bounds yet - a session whose symbols are only being defined. Set by whatever composes the
+    /// execution pipeline, as <see cref="IRuntimeSession.Lifecycle"/> is.
+    /// </summary>
+    /// <remarks>
+    /// While it is <see langword="null"/>, a variable starts as the default value of its declared type, which for a fixed-size array
+    /// is one with no dimensions: <see cref="Symbols.Abstract.SymbolProperties.ArrayBounds"/> are applied by whatever sets this.
+    /// </remarks>
+    IVariableDefaults? Defaults { get; set; }
+
+    /// <summary>
+    /// The members the session has defined for a module, in no particular order: every procedure, property accessor,
+    /// event, variable and constant declared by the module whose <see cref="Symbol.Uri"/> is <paramref name="moduleUri"/>.
+    /// </summary>
+    /// <remarks>
+    /// Names are not enough to find a declaration: the <c>Get</c>, <c>Let</c> and <c>Set</c> accessors of a property share one.
+    /// </remarks>
+    /// <param name="moduleUri">The <see cref="Symbol.Uri"/> of the module symbol.</param>
+    IReadOnlyList<VBTypeMemberSymbol> MembersOf(Uri moduleUri);
+
+    /// <summary>
+    /// The lexical scope a symbol's code is found in (<strong>RD-VBAL §2.3.1.2</strong>), over everything the session has defined: what the static
+    /// pass resolves the names of a procedure body against.
+    /// </summary>
+    /// <param name="uri">The <see cref="Symbol.Uri"/> of the procedure or module.</param>
+    /// <returns>The scope, or <see langword="null"/> when the session has defined no symbol at that address.</returns>
+    LexicalScope? ScopeOf(Uri uri);
 
     /// <summary>
     /// Resolves <paramref name="name"/> visible from <paramref name="scope"/> in the default binding
@@ -214,4 +297,78 @@ public interface ISessionObjects
 
     /// <summary>Drops a reference to an instance and returns the remaining reference count.</summary>
     int RemoveRef(VBRuntimeObjectId instance, IBindingHandle handle);
+
+    /// <summary>Whether <paramref name="handle"/> is one of the roots currently holding a reference to an instance.</summary>
+    bool IsHeldBy(VBRuntimeObjectId instance, IBindingHandle handle);
+
+    /// <summary>The number of references currently held to an instance; <c>0</c> for one that is not live.</summary>
+    int RefCount(VBRuntimeObjectId instance);
+
+    /// <summary>
+    /// Records that <c>Terminate</c> is about to run for an instance (<strong>MS-VBAL §5.3.1.10</strong>: at most once
+    /// during an object's lifetime, however often it becomes a candidate for destruction).
+    /// </summary>
+    /// <returns><see langword="true"/> the first time it is asked of a live instance; otherwise <see langword="false"/>.</returns>
+    bool TryBeginTerminate(VBRuntimeObjectId instance);
+
+    /// <summary>
+    /// Records that <paramref name="variable"/>, a <c>WithEvents</c> variable of <paramref name="subscriber"/>, now holds
+    /// <paramref name="source"/>, so that the procedures of the subscriber's class that handle events of the variable
+    /// handle those of the source (<strong>MS-VBAL §5.4.3.9</strong>).
+    /// </summary>
+    /// <remarks>
+    /// A source's handlers are in the order their variables were assigned, so one that is already attached is moved to
+    /// the end of that order: it is the last to handle an event raised from now on (<strong>MS-VBAL §5.4.2.20</strong>).
+    /// </remarks>
+    void AttachEventHandlers(VBRuntimeObjectId source, VBRuntimeObjectId subscriber, Symbol variable);
+
+    /// <summary>
+    /// Records that <paramref name="variable"/> of <paramref name="subscriber"/> no longer holds
+    /// <paramref name="source"/>: its handlers no longer handle the source's events.
+    /// </summary>
+    void DetachEventHandlers(VBRuntimeObjectId source, VBRuntimeObjectId subscriber, Symbol variable);
+
+    /// <summary>
+    /// Detaches every handler of <paramref name="subscriber"/>, from every source: it is being destroyed, and nothing
+    /// of it can handle an event any more.
+    /// </summary>
+    void DetachSubscriber(VBRuntimeObjectId subscriber);
+
+    /// <summary>
+    /// The subscriptions that handle the events of <paramref name="source"/>, in the order they were attached.
+    /// </summary>
+    IReadOnlyList<EventSubscription> EventSubscribers(VBRuntimeObjectId source);
+}
+
+/// <summary>
+/// One <c>WithEvents</c> variable of an object holding the source of the events it handles.
+/// </summary>
+/// <param name="Subscriber">The object whose class declares the variable, and the handlers.</param>
+/// <param name="Variable">The <c>WithEvents</c> variable, which names the handlers: <c>VariableName_EventName</c>.</param>
+public readonly record struct EventSubscription(VBRuntimeObjectId Subscriber, Symbol Variable);
+
+/// <summary>
+/// Raises the lifecycle events of a class instance (<strong>MS-VBAL §5.3.1.10</strong>) by dispatching the members of
+/// <see cref="ClassLifecycleInterface"/> to whatever the instance's class implements them with.
+/// </summary>
+/// <remarks>
+/// A class that handles neither event is the common case, and raising an event it does not handle does nothing and
+/// is not an error. A lifecycle is the session's, not a call site's, so what raises these events is the creation and
+/// release of an instance, never user code.
+/// </remarks>
+public interface IObjectLifecycle
+{
+    /// <summary>
+    /// Raises <c>Initialize</c> on <paramref name="instance"/>, which has just been created and has not been
+    /// returned to anything yet.
+    /// </summary>
+    /// <returns>The outcome of the handler; an error the handler leaves unhandled is the creating operation's own.</returns>
+    RuntimeSemanticsEvaluationResult Initialize(VBRuntimeObjectId instance);
+
+    /// <summary>
+    /// Raises <c>Terminate</c> on <paramref name="instance"/>, which is about to be destroyed. Whether it should
+    /// run at all is the caller's to decide (<see cref="ISessionObjects.TryBeginTerminate"/>).
+    /// </summary>
+    /// <returns>The outcome of the handler.</returns>
+    RuntimeSemanticsEvaluationResult Terminate(VBRuntimeObjectId instance);
 }

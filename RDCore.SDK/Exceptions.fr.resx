@@ -222,6 +222,12 @@
   <data name="VBForEach_ObjectVariableNotSet_Verbose" xml:space="preserve">
     <value>L'expression de collection de cette boucle For Each est Nothing. Son énumération requiert l'invocation de son membre _NewEnum, ce qui est impossible sur une référence d'objet non définie.</value>
   </data>
+  <data name="VBMemberAssignment_NotAssignable_Verbose" xml:space="preserve">
+    <value>L'objet n'a aucune variable publique, ni Property Let ni Property Set, de ce nom dans laquelle l'affectation puisse écrire.</value>
+  </data>
+  <data name="VBMemberAccess_ObjectVariableNotSet_Verbose" xml:space="preserve">
+    <value>L'objet sur lequel ce membre est accédé est Nothing : une variable objet qui n'a jamais été définie, ou qui a été définie à Nothing, n'a aucun objet pour porter le membre.</value>
+  </data>
   <data name="VBForEach_RequiresEnumerableCollection_Verbose" xml:space="preserve">
     <value>L'expression de collection de cette boucle For Each doit être un tableau, ou un objet exposant un membre d'énumération (VB_UserMemId = -4, communément nommé _NewEnum).</value>
   </data>
@@ -350,6 +356,45 @@
   </data>
   <data name="VBCompileError_ArgumentRequiredForPropertyLetOrSet" xml:space="preserve">
     <value>Argument requis pour Property Let ou Property Set</value>
+  </data>
+  <data name="VBCompileError_EventNotDefined" xml:space="preserve">
+    <value>Événement non défini</value>
+  </data>
+  <data name="VBCompileError_EventArgumentsIncompatible" xml:space="preserve">
+    <value>Nombre d'arguments incorrect ou argument non valide pour l'événement</value>
+  </data>
+  <data name="VBCompileError_InvalidWithEventsType" xml:space="preserve">
+    <value>Type non valide pour la variable WithEvents</value>
+  </data>
+  <data name="VBCompileError_InvalidEventName" xml:space="preserve">
+    <value>Nom d'événement non valide</value>
+  </data>
+  <data name="VBCompileError_InvalidEventHandler" xml:space="preserve">
+    <value>Gestionnaire d'événement non valide</value>
+  </data>
+  <data name="VBCompileError_ByValArgumentNotAllowed" xml:space="preserve">
+    <value>Argument ByVal non autorisé ici</value>
+  </data>
+  <data name="VBCompileError_InvalidImplementsDirective" xml:space="preserve">
+    <value>Directive Implements non valide</value>
+  </data>
+  <data name="VBCompileError_InterfaceMemberNotImplemented" xml:space="preserve">
+    <value>Le module objet doit implémenter tous les membres de son interface</value>
+  </data>
+  <data name="VBCompileError_InvalidImplementedMember" xml:space="preserve">
+    <value>Membre implémenté non valide</value>
+  </data>
+  <data name="VBCompileError_SubOrFunctionNotDefined" xml:space="preserve">
+    <value>Sub ou Function non définie</value>
+  </data>
+  <data name="VBCompileError_ExitSubNotAllowedInFunctionOrProperty" xml:space="preserve">
+    <value>Exit Sub non permis dans une procédure Function ou une propriété</value>
+  </data>
+  <data name="VBCompileError_VariableRequired" xml:space="preserve">
+    <value>Variable requise - impossible d'assigner à cette expression</value>
+  </data>
+  <data name="VBCompileError_FileAccessNotValidForMode" xml:space="preserve">
+    <value>Accès non valide pour le mode du fichier</value>
   </data>
   <data name="VBCompileError_UnspecifiedError" xml:space="preserve">
     <value>Erreur non spécifiée</value>

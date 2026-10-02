@@ -1,10 +1,12 @@
-﻿using RDCore.SDK.Model.AST;
+﻿using RDCore.SDK.Model;
+using RDCore.SDK.Model.AST;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.StdLib;
+using RDCore.SDK.Workspace;
 using System.Collections.Immutable;
 
 namespace RDCore.LanguageServer.Symbols;
@@ -45,8 +47,9 @@ internal static class WorkspaceSymbolResolver
     /// </param>
     public static ISymbolResolver Compose(
         Uri workspaceRoot, IEnumerable<(Uri ModuleUri, ModuleType ModuleType, ModuleParseResult Parse)> modules,
-        ISymbolResolver fallback, string? projectName = null)
-        => ComposeWithScopes(workspaceRoot, modules, fallback, projectName).Resolver;
+        ISymbolResolver fallback, string? projectName = null,
+        ImplicitDeclarationScope implicitScope = ImplicitDeclarationScope.Procedure)
+        => ComposeWithScopes(workspaceRoot, modules, fallback, projectName, implicitScope).Resolver;
 
     /// <summary>
     /// Composes the workspace like <see cref="Compose"/> and also returns the scope tree the resolver
@@ -54,7 +57,8 @@ internal static class WorkspaceSymbolResolver
     /// </summary>
     public static WorkspaceComposition ComposeWithScopes(
         Uri workspaceRoot, IEnumerable<(Uri ModuleUri, ModuleType ModuleType, ModuleParseResult Parse)> modules,
-        ISymbolResolver fallback, string? projectName = null)
+        ISymbolResolver fallback, string? projectName = null,
+        ImplicitDeclarationScope implicitScope = ImplicitDeclarationScope.Procedure)
     {
         var parsed = modules.ToList();
 
@@ -64,7 +68,7 @@ internal static class WorkspaceSymbolResolver
         var declared = BuildSymbols(workspaceRoot, parsed, fallback, projectName, withImplicitDeclarations: false);
         var declaredResolver = new CompositeSymbolResolver(new ScopeTreeSymbolResolver(ScopeTreeBuilder.Build(declared)), fallback);
 
-        var bound = BuildSymbols(workspaceRoot, parsed, declaredResolver, projectName);
+        var bound = BuildSymbols(workspaceRoot, parsed, declaredResolver, projectName, implicitScope: implicitScope);
         var scopeTree = ScopeTreeBuilder.Build(bound);
         return new WorkspaceComposition(new CompositeSymbolResolver(new ScopeTreeSymbolResolver(scopeTree), fallback), scopeTree);
     }
@@ -73,7 +77,8 @@ internal static class WorkspaceSymbolResolver
     // through typeResolver.
     private static List<Symbol> BuildSymbols(
         Uri workspaceRoot, IReadOnlyList<(Uri ModuleUri, ModuleType ModuleType, ModuleParseResult Parse)> modules,
-        ISymbolResolver typeResolver, string? projectName, bool withImplicitDeclarations = true)
+        ISymbolResolver typeResolver, string? projectName, bool withImplicitDeclarations = true,
+        ImplicitDeclarationScope implicitScope = ImplicitDeclarationScope.Procedure)
     {
         var symbols = new List<Symbol>();
         if (projectName is not null)
@@ -91,26 +96,25 @@ internal static class WorkspaceSymbolResolver
             // it here so the scope tree has a module tier to hang the members off (and so a
             // same-module name collision reads as a duplicate declaration, not an ambiguous name).
             var moduleName = moduleUri.Fragment.TrimStart('#');
-            var directives = new ModuleDirectives(
-                Explicit: parseResult.SyntaxTree?.HasOptionExplicit() ?? false,
-                Compare: parseResult.SyntaxTree?.GetOptionCompare() ?? OptionCompare.Binary);
+            var directives = parseResult.SyntaxTree.GetModuleDirectives();
             var implementedInterfaceNames = parseResult.SyntaxTree?.GetImplementedInterfaceNames() ?? [];
             VBModuleSymbol module = moduleType == ModuleType.ClassModule
                 ? (VBModuleSymbol)new VBClassModuleSymbol(workspaceRoot, workspaceRoot, moduleName)
-                    { Directives = directives, ImplementedInterfaceNames = implementedInterfaceNames }
+                    {
+                        Directives = directives,
+                        ImplementedInterfaceNames = implementedInterfaceNames,
+                        ImplementedInterfaceRanges = parseResult.SyntaxTree?.GetImplementedInterfaceRanges() ?? [],
+                    }
                     .With(SymbolProperties.Creatable, parseResult.SyntaxTree?.IsCreatable() ?? true)
                     .With(SymbolProperties.PredeclaredId, parseResult.SyntaxTree?.IsPredeclared() ?? false)
+                    .With(SymbolProperties.Extensible, parseResult.SyntaxTree?.IsExtensible() ?? false)
                 : new VBStandardModuleSymbol(workspaceRoot, workspaceRoot, moduleName) { Directives = directives };
 
             // members can't ride on the module symbol the way a Type's fields ride on it (built from
             // one AST node's own children) - a module's members are separate top-level declarations,
             // so they're only known once the member provider below has run.
-            // tagged here, once, before the ownMembers/symbols split below - both need the same tagged
-            // instances, not just whichever one applied the attribute.
-            var members = new SyntaxTreeSymbolProvider(workspaceRoot, moduleUri, moduleType, parseResult, typeResolver, withImplicitDeclarations).ProvideSymbols()
-                .Select(member => member is VBTypeMemberSymbol typeMember && parseResult.SyntaxTree?.GetMemberUserMemId(typeMember.Name) is { } userMemId
-                    ? (Symbol)typeMember.With(SymbolProperties.UserMemId, userMemId)
-                    : member)
+            // (the provider tags each member with its VB_UserMemId, once, so the ownMembers/symbols split below has the same tagged instances.)
+            var members = new SyntaxTreeSymbolProvider(workspaceRoot, moduleUri, moduleType, parseResult, typeResolver, withImplicitDeclarations, implicitScope).ProvideSymbols()
                 .ToList();
             ImmutableArray<VBTypeMemberSymbol> ownMembers =
                 [.. members.Where(member => member.ParentUri.AbsoluteUri == module.Uri.AbsoluteUri).OfType<VBTypeMemberSymbol>()];
@@ -170,52 +174,13 @@ internal static class WorkspaceSymbolResolver
     /// </remarks>
     private static void ResolveImplementedInterfaces(List<Symbol> symbols)
     {
-        var classModulesByName = new Dictionary<string, VBClassModuleSymbol>(StringComparer.OrdinalIgnoreCase);
-        foreach (var classModule in symbols.OfType<VBClassModuleSymbol>())
-        {
-            classModulesByName.TryAdd(classModule.Name, classModule);
-        }
-
-        var resolved = new Dictionary<string, VBClassModuleSymbol>(StringComparer.Ordinal);
-        var resolving = new HashSet<string>(StringComparer.Ordinal);
-
-        VBClassModuleSymbol Resolve(VBClassModuleSymbol classModule)
-        {
-            var key = classModule.Uri.AbsoluteUri;
-            if (resolved.TryGetValue(key, out var already))
-            {
-                return already;
-            }
-            if (!resolving.Add(key))
-            {
-                // a cycle (MS-VBAL 5.2.3.6 disallows this, not yet validated) - stop recursing here
-                // rather than looping forever over a malformed workspace.
-                return classModule;
-            }
-
-            var implementedInterfaces = ImmutableArray.CreateBuilder<VBClassModuleSymbol>();
-            var seenUris = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var name in classModule.ImplementedInterfaceNames)
-            {
-                if (classModulesByName.TryGetValue(name, out var found)
-                    && !string.Equals(found.Uri.AbsoluteUri, key, StringComparison.Ordinal)
-                    && seenUris.Add(found.Uri.AbsoluteUri))
-                {
-                    implementedInterfaces.Add(Resolve(found));
-                }
-            }
-
-            var result = classModule with { ImplementedInterfaces = implementedInterfaces.ToImmutable() };
-            resolving.Remove(key);
-            resolved[key] = result;
-            return result;
-        }
-
+        // shared with the environment host, which composes class modules from what it is sent one at a time.
+        var resolved = ImplementedInterfaceResolution.Resolve(symbols.OfType<VBClassModuleSymbol>());
         for (var i = 0; i < symbols.Count; i++)
         {
-            if (symbols[i] is VBClassModuleSymbol classModule && !classModule.ImplementedInterfaceNames.IsEmpty)
+            if (symbols[i] is VBClassModuleSymbol classModule && resolved.TryGetValue(classModule.Uri.AbsoluteUri, out var composed))
             {
-                symbols[i] = Resolve(classModule);
+                symbols[i] = composed;
             }
         }
     }

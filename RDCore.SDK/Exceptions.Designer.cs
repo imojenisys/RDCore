@@ -475,6 +475,123 @@ namespace RDCore.SDK {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Event not defined.
+        /// </summary>
+        public static string VBCompileError_EventNotDefined {
+            get {
+                return ResourceManager.GetString("VBCompileError_EventNotDefined", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Wrong number of arguments or invalid argument for event.
+        /// </summary>
+        public static string VBCompileError_EventArgumentsIncompatible {
+            get {
+                return ResourceManager.GetString("VBCompileError_EventArgumentsIncompatible", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid type for WithEvents variable.
+        /// </summary>
+        public static string VBCompileError_InvalidWithEventsType {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidWithEventsType", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid event name.
+        /// </summary>
+        public static string VBCompileError_InvalidEventName {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidEventName", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid event handler.
+        /// </summary>
+        public static string VBCompileError_InvalidEventHandler {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidEventHandler", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to ByVal argument not allowed here.
+        /// </summary>
+        public static string VBCompileError_ByValArgumentNotAllowed {
+            get {
+                return ResourceManager.GetString("VBCompileError_ByValArgumentNotAllowed", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid Implements directive.
+        /// </summary>
+        public static string VBCompileError_InvalidImplementsDirective {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidImplementsDirective", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Object module needs to implement all members of its interface.
+        /// </summary>
+        public static string VBCompileError_InterfaceMemberNotImplemented {
+            get {
+                return ResourceManager.GetString("VBCompileError_InterfaceMemberNotImplemented", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid implemented member.
+        /// </summary>
+        public static string VBCompileError_InvalidImplementedMember {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidImplementedMember", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Sub or Function not defined.
+        /// </summary>
+        public static string VBCompileError_SubOrFunctionNotDefined {
+            get {
+                return ResourceManager.GetString("VBCompileError_SubOrFunctionNotDefined", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Exit Sub not allowed in Function or Property.
+        /// </summary>
+        public static string VBCompileError_ExitSubNotAllowedInFunctionOrProperty {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExitSubNotAllowedInFunctionOrProperty", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Variable required - can't assign to this expression.
+        /// </summary>
+        public static string VBCompileError_VariableRequired {
+            get {
+                return ResourceManager.GetString("VBCompileError_VariableRequired", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Access not valid for the file mode.
+        /// </summary>
+        public static string VBCompileError_FileAccessNotValidForMode {
+            get {
+                return ResourceManager.GetString("VBCompileError_FileAccessNotValidForMode", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Numeric literal overflow.
         /// </summary>
         public static string VBCompileError_NumericLiteralOverflow {
@@ -579,6 +696,24 @@ namespace RDCore.SDK {
         public static string VBForEach_ObjectVariableNotSet_Verbose {
             get {
                 return ResourceManager.GetString("VBForEach_ObjectVariableNotSet_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The object has no public variable, and no Property Let or Property Set, of this name for the assignment to write to..
+        /// </summary>
+        public static string VBMemberAssignment_NotAssignable_Verbose {
+            get {
+                return ResourceManager.GetString("VBMemberAssignment_NotAssignable_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The object this member is accessed on is Nothing: an object variable that was never set, or that was set to Nothing, has no object to hold the member..
+        /// </summary>
+        public static string VBMemberAccess_ObjectVariableNotSet_Verbose {
+            get {
+                return ResourceManager.GetString("VBMemberAccess_ObjectVariableNotSet_Verbose", resourceCulture);
             }
         }
 

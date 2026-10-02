@@ -4,7 +4,8 @@
 > This section describes the implementation of [**MS-VBAL §5.4.5** File Statements](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/2fd9c1be-0d9a-4b29-b5ac-c9d51ce483cf).
 
 MS-VBAL describes the file I/O statements in one section, **MS-VBAL §5.4.5**. RD-VBA executes every statement of
-that section.
+that section, and `Name`, which MS-VBAL does not specify and the
+[VBA language reference](https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/name-statement) does.
 
 |Statement|MS-VBAL|RD-VBAL|
 |---|---|---|
@@ -20,6 +21,7 @@ that section.
 |`Input #`|[**MS-VBAL §5.4.5.10** Input Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f41b8636-a3f5-4501-b1a9-78058017c232)|[**RD-VBAL §5.4.5.10** Input Statement](rd-vbal.5.4.5.10.input-statement.md)|
 |`Put`|[**MS-VBAL §5.4.5.11** Put Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/46eeacb8-7a06-4ec8-9736-eea42de4eeca)|[**RD-VBAL §5.4.5.11** Put Statement](rd-vbal.5.4.5.11.put-statement.md)|
 |`Get`|[**MS-VBAL §5.4.5.12** Get Statement](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/60c6f92b-d1fc-484b-91d1-6ba5246334b4)|[**RD-VBAL §5.4.5.12** Get Statement](rd-vbal.5.4.5.12.get-statement.md)|
+|`Name`|_Not specified._|[**RD-VBAL §5.4.5.13** Name Statement](rd-vbal.5.4.5.13.name-statement.md)|
 
 The AST node of each file statement is catalogued in
 [**RD-VBAL §3.4.3** File Statements](rd-vbal.3.4.3.file-statements.md). Every file statement lowers to a `Simple`
@@ -65,10 +67,30 @@ and `Get` reads is described in [**RD-VBAL §5.4.5.11** Put Statement](rd-vbal.5
 the same target resolution the Let assignment statement uses
 ([**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.let-statement.md)).
 
+## Static Semantics
+
+What the operands of a file statement have to be declared as is [FileStatementStaticSemantics](../api/RDCore.SDK.Semantics.Static.FileStatementStaticSemantics.html)'s,
+which [StatementStaticSemanticsEvaluator](../api/RDCore.SDK.Semantics.Static.StatementStaticSemanticsEvaluator.html) asks. A declared type that breaks a rule is a
+`TypeMismatch`; an operand whose declared type is not known is deferred, not rejected.
+
+|Operand|Rule|MS-VBAL|
+|---|---|---|
+|A file number (every statement but `Print` with none), a `Seek` position, a `Lock` or `Unlock` record number, a `Width` line width, a `Spc` or `Tab` number|A scalar declared type: any but an array or a user-defined type.|§5.4.5.1.1, .3, .4, .7, .8.1|
+|The path name of an `Open`, and the `Len` of its record length|Let-coercible to `String`, and to `Integer`.|§5.4.5.1|
+|The `Access` of an `Open`|`Output`: `Write`. `Input`: `Read`. `Append`: `Read Write` or `Write`. Otherwise [`VBC09334`](../diagnostics/vbc09334.md).|§5.4.5.1|
+|The variable of a `Line Input #`|A variable ([`VBC09333`](../diagnostics/vbc09333.md)), declared as a `String` or a `Variant`.|§5.4.5.6|
+|Each variable of an `Input #`|A variable, not declared as an `Object` or a class.|§5.4.5.10|
+|The data of a `Put`|Not declared as an `Object`, a class, or a user-defined type that has one in it.|§5.4.5.11|
+|The variable of a `Get`|A variable, declared as the data of a `Put` is.|§5.4.5.12|
+|Each operand of a `Name`|Let-coercible to `String`. ([**RD-VBAL §5.4.5.13**](rd-vbal.5.4.5.13.name-statement.md); not in MS-VBAL.)|-|
+
+Only an expression that is certainly not a variable is reported as one ([`VBC09333`](../diagnostics/vbc09333.md)): a literal, an operator's result, a constant.
+
 ## Implementation
 
 |Name|Role|
 |---|---|
+|`FileStatementStaticSemantics`|The static rules above, for every file statement and for `Name`.|
 |`IFileChannels`|The session-level shim every file statement runs through: the numbered channels, each with the mode it was opened under.|
 |`IFileChannel`|One numbered channel. Its record surface is the one `Put` and `Get` use.|
 |`IFileChannelOutput`|The character output surface of a channel, used by `Print #` and `Write #`. It carries the maximum line length `Width #` sets.|

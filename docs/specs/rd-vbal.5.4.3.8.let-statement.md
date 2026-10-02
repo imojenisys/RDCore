@@ -53,6 +53,23 @@ A Let-assignment to a bare reference to a procedure's own name, from within its 
   for the same reason: there is no addressable symbol. See
   [**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md).
 
+### Members of an object
+
+`obj.Member = value` assigns a member of the object `obj` holds (`LetAssignmentEvaluator.AssignObjectMember`). A `Nothing` reference
+raises error 91. The member is the `Property Let` declared for it (an indexed one takes the index arguments before the value) or else a
+public variable of the class, found through the declared interface when `obj` is declared as one its object's class implements
+([**RD-VBAL §5.3.1.9**](rd-vbal.5.3.1.9.implemented-name-declarations.md)). A public variable is assigned by Let-coercing the value to
+its declared type; with no such member, error 438 is raised. A `With` block assigns the same way.
+
+### Elements of an array
+
+`a(i, j) = value`, and `obj.Items(i) = value` when the array is what a public variable of an object holds
+(`LetAssignmentEvaluator.AssignArrayElement`), assigns an element in place: the value is Let-coerced to the element type of the array and
+written to the element's own cell, and the array is never copied. A subscript outside the bounds of the array is error 9. `Set a(i) = obj` does
+the same with Set-coercion, and lets go of the object the element held and takes a reference to the one it is given.
+
+A `ReDim` of an array gives it the element type of the variable's declaration (`Dim a() As Long`), including a variable of an object.
+
 ### UDT fields
 
 A Let statement assigns a UDT field by Let-coercing the value to the field's own declared type and writing the

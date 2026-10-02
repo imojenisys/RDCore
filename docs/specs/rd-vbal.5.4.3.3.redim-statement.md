@@ -7,7 +7,8 @@
 
 |AST node|Instruction kind(s)|Notes|
 |---|---|---|
-|[RedimDeclarationNode](../api/RDCore.SDK.Model.AST.Declarations.RedimDeclarationNode.html)|— (a declaration node)|`ReDim` and `ReDim Preserve`. `ReDim` is modelled as a declaration node, not a statement node, because it declares or resizes storage.|
+|[RedimDeclarationNode](../api/RDCore.SDK.Model.AST.Declarations.RedimDeclarationNode.html)|`Simple`|One node per comma-separated `ReDim` target. The node is a declaration and a statement at once: it declares the name it may introduce, and it executes where it appears. Its `Target` is an expression: a `SimpleNameExpressionNode` (`a`), or a `MemberAccessExpressionNode` (`obj.Buffer`, `Me.Buffer`, `.Buffer`) with the owner as the expression it is.|
+|[RedimBoundsNode](../api/RDCore.SDK.Model.AST.Declarations.RedimBoundsNode.html)|—|The dimension clause of one target, holding one [RedimDimensionNode](../api/RDCore.SDK.Model.AST.Declarations.RedimDimensionNode.html) per dimension.|
 
 See [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md).
 
@@ -34,21 +35,67 @@ For an implicit `ReDim` declaration:
 - A later analysis pass raises a semantic flag at the site of the implicit declaration; see
   [**RD-VBAL §1.1.3** Core Semantic Flags](rd-vbal.1.1.3.core-semantic-flags.md).
 
-`ReDim` bounds are ordinary run-time expressions, not constant expressions. The declaration pass keeps `ReDim`
-bounds verbatim, as it does declared array bounds
-([**RD-VBAL §5.4.3.1** Local Variable Declarations](rd-vbal.5.4.3.1.local-variable-declarations.md)).
+`ReDim` bounds are ordinary run-time expressions, not constant expressions. A `ReDim` bound is therefore an
+expression node, and not the verbatim text a declared array bound keeps
+([**RD-VBAL §5.4.3.1** Local Variable Declarations](rd-vbal.5.4.3.1.local-variable-declarations.md)). `ReDim
+Grid(1 To n)` is legal, and `n` is not knowable before the statement runs.
+
+A dimension declared without a lower bound has no lower-bound node. The effective lower bound is the module's
+`Option Base` ([**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md)), which is a run-time
+dial rather than something the statement wrote.
 
 ## Runtime Semantics
 
+`ReDim` evaluates each bound where the statement stands, then re-allocates the array.
+
+|Target|Effect|
+|---|---|
+|A resizable array|Re-dimensioned.|
+|A `Variant` holding an array|Re-dimensioned. The variable keeps storing a `Variant`.|
+|A `Variant` holding nothing yet|Becomes an array. The static rule admits a `Variant` target so that it can become an array, so the `Empty` a `Variant` starts as is not the error below.|
+|A `Variant` holding anything else|Runtime error 13, `Type mismatch`.|
+
+Each bound is Let-coerced to `Integer`, as any other subscript is. An upper bound below its lower bound is
+runtime error 9, `Subscript out of range`.
+
+Without `Preserve`, every element of the re-dimensioned array is its element type's default value.
+
+### Preserve
+
+`Preserve` keeps the elements that still fit. It may change the upper bound of the last dimension, and nothing
+else:
+
+|Change|Result|
+|---|---|
+|The upper bound of the last dimension|Allowed.|
+|The upper bound of any other dimension|Runtime error 9, `Subscript out of range`.|
+|The lower bound of any dimension|Runtime error 9, `Subscript out of range`.|
+|The number of dimensions|Runtime error 9, `Subscript out of range`.|
+
+An element the resized array has and the original did not is its element type's default value. An element at an
+index now outside the array's bounds is discarded.
+
+A `ReDim` of a variable that is currently locked by a `ByRef` formal parameter is runtime error 10, `This array is fixed or temporarily locked`
+(**MS-VBAL §5.4.3.3**). An array passed by reference is its parameter's for as long as an activation on the call stack has one: another name for it - the module variable the
+argument is, a public variable of an object - cannot take its dimensions away. A `ReDim` of the parameter itself is not locked, which is what passing an array by reference is for; so
+is one of a parameter that is passed on down a chain of `ByRef` calls. The lock is the activation's, so it is gone once the call returns
+([ICallStackFrame](../api/RDCore.SDK.Runtime.Abstract.Execution.ICallStackFrame.html)`.LocksAddress`).
+
 > [!NOTE]
-> Reserved. This section has no content yet.
+> **MS-VBAL §5.4.3.4** states no such rule for `Erase`, and `Erase` does not raise error 10.
+
+A target that is a member access (`obj.Buffer`, `.Buffer`) is an expression: the array is read from it, and the new array is written back through it, as an assignment to
+it is - the public variable of the object, or the field of the record. The element type of an array that has no dimensions yet is the one the member is declared with.
 
 ## Implementation
 
 |Type or member|Role|
 |---|---|
 |`RedimDeclarationNode`|One `ReDim` target (**RDCore.SDK**).|
+|`RedimBoundsNode`, `RedimDimensionNode`|The dimension clause, as expression nodes (**RDCore.SDK**).|
 |[VBLocalVariableSymbol](../api/RDCore.SDK.Model.Symbols.VBLocalVariableSymbol.html)`.DeclaredBy`|[LocalDeclarationKind](../api/RDCore.SDK.Model.Symbols.LocalDeclarationKind.html)`.ReDim` marks a local introduced by an implicit `ReDim` declaration.|
+|[ModuleDirectives](../api/RDCore.SDK.Model.Symbols.ModuleDirectives.html)`.Base`|The module's `Option Base`, which an omitted lower bound takes (**RDCore.SDK**).|
+|`RDCore.Runtime.Semantics.Statements.ArrayStatementRuntimeSemantics`|Evaluates the bounds and re-allocates the array; see [**RD-VBAL §3.5.4** Execution](rd-vbal.3.5.4.execution.md).|
 
 ---
 > ⏮️ [**RD-VBAL §5.4.3.2** Local Constant Declarations](rd-vbal.5.4.3.2.local-constant-declarations.md) | ⏭️ [**RD-VBAL §5.4.3.4** Erase Statement](rd-vbal.5.4.3.4.erase-statement.md)

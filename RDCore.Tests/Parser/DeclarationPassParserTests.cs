@@ -241,12 +241,17 @@ End Sub
         var member = JsonSerializer.Deserialize<ModuleNode>(json)!.Children.OfType<MemberDeclarationNode>().Single();
 
         var dimBounds = member.Children.OfType<VariableDeclarationNode>().Single().Children.OfType<ArrayBoundsNode>().Single();
-        Assert.AreEqual(new ArrayDimensionBound("1", "3"), dimBounds.Bounds.Single());
+        Assert.AreEqual(("1", "3"), (dimBounds.Bounds.Single().LowerBound, dimBounds.Bounds.Single().UpperBound));
+        Assert.IsInstanceOfType<LiteralExpressionNode>(dimBounds.Bounds.Single().UpperExpression, "the parsed bound survives the round trip");
 
         var redim = member.Children.OfType<RedimDeclarationNode>().Single();
         Assert.AreEqual("Grid", redim.Name);
         Assert.IsTrue(redim.IsPreserve);
-        Assert.AreEqual(new ArrayDimensionBound("1", "10"), redim.Children.OfType<ArrayBoundsNode>().Single().Bounds.Single());
+
+        // a ReDim's bounds are run-time expressions, not the verbatim text a Dim's constant bounds keep.
+        var dimension = redim.Bounds!.Dimensions.Single();
+        Assert.AreEqual(1L, IntValue(dimension.LowerBound!));
+        Assert.AreEqual(10L, IntValue(dimension.UpperBound));
     }
 
     [TestMethod]
@@ -1043,12 +1048,19 @@ End Sub
         var grid = locals["Grid"]!;
         Assert.IsFalse(grid.IsResizable);
         Assert.AreEqual(2, grid.Rank);
-        Assert.AreEqual(new ArrayDimensionBound("1", "3"), grid.Bounds[0]);
-        Assert.AreEqual(new ArrayDimensionBound("0", "4"), grid.Bounds[1]);
+        Assert.AreEqual(("1", "3"), (grid.Bounds[0].LowerBound, grid.Bounds[0].UpperBound));
+        Assert.AreEqual(("0", "4"), (grid.Bounds[1].LowerBound, grid.Bounds[1].UpperBound));
+
+        // what the text says, parsed: the runtime reduces these when the array's storage is allocated.
+        Assert.IsInstanceOfType<LiteralExpressionNode>(grid.Bounds[0].LowerExpression);
+        Assert.IsInstanceOfType<LiteralExpressionNode>(grid.Bounds[0].UpperExpression);
+        Assert.IsInstanceOfType<LiteralExpressionNode>(grid.Bounds[1].UpperExpression);
 
         var row = locals["Row"]!;
         Assert.IsFalse(row.IsResizable);
-        Assert.AreEqual(new ArrayDimensionBound(null, "10"), row.Bounds.Single());
+        Assert.AreEqual((null, "10"), (row.Bounds.Single().LowerBound, row.Bounds.Single().UpperBound));
+        Assert.IsNull(row.Bounds.Single().LowerExpression);
+        Assert.IsInstanceOfType<LiteralExpressionNode>(row.Bounds.Single().UpperExpression);
 
         var buffer = locals["Buffer"]!;
         Assert.IsTrue(buffer.IsResizable);
@@ -1074,13 +1086,18 @@ End Sub
             .Children.OfType<RedimDeclarationNode>().Single();
 
         Assert.AreEqual("Grid", redim.Name);
-        Assert.IsNull(redim.QualifierName);
+        Assert.IsInstanceOfType<SimpleNameExpressionNode>(redim.Target);
+        Assert.IsTrue(redim.IsSimpleName);
         Assert.IsTrue(redim.IsPreserve);
 
-        var bounds = redim.Children.OfType<ArrayBoundsNode>().Single();
+        // a ReDim's bounds are ordinary run-time expressions, so they are expression nodes rather than the
+        // verbatim text a Dim's constant bounds keep: `n` is a name to resolve when the statement runs.
+        var bounds = redim.Bounds!;
         Assert.AreEqual(2, bounds.Rank);
-        Assert.AreEqual(new ArrayDimensionBound("1", "10"), bounds.Bounds[0]);
-        Assert.AreEqual(new ArrayDimensionBound("0", "n"), bounds.Bounds[1]);
+        Assert.AreEqual(1L, IntValue(bounds.Dimensions[0].LowerBound!));
+        Assert.AreEqual(10L, IntValue(bounds.Dimensions[0].UpperBound));
+        Assert.AreEqual(0L, IntValue(bounds.Dimensions[1].LowerBound!));
+        Assert.AreEqual("n", ((SimpleNameExpressionNode)bounds.Dimensions[1].UpperBound).IdentifierName);
     }
 
     [TestMethod]
@@ -1099,7 +1116,12 @@ End Sub
             .Children.OfType<RedimDeclarationNode>().Single();
 
         Assert.IsFalse(redim.IsPreserve);
-        Assert.AreEqual(new ArrayDimensionBound(null, "10"), redim.Children.OfType<ArrayBoundsNode>().Single().Bounds.Single());
+
+        // no To clause means no lower bound node at all - the effective one is the module's Option Base,
+        // which is a run-time dial and not something the statement wrote.
+        var dimension = redim.Bounds!.Dimensions.Single();
+        Assert.IsNull(dimension.LowerBound);
+        Assert.AreEqual(10L, IntValue(dimension.UpperBound));
     }
 
     [TestMethod]
@@ -1137,7 +1159,54 @@ End Sub
             .Children.OfType<RedimDeclarationNode>().Single();
 
         Assert.AreEqual("Buffer", redim.Name);
-        Assert.AreEqual("Me", redim.QualifierName);
+        // the target is the member access itself, an expression with an owner of its own: not a string that says what the owner was called.
+        var target = Assert.IsInstanceOfType<MemberAccessExpressionNode>(redim.Target);
+        Assert.AreEqual("Buffer", target.Member.IdentifierName);
+        Assert.IsFalse(redim.IsSimpleName);
+        Assert.IsInstanceOfType<InstanceExpressionNode>(target.Owner, "Me is the instance expression, which a string could not have said");
+    }
+
+    [TestMethod]
+    public void Redim_WithAWithRelativeMemberAccess_HasAnOwnerlessMemberAccessAsItsTarget()
+    {
+        var content = """
+            Sub Foo()
+                With obj
+                    ReDim .Buffer(3)
+                End With
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var redim = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single()
+            .Children.OfType<WithStatementNode>().Single().Body.Children.OfType<RedimDeclarationNode>().Single();
+
+        var target = Assert.IsInstanceOfType<MemberAccessExpressionNode>(redim.Target);
+        Assert.IsNull(target.Owner);
+        Assert.AreEqual("Buffer", redim.Name);
+    }
+
+    [TestMethod]
+    public void Redim_OfAnOwnerThatIsItselfAMemberAccess_KeepsTheWholeChain()
+    {
+        var content = """
+            Sub Foo()
+                ReDim a.b.Items(1 To 3)
+            End Sub
+            """;
+
+        var result = new ModuleParser().Parse(TestUri.TestModuleUri(), content);
+        Assert.IsTrue(result.IsSuccess, result.SyntaxErrors.Length == 0 ? "" : result.SyntaxErrors[0]!.Description);
+
+        var redim = result.SyntaxTree!.Children.OfType<MemberDeclarationNode>().Single()
+            .Children.OfType<RedimDeclarationNode>().Single();
+
+        var target = Assert.IsInstanceOfType<MemberAccessExpressionNode>(redim.Target);
+        Assert.AreEqual("Items", target.Member.IdentifierName);
+        var owner = Assert.IsInstanceOfType<MemberAccessExpressionNode>(target.Owner);
+        Assert.AreEqual("b", owner.Member.IdentifierName);
     }
 
     [TestMethod]

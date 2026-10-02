@@ -3,12 +3,17 @@ using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.Source;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
+using RDCore.SDK.Model.Symbols.VBProject;
+using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
+using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("RDCore.Tests")]
@@ -39,10 +44,57 @@ internal sealed class RuntimeSession(
     public IReadOnlyList<ReferencePriorityInfo> References { get; init; } = references;
     public IRuntimeOutput Output { get; init; } = output;
 
+    public IObjectLifecycle? Lifecycle { get; set; }
+
     public bool ReleaseReference(VBRuntimeObjectId instance, IBindingHandle handle)
-        => Objects.RemoveRef(instance, handle) == 0
-            && Objects.TryRemoveObject(instance)
-            && Symbols.DestroyInstance(instance);
+    {
+        if (Objects.RemoveRef(instance, handle) != 0)
+        {
+            return false;
+        }
+
+        // MS-VBAL §5.3.1.10: Terminate runs while the object is still whole, and may give it a reference again; an
+        // object that has one is not destroyed, and is a candidate again when it next loses its last.
+        // 🚧 TODO an error the handler leaves unhandled is dropped here: a release has no operation to fail, and
+        // the callers of this have no result to carry it in. It belongs to whatever dropped the reference.
+        if (Lifecycle is { } lifecycle && Objects.TryBeginTerminate(instance))
+        {
+            _ = lifecycle.Terminate(instance);
+        }
+
+        if (Objects.RefCount(instance) != 0)
+        {
+            return false;
+        }
+
+        // the object is going away: what it held is let go of, which can be what destroys that in turn, and nothing
+        // of it handles an event any more.
+        ReleaseFieldsOf(instance);
+        Objects.DetachSubscriber(instance);
+
+        return Objects.TryRemoveObject(instance) && Symbols.DestroyInstance(instance);
+    }
+
+    // an object's variables hold the objects they were set to, and cease to when it does (MS-VBAL §2.3: the variables
+    // of an object have the extent of the object). A field that holds nothing it counted, or no object, releases nothing.
+    private void ReleaseFieldsOf(VBRuntimeObjectId instance)
+    {
+        if (!Symbols.TryGetInstance(instance, out var live))
+        {
+            return;
+        }
+
+        foreach (var field in live.ClassModule.Members.Where(member
+            => member is VBModuleFieldVariableMemberSymbol or VBInstanceFieldVariableMemberSymbol
+            && member.ResolvedType is VBClassType or VBObjectType))
+        {
+            var handle = live.GetValue(field);
+            if (field.ResolvedType.CreateValue(handle) is VBObjectValue held)
+            {
+                ObjectReferences.Release(this, handle, new VBObjectValue(held.Value));
+            }
+        }
+    }
 }
 
 /// <summary>
@@ -54,6 +106,8 @@ internal sealed class RuntimeSession(
 internal sealed class SessionObjects : ISessionObjects
 {
     private readonly Dictionary<VBRuntimeObjectId, List<IBindingHandle>> _roots = [];
+    private readonly HashSet<VBRuntimeObjectId> _terminating = [];
+    private readonly Dictionary<VBRuntimeObjectId, List<EventSubscription>> _subscribers = [];
 
     public VBRuntimeObjectId CreateObject()
     {
@@ -77,14 +131,65 @@ internal sealed class SessionObjects : ISessionObjects
             return 0;
         }
 
-        roots.Remove(handle);
+        // a handle is a root by identity: handles are records, and two variables holding the same object compare
+        // equal by value while being two references.
+        var held = roots.FindIndex(root => ReferenceEquals(root, handle));
+        if (held >= 0)
+        {
+            roots.RemoveAt(held);
+        }
+
         return roots.Count;
     }
+
+    public bool IsHeldBy(VBRuntimeObjectId instance, IBindingHandle handle)
+        => _roots.TryGetValue(instance, out var roots) && roots.Any(root => ReferenceEquals(root, handle));
+
+    public int RefCount(VBRuntimeObjectId instance) => _roots.TryGetValue(instance, out var roots) ? roots.Count : 0;
+
+    public bool TryBeginTerminate(VBRuntimeObjectId instance) => _roots.ContainsKey(instance) && _terminating.Add(instance);
+
+    public void AttachEventHandlers(VBRuntimeObjectId source, VBRuntimeObjectId subscriber, Symbol variable)
+    {
+        // an assignment moves the variable to the end of the order, so it is detached before it is attached again.
+        DetachEventHandlers(source, subscriber, variable);
+        if (!_subscribers.TryGetValue(source, out var subscriptions))
+        {
+            _subscribers[source] = subscriptions = [];
+        }
+
+        subscriptions.Add(new EventSubscription(subscriber, variable));
+    }
+
+    public void DetachEventHandlers(VBRuntimeObjectId source, VBRuntimeObjectId subscriber, Symbol variable)
+    {
+        if (_subscribers.TryGetValue(source, out var subscriptions))
+        {
+            subscriptions.RemoveAll(subscription => IsSubscription(subscription, subscriber, variable));
+        }
+    }
+
+    public void DetachSubscriber(VBRuntimeObjectId subscriber)
+    {
+        foreach (var subscriptions in _subscribers.Values)
+        {
+            subscriptions.RemoveAll(subscription => subscription.Subscriber.Equals(subscriber));
+        }
+    }
+
+    public IReadOnlyList<EventSubscription> EventSubscribers(VBRuntimeObjectId source)
+        => _subscribers.TryGetValue(source, out var subscriptions) ? [.. subscriptions] : [];
+
+    // a Uri's fragment is where a symbol's identity lives, so the variable is compared by its SemanticId.
+    private static bool IsSubscription(EventSubscription subscription, VBRuntimeObjectId subscriber, Symbol variable)
+        => subscription.Subscriber.Equals(subscriber) && subscription.Variable.SemanticId.Equals(variable.SemanticId);
 
     public bool TryRemoveObject(VBRuntimeObjectId instance)
     {
         if (_roots.TryGetValue(instance, out var roots) && roots.Count == 0)
         {
+            _terminating.Remove(instance);
+            _subscribers.Remove(instance);
             return _roots.Remove(instance);
         }
         return false;
@@ -109,6 +214,12 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
     private readonly Dictionary<SymbolIdentity, Symbol> _workspaceSymbols = [];
     private readonly Dictionary<SymbolIdentity, Symbol> _instanceSymbols = [];
     private readonly Dictionary<SymbolIdentity, Symbol> _localSymbols = [];
+
+    /// <inheritdoc/>
+    public IVariableDefaults? Defaults { get; set; }
+
+    private VBTypedValue DefaultValueOf(Symbol variable)
+        => Defaults?.DefaultValueOf(variable) ?? ((ITypedSymbol)variable).ResolvedType.DefaultValue;
 
     /// <summary>
     /// What makes two definitions the same declaration: the symbol's own semantic identity, plus its
@@ -141,7 +252,7 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
     private RuntimeSymbolResolver SessionBindings => _sessionBindingsField ??= new RuntimeSymbolResolver(new LiveScopeResolver(this), storage);
 
     private CallStackAwareSymbolResolver? _bindingsField;
-    private CallStackAwareSymbolResolver Bindings => _bindingsField ??= new CallStackAwareSymbolResolver(callStack, SessionBindings);
+    private CallStackAwareSymbolResolver Bindings => _bindingsField ??= new CallStackAwareSymbolResolver(callStack, SessionBindings, this);
 
     private ScopeTree? _scopeTree;
 
@@ -170,10 +281,10 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
         // it keeps its value between calls instead of being torn down when its frame pops.
         var isStaticLocal = scope is ScopeKind.Local && symbol is VBLocalVariableSymbol { IsStatic: true };
         if ((scope is ScopeKind.Module or ScopeKind.Global || isStaticLocal)
-            && symbol is ITypedSymbol { ResolvedType: var type }
+            && symbol is ITypedSymbol
             && symbol.Kind is SymbolKindExt.Field or SymbolKindExt.Variable)
         {
-            _ = SessionBindings.TryAllocate(symbol, type.DefaultValue, out _);
+            _ = SessionBindings.TryAllocate(symbol, DefaultValueOf(symbol), out _);
         }
 
         return true;
@@ -192,6 +303,81 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
         _scopeTree = null;
         SessionBindings.TryDeallocate(symbol);
         return true;
+    }
+
+    public bool TryRedefine(Symbol symbol, ScopeKind scope)
+    {
+        var table = TableFor(scope);
+        var identity = SymbolIdentity.Of(symbol);
+        if (!table.TryGetValue(identity, out var existing))
+        {
+            return false;
+        }
+
+        // the same declaration, written again: a variable that holds storage and is declared as the type it was.
+        // Anything else is a different variable - or no variable - and is replaced the long way.
+        var sameDeclaration = existing is ITypedSymbol { ResolvedType: var before }
+            && symbol is ITypedSymbol { ResolvedType: var after }
+            && Equals(before, after)
+            && SessionBindings.TryGetAddress(existing, out _);
+        if (!sameDeclaration)
+        {
+            return TryUndefine(existing, scope) && TryDefine(symbol, scope);
+        }
+
+        // storage is keyed by the symbol's semantic identity, which the newest definition shares, so replacing the
+        // symbol itself leaves what it holds where it is.
+        table[identity] = symbol;
+        _scopeTree = null;
+        return true;
+    }
+
+    public bool TryComposeClassModule(
+        string moduleName, ImmutableArray<string> implementedInterfaceNames, ImmutableArray<SourceRange> implementedInterfaceRanges = default)
+    {
+        var module = AllSymbols().OfType<VBClassModuleSymbol>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, moduleName, StringComparison.OrdinalIgnoreCase));
+        if (module is null)
+        {
+            return false;
+        }
+
+        // what the class declares: every member defined under its identity.
+        var composed = module with { Members = [.. MembersOf(module.Uri)], ImplementedInterfaceNames = implementedInterfaceNames,
+            ImplementedInterfaceRanges = implementedInterfaceRanges.IsDefault ? [] : implementedInterfaceRanges,
+        };
+        Replace(module, composed with { DefaultInterfaceMembers = VBClassType.FromClassModule(composed).Members });
+
+        // every class that names an interface is resolved again, whichever it is that has just been composed: it may be the
+        // interface another holds, as it was.
+        var classModules = AllSymbols().OfType<VBClassModuleSymbol>().ToList();
+        var resolved = ImplementedInterfaceResolution.Resolve(classModules);
+        foreach (var classModule in classModules)
+        {
+            if (resolved.TryGetValue(classModule.Uri.AbsoluteUri, out var withInterfaces))
+            {
+                Replace(classModule, withInterfaces);
+            }
+        }
+
+        return true;
+    }
+
+    public IReadOnlyList<VBTypeMemberSymbol> MembersOf(Uri moduleUri)
+        => [.. AllSymbols().OfType<VBTypeMemberSymbol>().Where(member => member.ParentUri.AbsoluteUri == moduleUri.AbsoluteUri)];
+
+    public LexicalScope? ScopeOf(Uri uri) => EnsureScopeTree().TryGetScope(uri, out var scope) ? scope : null;
+
+    private IEnumerable<Symbol> AllSymbols()
+        => _globalSymbols.Values.Concat(_workspaceSymbols.Values).Concat(_instanceSymbols.Values).Concat(_localSymbols.Values).ToList();
+
+    // a class module symbol holds no storage and is keyed by its identity, which the newer one shares.
+    private void Replace(Symbol existing, Symbol replacement)
+    {
+        if (TryUndefine(existing, existing.ScopeKind))
+        {
+            TryDefine(replacement, replacement.ScopeKind);
+        }
     }
 
     public ISymbolResolver Resolver => Bindings;
@@ -227,7 +413,7 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
 
         foreach (var field in fields)
         {
-            instance.Push(field, ((ITypedSymbol)field).ResolvedType.DefaultValue);
+            instance.Push(field, DefaultValueOf(field));
         }
 
         _instances[objectId] = instance;
@@ -274,6 +460,9 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
 
         public SymbolResolutionResult ResolveConditionalConstant(string name, ScopeKind scope, Uri handle)
             => new ScopeTreeSymbolResolver(owner.EnsureScopeTree()).ResolveConditionalConstant(name, scope, handle);
+
+        public SymbolResolutionResult ResolveMember(Symbol qualifier, string name, Uri handle)
+            => new ScopeTreeSymbolResolver(owner.EnsureScopeTree()).ResolveMember(qualifier, name, handle);
 
         public IBindingHandle GetValue(Symbol symbol)
             => throw new NotSupportedException("The scope-tree resolver binds names only; it holds no run-time bindings.");

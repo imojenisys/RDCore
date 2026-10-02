@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using RDCore.SDK.Client;
 using RDCore.SDK.ConsoleIO;
 using RDCore.SDK.Extensibility;
+using RDCore.SDK.Model;
 
 namespace RDCore.SDK.Server.Configuration;
 
@@ -92,6 +93,12 @@ public record class SdkAppCommandLineArgs
     public string? WorkspaceUri { get; set; }
 
     /// <summary>
+    /// A <em>command-line argument</em> that overrides the <see cref="SdkWorkspaceOptions.Language"/> setting.
+    /// </summary>
+    [Option("language")]
+    public string? Language { get; set; }
+
+    /// <summary>
     /// Repeatable <em>command-line argument</em> defining or overriding a project-level precompiler
     /// constant, in <c>NAME=VALUE</c> form (e.g. <c>--define RDDEBUG=1</c>). Overrides the
     /// <c>.rdproj</c> and the built-in host constants.
@@ -134,6 +141,7 @@ public record class SdkAppCommandLineArgs
         if (UnsafeDevMode is bool unsafeDevMode) yield return new("Configuration:Server:UnsafeDevMode", unsafeDevMode.ToString());
         if (WorkspaceUri is string workspaceUri) yield return new("Configuration:Workspace:WorkspaceUri", workspaceUri);
         if (DefaultLocation is string defaultLocation) yield return new("Configuration:Workspace:DefaultLocation", defaultLocation);
+        if (Language is string language) yield return new("Configuration:Workspace:Language", language);
         if (Type is ServerTransportLayerMode transportType) yield return new("Configuration:Platform:Transport:Type", transportType.ToString());
         if (PipeName is string pipeName) yield return new("Configuration:Platform:Transport:PipeConfig:PipeName", pipeName);
     }
@@ -329,6 +337,25 @@ public record class SdkWorkspaceOptions
     /// ⚠️ If a workspace <c>Uri</c> is not supplied, a server application should exit with an error code.
     /// </remarks>
     public string WorkspaceUri { get; set; } = _defaultWorkspaceUri;
+
+    /// <summary>
+    /// The identifier of the language the workspace is written in (<see cref="Workspace.SupportedLanguage.Id"/>): <c>vba</c> (RD-VBA, the
+    /// default), <c>vb6</c> or <c>basic</c>.
+    /// </summary>
+    /// <remarks>
+    /// The language is what the platform's components agree on about the dialect, so a client says it of the servers it starts - and of the
+    /// server it connects to, in the <c>initializationOptions</c> of its <c>initialize</c> request
+    /// (<see cref="Platform.Protocol.RDCoreInitializationOptions"/>). It decides what is built from the workspace: where the variable an
+    /// undeclared name declares lives (<see cref="Workspace.SupportedLanguage.ImplicitDeclarationScope"/>), and which statements exist.
+    /// The standard library is not one of them: it is <c>VBA</c> whatever the language (<see cref="Runtime.StdLib.StdLibSymbolProvider.LibraryName"/>).
+    /// </remarks>
+    public string Language { get; set; } = Workspace.SupportedLanguages.RDVBA.Id;
+
+    /// <summary>
+    /// The language <see cref="Language"/> names.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"><see cref="Language"/> is not the identifier of a language the platform serves.</exception>
+    public Workspace.SupportedLanguage SupportedLanguage => Workspace.SupportedLanguages.Get(Language);
 }
 
 /// <summary>

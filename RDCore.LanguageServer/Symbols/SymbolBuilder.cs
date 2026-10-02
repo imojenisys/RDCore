@@ -10,6 +10,7 @@ using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Types.Complex;
+using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
 using System.Collections.Immutable;
@@ -158,10 +159,20 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
     public Symbol BuildModuleField(VariableDeclarationNode node)
     {
         var range = RangeOf(node);
-        var type = ImplicitOrDeclaredType(AsTypeOf(node), node.TypeHint, moduleUri);
-        return AutoInstantiatedIfDeclaredAsNew(new VBModuleFieldVariableMemberSymbol(
-            workspaceRoot, moduleUri, node.Name, memberScope, type, range, range, node.AccessModifier), AsTypeOf(node));
+        var asType = AsTypeOf(node);
+        var bounds = node.Children.OfType<ArrayBoundsNode>().FirstOrDefault();
+        var type = VariableType(ArrayElementType(asType, node.TypeHint, moduleUri), asType, bounds);
+        var field = WithArrayBounds(AutoInstantiatedIfDeclaredAsNew(new VBModuleFieldVariableMemberSymbol(
+            workspaceRoot, moduleUri, node.Name, memberScope, type, range, range, node.AccessModifier), asType), bounds);
+
+        // MS-VBAL §5.2.3.1.2: what makes the procedures named for this variable event handlers.
+        return node.IsWithEvents ? field.With(SymbolProperties.WithEvents, true) : field;
     }
+
+    // a fixed-size array is as big as its bounds say, which are constant expressions the type has no room for: they ride the symbol,
+    // and whatever allocates its storage reduces them.
+    private static Symbol WithArrayBounds(Symbol variable, ArrayBoundsNode? bounds)
+        => bounds is { IsResizable: false } ? variable.With(SymbolProperties.ArrayBounds, bounds.Bounds) : variable;
 
     // MS-VBAL 5.2.3.1.1 / 2.5.1: an <as-auto-object> clause (`As New Foo`) makes the variable it declares - or,
     // for an array, each of its dependent variables - an automatic instantiation variable.
@@ -173,8 +184,19 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
         var range = RangeOf(node);
         var type = DeclaredType(AsTypeOf(node), node.TypeHint, moduleUri);
         return new VBConstantMemberSymbol(
-            workspaceRoot, moduleUri, node.Name, memberScope, type, range, range, node.AccessModifier);
+            workspaceRoot, moduleUri, node.Name, memberScope, type, range, range, node.AccessModifier,
+            ConstantExpressionOf(node));
     }
+
+    // MS-VBAL 5.4.3.2: a constant statically evaluates to a value, and has no storage anywhere to read
+    // one back from — so the declaration's own expression travels with the symbol and is reduced at the
+    // host, where the operators that can reduce it live. The As-type clause is the declaration's other
+    // expression-shaped child; everything else under it is the constant expression.
+    //
+    // Shared with an Optional parameter's `default-value`, which MS-VBAL 5.3.1.5 defines as a constant
+    // expression in exactly the same way, on a node of exactly the same shape.
+    private static ExpressionNode? ConstantExpressionOf(SyntaxNode node)
+        => node.Children.OfType<ExpressionNode>().FirstOrDefault(child => child is not AsTypeExpressionNode);
 
     // A UDT field parents to the enclosing user-defined-type symbol, not the module.
     public Symbol BuildUserDefinedTypeField(MemberDeclarationNode node, Uri userDefinedTypeUri)
@@ -216,13 +238,37 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
                 ? new ParamArrayParameterSymbol(workspaceRoot, memberUri, parameter.Name, range, range, parameter.ParameterKind)
                 : new VBParameterSymbol(
                     workspaceRoot, memberUri, parameter.Name, range, range, parameter.ParameterKind,
-                    ImplicitOrDeclaredType(AsTypeOf(parameter), typeHint: null, memberUri), parameter.IsOptional));
+                    ParameterType(parameter, memberUri), parameter.IsOptional,
+                    DefaultValueOf(parameter)));
         }
         return builder.ToImmutable();
     }
 
+    // MS-VBAL 5.3.1.5: `default-value = "=" constant-expression`, and 5.3.1.10 Let-assigns that value to
+    // an unmapped optional parameter's own local. The same shape a Const declaration has, and the same
+    // kind of expression, so it travels the same way and the host reduces it the same way: the symbol
+    // carries it across instead of leaving the invoker with only the declared type's default, which is
+    // what `Optional k As Long = 5` was invoked with, arriving as 0.
+    private static ExpressionNode? DefaultValueOf(ParameterDeclarationNode parameter)
+        => ConstantExpressionOf(parameter);
+
+    // `Function F() As Long()` returns a resizable array of Long (MS-VBAL 5.3.1.6): the parentheses are on the As clause.
     private VBType ReturnType(MemberDeclarationNode member, Uri memberUri)
-        => ImplicitOrDeclaredType(member.Children.OfType<AsTypeExpressionNode>().FirstOrDefault(), typeHint: null, memberUri);
+    {
+        var asType = member.Children.OfType<AsTypeExpressionNode>().FirstOrDefault();
+        return asType is { IsArrayDef: true }
+            ? ResizableArrayType(ArrayElementType(asType, typeHint: null, memberUri))
+            : ImplicitOrDeclaredType(asType, typeHint: null, memberUri);
+    }
+
+    // `Items() As Long`: the parentheses are on the parameter, the element type is its As clause's.
+    private VBType ParameterType(ParameterDeclarationNode parameter, Uri memberUri)
+    {
+        var asType = AsTypeOf(parameter);
+        return parameter.IsArray || asType is { IsArrayDef: true }
+            ? ResizableArrayType(ArrayElementType(asType, typeHint: null, memberUri))
+            : ImplicitOrDeclaredType(asType, typeHint: null, memberUri);
+    }
 
     private static AsTypeExpressionNode? AsTypeOf(SyntaxNode node)
         => node.Children.OfType<AsTypeExpressionNode>().FirstOrDefault();
@@ -259,17 +305,17 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
     }
 
     // Binds a reserved/declared type name through the resolver, optionally qualified by a project name
-    // (MS-VBAL 5.6.4); an unresolved name stays Unknown. A resolved user-defined type, enum or class
+    // (MS-VBAL 5.6.4); an unresolved name stays Unknown, and remembers the name (VBUnresolvedType). A resolved user-defined type, enum or class
     // module is a symbol carrying no VBType of its own, so build one.
     private VBType ResolveTypeName(string typeName, Uri handle, string? qualifier = null)
         => VBProjectSymbol.ResolveQualifiedType(resolver, qualifier, typeName, handle).Symbol switch
         {
             VBUserDefinedTypeMemberSymbol udt => new VBUserDefinedType(udt, udt.Members),
             VBEnumMemberSymbol enumType => new VBEnumType(enumType, members: null),
-            VBClassModuleSymbol classModule => new VBClassType(classModule, classModule.DefaultInterfaceMembers),
+            VBClassModuleSymbol classModule => VBClassType.Of(classModule),
             BoundTypedSymbol bound => bound.ResolvedType,
             UnboundTypedSymbol unbound => unbound.ResolvedType,
-            _ => VBUnknownType.TypeInfo,
+            _ => new VBUnresolvedType(qualifier is null ? typeName : $"{qualifier}.{typeName}"),
         };
 
     // Procedure-local Dim/Static/Const declarations, plus the symbols a ReDim or a reference to an
@@ -281,7 +327,8 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
     // this module has an implicit declaration mode at all.
     public IEnumerable<Symbol> BuildLocals(
         MemberDeclarationNode member, Uri procedureUri, IReadOnlySet<string> outerScopeNames,
-        ModuleDirectives directives = default, bool withImplicitDeclarations = true)
+        ModuleDirectives directives = default, bool withImplicitDeclarations = true,
+        ImplicitDeclarationScope implicitScope = ImplicitDeclarationScope.Procedure)
     {
         var results = new List<Symbol>();
         var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -315,7 +362,7 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
         // it — the LocalDeclarationKind.ReDim marker is that pass's hook.
         foreach (var redim in body.OfType<RedimDeclarationNode>())
         {
-            if (redim.QualifierName is not null || outerScopeNames.Contains(redim.Name) || !declared.Add(redim.Name))
+            if (!redim.IsSimpleName || outerScopeNames.Contains(redim.Name) || !declared.Add(redim.Name))
             {
                 continue;
             }
@@ -346,17 +393,27 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
                 // implicit Variant rather than resolving. That is this rule applied to an incomplete
                 // name universe, not a different rule; it corrects itself as the universe grows.
                 var resolved = resolver.ResolveValue(reference.IdentifierName, ScopeKind.Local, procedureUri);
-                if (!resolved.IsUnbound && !IsOwnLocal(resolved, procedureUri))
+                if (!resolved.IsUnbound && !IsOwnLocal(resolved, procedureUri) && !IsOwnModuleVariable(resolved))
                 {
                     continue;
                 }
 
                 declared.Add(reference.IdentifierName);
-                results.Add(BuildImplicitLocal(reference, procedureUri));
+
+                // where the variable lives is the environment's to say (ImplicitDeclarationScope). Declared at module
+                // level it is one variable however many procedures refer to the name - each of them declares it, and
+                // the provider fuses the declarations that share an identity.
+                results.Add(implicitScope == ImplicitDeclarationScope.Module
+                    ? BuildImplicitModuleVariable(reference)
+                    : BuildImplicitLocal(reference, procedureUri));
             }
         }
 
-        return results;
+        // MS-VBAL §5.3.1.2: in a procedure declared Static every local variable has module extent, as if it were declared Static itself - the
+        // implicit ones and the ReDim's too. A constant is not a variable, and a parameter is not one of these.
+        return member.IsStatic
+            ? results.Select(symbol => symbol is VBLocalVariableSymbol { IsStatic: false } local and not VBParameterSymbol ? local with { IsStatic = true } : symbol).ToList()
+            : results;
     }
 
     // A resolver is composed over the symbols an earlier extraction pass produced, and that pass
@@ -370,6 +427,14 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
     private static bool IsOwnLocal(SymbolResolutionResult resolved, Uri procedureUri)
         => resolved.Symbol is VBLocalVariableSymbol local
             && local.ParentUri.AbsoluteUri == procedureUri.AbsoluteUri;
+
+    // The same trap one level up: with ImplicitDeclarationScope.Module the variable an earlier pass declared is this
+    // module's, and a pass over a resolver that holds it would find a match and declare nothing. Only a variable that
+    // was declared implicitly is an earlier pass's own output - one the source declares is a real match.
+    private bool IsOwnModuleVariable(SymbolResolutionResult resolved)
+        => resolved.Symbol is VBModuleFieldVariableMemberSymbol variable
+            && variable.GetProperty(SymbolProperties.ImplicitlyDeclared)
+            && variable.ParentUri.AbsoluteUri == moduleUri.AbsoluteUri;
 
     /// <summary>
     /// The simple name expressions of <paramref name="node"/> that sit in the <em>default</em> binding
@@ -600,17 +665,18 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
         var range = RangeOf(node);
         var asType = AsTypeOf(node);
         var elementType = ArrayElementType(asType, node.TypeHint, procedureUri);
-        var type = VariableType(elementType, asType, node.Children.OfType<ArrayBoundsNode>().FirstOrDefault());
-        return AutoInstantiatedIfDeclaredAsNew(new VBLocalVariableSymbol(
+        var bounds = node.Children.OfType<ArrayBoundsNode>().FirstOrDefault();
+        var type = VariableType(elementType, asType, bounds);
+        return WithArrayBounds(AutoInstantiatedIfDeclaredAsNew(new VBLocalVariableSymbol(
             workspaceRoot, procedureUri, node.Name, ScopeKind.Local, range, range,
-            IsStatic: node.IsStatic, ResolvedType: type), asType);
+            IsStatic: node.IsStatic, ResolvedType: type), asType), bounds);
     }
 
     public Symbol BuildLocalConstant(ConstantDeclarationNode node, Uri procedureUri)
     {
         var range = RangeOf(node);
         var type = DeclaredType(AsTypeOf(node), node.TypeHint, procedureUri);
-        return new VBLocalConstantSymbol(workspaceRoot, procedureUri, node.Name, range, range, type);
+        return new VBLocalConstantSymbol(workspaceRoot, procedureUri, node.Name, range, range, type, ConstantExpressionOf(node));
     }
 
     /// <summary>
@@ -633,6 +699,24 @@ internal sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind 
             workspaceRoot, procedureUri, node.IdentifierName, ScopeKind.Local, range, range,
             ResolvedType: ImplicitOrDeclaredType(asType: null, typeHint: null, procedureUri),
             DeclaredBy: LocalDeclarationKind.Implicit);
+    }
+
+    /// <summary>
+    /// Builds the module-level variable a reference to an undeclared name declares when the environment's
+    /// <see cref="ImplicitDeclarationScope"/> is <see cref="ImplicitDeclarationScope.Module"/>.
+    /// </summary>
+    /// <remarks>
+    /// The same variable as <c>Dim Name</c> at the top of the module would declare — an implicitly typed one, with no
+    /// access modifier — marked as implicit so that a later pass can tell it from one the source declares.
+    /// </remarks>
+    /// <param name="node">The simple name expression that declared it.</param>
+    public Symbol BuildImplicitModuleVariable(SimpleNameExpressionNode node)
+    {
+        var range = RangeOf(node);
+        return new VBModuleFieldVariableMemberSymbol(
+                workspaceRoot, moduleUri, node.IdentifierName, memberScope,
+                ImplicitOrDeclaredType(asType: null, typeHint: null, moduleUri), range, range, AccessModifier.Implicit)
+            .With(SymbolProperties.ImplicitlyDeclared, true);
     }
 
     // A ReDim always targets a dynamic array (MS-VBAL 5.4.3.3); the new dimensions stay unresolved.

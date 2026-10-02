@@ -66,6 +66,17 @@ public sealed class StdLibSymbolProvider : ISymbolProvider
     /// </summary>
     public const string AssertMemberName = "Assert";
 
+    /// <summary>
+    /// The name of the project the standard library is.
+    /// </summary>
+    /// <remarks>
+    /// It is what a project-qualified reference to the library names — <c>VBA.Strings.LenB</c>, <c>VBA.LenB</c>
+    /// (<strong>MS-VBAL §5.6.12</strong>). It is the same in every dialect: VB6 loads the very same <c>VBA</c> library, and what
+    /// it calls <c>VB</c> is the runtime library of its ActiveX controls, which is not this one. Where a dialect has more or fewer
+    /// members than another, the members are what say so, not the name of the library.
+    /// </remarks>
+    public const string LibraryName = "VBA";
+
     private readonly Uri _workspaceRoot;
     private readonly bool _is64Bit;
 
@@ -90,6 +101,19 @@ public sealed class StdLibSymbolProvider : ISymbolProvider
 
     /// <inheritdoc/>
     public IEnumerable<Symbol> ProvideSymbols()
+    {
+        // the library is a project of its own, named, so that `VBA.Strings.LenB` has a `VBA` to start from; and
+        // everything it provides says which project it is in, because the scope tree keeps its modules at the same
+        // tier as the workspace's and could not otherwise tell them apart.
+        yield return new VBProjectSymbol(_workspaceRoot, LibraryName).With(SymbolProperties.Library, LibraryName);
+
+        foreach (var symbol in LibrarySymbols())
+        {
+            yield return symbol.With(SymbolProperties.Library, LibraryName);
+        }
+    }
+
+    private IEnumerable<Symbol> LibrarySymbols()
     {
         var globalModule = new VBStandardModuleSymbol(_workspaceRoot, _workspaceRoot, GlobalModuleName);
         yield return globalModule;

@@ -367,10 +367,15 @@ public abstract class RDCoreServerApp(
     {
         LogIfEnabled(LogLevel.Information, "Received LSP/Initialize request.");
         ServerStateProvider.OnInitialize();
-        
-        if (options.Value.Server.ClientProcessId != 0)
+
+        // what the client says of itself comes before everything that is built from it: the capabilities below, and whatever an
+        // application brings up in its own handler.
+        ApplyInitializationOptions(request);
+
+        var clientProcessId = ResolveClientProcessId(request);
+        if (clientProcessId != 0)
         {
-            healthCheckService.Start(options.Value.Server.ClientProcessId, HandleUnhealthyClient);
+            healthCheckService.Start(clientProcessId, HandleUnhealthyClient);
         }
         else
         {
@@ -384,6 +389,86 @@ public abstract class RDCoreServerApp(
 
         await OnLanguageServerInitializeAsync(server, request, token);
         LogIfEnabled(LogLevel.Information, TraceMessages.LanguageServerInitialize_HandlerCompleted);
+    }
+
+    // the language the client says the workspace is written in wins over the server's own setting (the command line a client started it
+    // with): the request is LSP's own way for a client to say so, and the setting is only what a client that spawned the server could.
+    private void ApplyInitializationOptions(InitializeParams request)
+    {
+        var language = ReadInitializationOptions(request.InitializationOptions)?.Language;
+        if (language is null)
+        {
+            return;
+        }
+
+        if (!Workspace.SupportedLanguages.TryGet(language, out var supported))
+        {
+            LogIfEnabled(LogLevel.Warning, $"The client's initializationOptions name the language '{language}', which the platform does not serve; the server's own '{options.Value.Workspace.Language}' stands.");
+            return;
+        }
+
+        options.Value.Workspace.Language = supported.Id;
+        LogIfEnabled(LogLevel.Information, $"The workspace is written in {supported.Name} ('{supported.Id}'), as the client's initializationOptions say.");
+    }
+
+    /// <summary>
+    /// Reads the <c>initializationOptions</c> of an <c>initialize</c> request, which the protocol leaves a client free to put anything in.
+    /// </summary>
+    /// <param name="initializationOptions">What the request carried.</param>
+    /// <returns>The options, or <see langword="null"/> when the client sent none or sent something that is not them.</returns>
+    internal static Platform.Protocol.RDCoreInitializationOptions? ReadInitializationOptions(object? initializationOptions)
+    {
+        try
+        {
+            return initializationOptions switch
+            {
+                null => null,
+                Platform.Protocol.RDCoreInitializationOptions typed => typed,
+                Newtonsoft.Json.Linq.JToken token => token.ToObject<Platform.Protocol.RDCoreInitializationOptions>(),
+                _ => Newtonsoft.Json.Linq.JToken.FromObject(initializationOptions).ToObject<Platform.Protocol.RDCoreInitializationOptions>(),
+            };
+        }
+        catch (Newtonsoft.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private int ResolveClientProcessId(InitializeParams request)
+    {
+        var resolved = ClientProcessId(request.ProcessId, options.Value.Server.ClientProcessId, out var outOfRange);
+        if (outOfRange)
+        {
+            LogIfEnabled(LogLevel.Warning, TraceMessages.InitializeClientProcessIdOutOfRange);
+        }
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// Which process this server should outlive: the one the client named in its <c>initialize</c>
+    /// request, or the one the <c>-p</c> argument named when the request named none.
+    /// </summary>
+    /// <param name="requested">The <c>processId</c> of the <c>initialize</c> request.</param>
+    /// <param name="configured">The <c>Server:ClientProcessId</c> setting, from the <c>-p</c> argument.</param>
+    /// <param name="outOfRange">Whether <paramref name="requested"/> named a process id no process can have.</param>
+    /// <returns>The process id to watch, or <c>0</c> when neither source named one.</returns>
+    /// <remarks>
+    /// The request wins: it is LSP's own way for a client to say which process owns this server, and
+    /// only a client that spawned the server itself could have passed <c>-p</c>. Nothing read the
+    /// request at all, so a client that sent a <c>processId</c> was told in the log that it had sent
+    /// none — and nothing watched it, leaving the whole platform running after the client that owned it
+    /// was gone. A <c>null</c> <c>processId</c> is LSP's "the parent is not a process I can name".
+    /// </remarks>
+    internal static int ClientProcessId(long? requested, int configured, out bool outOfRange)
+    {
+        outOfRange = requested is < 0 or > int.MaxValue;
+        if (outOfRange)
+        {
+            return configured;
+        }
+
+        return requested is { } processId && processId != 0 ? (int)processId : configured;
     }
 
     /// <summary>

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using RDCore.SDK.Model;
 using RDCore.SDK.Platform;
 using RDCore.SDK.Server.Configuration;
 using System.Diagnostics;
@@ -145,7 +146,9 @@ public class RDCoreServerProcess(
         var trace = LogLevel.Trace; // Options.Value.Server.TraceLevel;
         var verbose = true; //Options.Value.Server.Verbose;
 
-        var info = CreateProcessStartInfo(fullPath, $"-p {Environment.ProcessId} -n {pipeName} -w \"{workspace}\" -t {trace} {(verbose ? "-v" : null)}");
+        var arguments = ServerArguments(
+            Environment.ProcessId, pipeName, workspace, trace, verbose, Options.Value.Workspace.Language);
+        var info = CreateProcessStartInfo(fullPath, arguments);
         if (hostMode)
         {
             info.Environment[ModeEnvironmentVariable] = "host";
@@ -166,6 +169,28 @@ public class RDCoreServerProcess(
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// The command line a server process is started with.
+    /// </summary>
+    /// <remarks>
+    /// The language a client serves is its own to say of the server it starts: an interactive shell is a BASIC, and says so
+    /// here, because the servers have to agree on it. It is left out when it is the default, so that a server's own
+    /// settings win.
+    /// <para>
+    /// 👉 <c>-v</c> goes last. It is a switch the argument parser only reads as one at the end of a command line; with
+    /// anything after it, it takes the next argument for its value and the server never starts.
+    /// </para>
+    /// </remarks>
+    internal static string ServerArguments(
+        int clientProcessId, string pipeName, string workspace, LogLevel trace, bool verbose, string? language = null)
+    {
+        var languageArgument = language is null || string.Equals(language, Workspace.SupportedLanguages.RDVBA.Id, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"--language {language} ";
+
+        return $"-p {clientProcessId} -n {pipeName} -w \"{workspace}\" {languageArgument}-t {trace} {(verbose ? "-v" : null)}";
     }
 
     private ProcessStartInfo CreateProcessStartInfo(string validPath, string args) => new()

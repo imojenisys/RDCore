@@ -2,6 +2,7 @@ using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
+using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Platform.Protocol;
 using System.Collections.Immutable;
@@ -56,11 +57,16 @@ internal static class SymbolDescriptorProjector
             AccessModifier = accessible?.AccessModifier ?? RDCore.SDK.Model.AccessModifier.Implicit,
             Scope = symbol.ScopeKind,
             DeclaredTypeName = DeclaredTypeNameOf(accessible),
+            Array = ArrayOf(accessible?.ResolvedType, symbol),
             Range = accessible?.Range ?? default,
             SelectionRange = accessible?.SelectionRange ?? default,
             Definitions = DefinitionsOf(symbol),
             Parameters = ParametersOf(symbol),
             Locals = LocalsOf(symbol, children),
+            Constants = ConstantsOf(symbol, children),
+            IsWithEvents = symbol.GetProperty(SymbolProperties.WithEvents),
+            IsAutoInstantiated = symbol.GetProperty(SymbolProperties.AutoInstantiated),
+            UserMemId = symbol.TryGetProperty(SymbolProperties.UserMemId, out var userMemId) ? userMemId : null,
             Members = [.. children.Where(IsNestableMember).Select(child => Describe(child, KindOf(child)!.Value, []))],
             External = ExternalOf(symbol),
         };
@@ -110,9 +116,37 @@ internal static class SymbolDescriptorProjector
     };
 
     private static string? DeclaredTypeNameOf(AccessibleTypedSymbol? symbol)
-        => symbol is null || symbol.ResolvedType is VBUnknownType or VBVoidType
-            ? null
-            : symbol.ResolvedType.Name;
+        => symbol is null ? null : TypeNameOf(symbol.ResolvedType);
+
+    // the name a declared type travels as: the type's own, and for an array its element's - the kind of array and how it is
+    // sized are the array descriptor's. A type that is not known has no name to carry, and one that did not resolve carries the
+    // name it was written with, which the host resolves again once it has the whole workspace.
+    private static string? TypeNameOf(VBType? type) => type switch
+    {
+        VBUnresolvedType unresolved => unresolved.DeclaredName,
+        null or VBUnknownType or VBVoidType => null,
+        VBArrayType array => array.ItemType is VBVoidType ? null : TypeNameOf(array.ItemType),
+        _ => type.Name,
+    };
+
+    // what makes the name above an array of it: fixed-size or resizable, and for a fixed-size one the bounds the symbol was
+    // declared with (SymbolProperties.ArrayBounds).
+    private static ArrayDescriptor? ArrayOf(VBType? type, Symbol symbol)
+    {
+        if (type is not VBArrayType array)
+        {
+            return null;
+        }
+
+        var bounds = symbol.TryGetProperty(SymbolProperties.ArrayBounds, out var declared) && !declared.IsDefault
+            ? declared
+            : [];
+        return new ArrayDescriptor
+        {
+            IsFixedSize = array is VBFixedSizeArrayType,
+            Bounds = [.. bounds.Select(bound => new ArrayBoundDescriptor { Lower = bound.LowerExpression, Upper = bound.UpperExpression })],
+        };
+    }
 
     // a procedure's Dim/Static variables. Parameters are not among them: they are their own descriptor
     // array, and VBParameterSymbol derives from VBLocalVariableSymbol, so they would otherwise be
@@ -146,11 +180,61 @@ internal static class SymbolDescriptorProjector
             builder.Add(new LocalDescriptor
             {
                 Name = local.Name,
-                DeclaredTypeName = local.ResolvedType is null or VBUnknownType or VBVoidType ? null : local.ResolvedType.Name,
+                DeclaredTypeName = TypeNameOf(local.ResolvedType),
+                Array = ArrayOf(local.ResolvedType, local),
                 IsStatic = local.IsStatic,
+                IsAutoInstantiated = local.GetProperty(SymbolProperties.AutoInstantiated),
                 DeclaredBy = local.DeclaredBy,
                 Range = local.Range,
                 SelectionRange = local.SelectionRange,
+            });
+        }
+        return builder.ToImmutable();
+    }
+
+    // a procedure's Const declarations, and a module-level constant's own value. Neither has storage,
+    // so neither belongs on Locals: what the host needs is the declaration's expression, to substitute
+    // at each use site. A local Const never travelled at all before this, so a procedure that declared
+    // one could not resolve its own name.
+    private static ImmutableArray<ConstantDescriptor> ConstantsOf(Symbol symbol, IEnumerable<Symbol> children)
+    {
+        // a module-level constant is the descriptor, not a child of one; a local constant reaches here
+        // the same two ways a local variable does (see LocalsOf).
+        var declared = symbol switch
+        {
+            VBConstantMemberSymbol moduleConstant => [moduleConstant],
+            VBReturningMemberSymbol returning => returning.Locals.OfType<Symbol>(),
+            VBProcedureMemberSymbol procedure => procedure.Locals.OfType<Symbol>(),
+            _ => [],
+        };
+
+        var constants = declared.Concat(symbol is VBConstantMemberSymbol ? [] : children)
+            .Where(constant => constant is VBConstantMemberSymbol or VBLocalConstantSymbol)
+            .DistinctBy(constant => constant.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (constants.Length == 0)
+        {
+            return [];
+        }
+
+        var builder = ImmutableArray.CreateBuilder<ConstantDescriptor>(constants.Length);
+        foreach (var constant in constants)
+        {
+            var (type, value) = constant switch
+            {
+                VBConstantMemberSymbol moduleConstant => (moduleConstant.ResolvedType, moduleConstant.Value),
+                VBLocalConstantSymbol local => (local.ResolvedType, local.Value),
+                _ => (VBUnknownType.TypeInfo, null),
+            };
+
+            builder.Add(new ConstantDescriptor
+            {
+                Name = constant.Name,
+                DeclaredTypeName = type is VBUnknownType or VBVoidType ? null : type.Name,
+                Value = value,
+                Range = (constant as BoundSymbol)?.Range ?? default,
+                SelectionRange = (constant as BoundSymbol)?.SelectionRange ?? default,
             });
         }
         return builder.ToImmutable();
@@ -179,7 +263,12 @@ internal static class SymbolDescriptorProjector
                 ParameterKind = parameter.ParameterKind,
                 IsOptional = parameter.IsOptional,
                 IsParamArray = parameter is ParamArrayParameterSymbol,
-                DeclaredTypeName = parameter.ResolvedType is VBUnknownType or VBVoidType ? null : parameter.ResolvedType.Name,
+                DefaultValue = parameter.DefaultValue,
+                // a ParamArray is its own kind of parameter, and what it holds is the host's to make.
+                DeclaredTypeName = parameter is ParamArrayParameterSymbol
+                    ? parameter.ResolvedType is VBUnknownType or VBVoidType ? null : parameter.ResolvedType.Name
+                    : TypeNameOf(parameter.ResolvedType),
+                Array = parameter is ParamArrayParameterSymbol ? null : ArrayOf(parameter.ResolvedType, parameter),
                 Range = parameter.Range,
             });
         }

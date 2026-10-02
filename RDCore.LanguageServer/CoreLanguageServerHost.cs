@@ -1,6 +1,8 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using RDCore.SDK.Server.Configuration;
 using RDCore.LanguageServer.Diagnostics;
 using RDCore.LanguageServer.Parsing;
 using RDCore.LanguageServer.Server;
@@ -13,6 +15,7 @@ using System.IO.Abstractions;
 using RDCore.SDK.Server;
 using RDCore.SDK.Server.Logging;
 using RDCore.SDK.Server.Services;
+using RDCore.SDK.Workspace;
 
 namespace RDCore.LanguageServer;
 
@@ -38,7 +41,9 @@ internal sealed class CoreLanguageServerHost() : RDCorePlatformServerHost<CoreLa
             // That guard is a no-op today: the loader re-stamps the project with this same version (see the
             // ProjectFile copy constructor).
             .AddSingleton(Info.Version ?? new Version(0, 0, 0))
-            .AddSingleton(ProtocolSupportedLanguage.VBA)
+            // the language the workspace is written in, which the client says when it starts the server and again when it initializes it:
+            // asked for when it is needed, never kept from before.
+            .AddSingleton<Func<SupportedLanguage>>(sp => () => sp.GetRequiredService<IOptions<SdkAppOptions>>().Value.Workspace.SupportedLanguage)
             .AddSingleton<IPath>(sp => sp.GetRequiredService<IFileSystem>().Path)
             .AddSingleton<IFile>(sp => sp.GetRequiredService<IFileSystem>().File)
             .AddSingleton<IDirectory>(sp => sp.GetRequiredService<IFileSystem>().Directory)
@@ -48,6 +53,8 @@ internal sealed class CoreLanguageServerHost() : RDCorePlatformServerHost<CoreLa
             .AddSingleton<IWorkspaceService, WorkspaceService>()
             .AddSingleton<IParsingClientService, ParsingClientService>()
             .AddSingleton<IDocumentDiagnosticsService, DocumentDiagnosticsService>()
+            .AddSingleton<IDiagnosticsPublisher, DiagnosticsPublisher>()
+            .AddSingleton<IDocumentLifecycleService, DocumentLifecycleService>()
             // intrinsic-only type resolution until project/library symbols can be composed (Slice 4).
             .AddSingleton<RDCore.SDK.Runtime.Abstract.Execution.ISymbolResolver, IntrinsicSymbolResolver>()
             .AddSingleton<ISymbolSyncService, SymbolSyncService>();

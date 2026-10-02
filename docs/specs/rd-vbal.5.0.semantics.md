@@ -154,6 +154,92 @@ The language core features an analytical pipeline that attaches detailed _semant
 
 Semantic flags are _facts_, not _opinions_.
 
+### The semantic model
+
+What the analysis finds out about a procedure is described by an immutable
+[ProcedureSemanticModel](../api/RDCore.SDK.Semantics.ProcedureSemanticModel.html), and that of a module by a
+[ModuleSemanticModel](../api/RDCore.SDK.Semantics.ModuleSemanticModel.html). A model is built by the pass that analyzed the code;
+it is never written back onto the syntax tree or onto a value.
+
+The first fact a model holds is the _compile errors_ of the _static pass_ (**RD-VBAL §5.0.1**), which is one walk over a
+procedure body: `StatementStaticSemanticsEvaluator`. Given the symbols of a workspace it evaluates every expression, and
+the coercion of every assignment; with none, `CheckStructure` checks what needs no name resolution:
+
+|Rule|Reported as|
+|---|---|
+|An `Exit` statement is where it may be (**MS-VBAL §5.4.2.5**, `.7`, `.17`-`.19`).|[VBC09312](../diagnostics/vbc09312.md)–[VBC09315](../diagnostics/vbc09315.md), [VBC09332](../diagnostics/vbc09332.md)|
+|A label is defined once (**MS-VBAL §5.4.1.1**).|`DuplicateLabelDefinition`|
+|A jump names a label that is defined.|`LabelNotDefined`|
+|A statement exists in the language: a bare `Print` is a statement of BASIC only.|`SubOrFunctionNotDefined`|
+
+A module is not valid for having valid procedures: what it declares is checked once for the module, by
+`DeclarationStaticSemanticsEvaluator`, and a `ModuleSemanticModel` holds those errors (`DeclarationErrors`) beside the
+model of each procedure, so that it is valid only when both are.
+
+|Rule|Reported as|
+|---|---|
+|A name is declared once in the scope of a module; the accessors of a property are the one declaration of it.|`DuplicateDeclaration`|
+|A declared type is a name that resolves to a type (**MS-VBAL §5.6.4**): of a variable, constant, parameter, result or local.|`UserDefinedTypeNotDefined`: _The declared type 'Missing' could not be resolved._|
+|What a class module declares about events (**MS-VBAL §5.2.4.3**, `§5.2.3.1.2`, `§5.3.1.8`).|`ClassModuleEventSemantics`|
+|What its `Implements` directives require of it (**MS-VBAL §5.2.4.2**, `§5.3.1.9`).|`ImplementsSemantics`|
+
+An unknown type is a type that is not known _yet_; a name that did not resolve is kept as one (`VBUnresolvedType`, which is an
+unknown type in every other respect) so that the error can say which. The host defines a module at a time, and a name that
+does not resolve while the module that declares it is defined may name a module defined after it, so the rule is asked for
+(`DeclarationRules.DeclaredTypes`) only when everything the declaration can see is defined: the name is then resolved again,
+and is an error if it still does not.
+
+### Expression facts
+
+Given the symbols of a workspace, the static pass records an
+[ExpressionFact](../api/RDCore.SDK.Semantics.ExpressionFact.html) for every expression it evaluates, in the
+`Expressions` of the procedure's model, by the expression's node identity. An operand has a fact of its own, evaluated before
+the expression that has it.
+
+|Member|Is|
+|---|---|
+|`DeclaredType`|The declared type of the expression (**RD-VBAL §5.0.1**); `null` when it is an error, which `Error` then holds.|
+|`Classification`|What it names (**MS-VBAL §5.6.1**): a value, variable, constant, function, property, subroutine, type, namespace, or the member of an object that is bound when it runs.|
+|`Binding`|The `SemanticId` of the symbol it refers to, when it resolved to one.|
+|`Flags`|[ValueExpressionSemanticFlags](../api/RDCore.SDK.Semantics.Flags.ValueExpressionSemanticFlags.html): `Literal`, `LateBound`, `DefaultMember`, `WithBlockRelative`, `DictionaryAccess`, `ProcedureCall`, `CaseMismatch`, and `ExplicitCallKeyword` on the callee of a `Call` statement written with the keyword.|
+
+An expression an assignment writes to, the counter or control variable of a `For` or `For Each`, the string a `Mid` statement
+replaces a part of, and the array a `ReDim` gives its dimensions, is flagged `AssignmentTarget`; an element of an array is
+written through the array. What a statement prints is an expression like any other, evaluated and described as one.
+
+Facts are descriptions, not opinions: whether a late-bound member, a name written in another case or the obsolete `Call` keyword
+is worth a diagnostic is for an analyzer to say.
+
+### Declaration facts
+
+A `ModuleSemanticModel` also describes the declarations of the module (`Declarations`,
+[DeclarationFact](../api/RDCore.SDK.Semantics.DeclarationFact.html)): each variable, constant, parameter, procedure, property
+and event, with the access it is declared with and where. A variable that was never declared is `IsImplicit` (it came into
+being because something referred to it), and `OptionExplicit` says whether the module states `Option Explicit`
+(**MS-VBAL §5.2.1.3**); it is not issued (`null`) for a language that has no such directive, such as the platform's BASIC. The
+accessors of a property are one declaration.
+
+**A fact is stated only when it is true.** A fact that says a declaration is _not used_ is a claim about every place that
+could use it, and the language core makes it only when it can vouch for all of them. A declaration's `References` (the
+expressions that read it, write to it, and pass it as an argument that may be taken by reference) are stated when both hold,
+and are `null` otherwise, which says the references are not known, and not that there are none:
+
+1. Nothing outside the code analyzed can refer to it: a local, a parameter, or a variable that is not `Public` or `Friend`. A
+   procedure, a property and an event are also called by convention (an event handler, a member that implements an
+   interface) or by name at run time, and a constant is referred to by the expressions of declarations (the bounds of an
+   array, the value of another constant), which are not evaluated as those of a procedure are: none of them has references yet.
+2. The code that could refer to it was analyzed completely (`ProcedureSemanticModel.IsFullyAnalyzed`): the procedure has no
+   error, and the body was looked at again, apart from the pass, for each place a name is written that refers to something,
+   and every one has a fact. For a local or a parameter that is its procedure; for a variable of the module, every procedure.
+
+An analyzer reads what is stated, and has nothing to say about what is not. Which declarations are worth a diagnostic is its
+to say.
+
+A statement inside an excluded `#If` branch is not analyzed and defines no label (**MS-VBAL §3.4.2**). Lowering a body to
+instructions ([**RD-VBAL §3.5.2** Instruction](rd-vbal.3.5.2.instruction.md)) reports exactly these errors, by calling
+`CheckStructure`: the rules are written in one place, and lowering only acts on the outcome (a jump that lands nowhere has no
+target; an `Exit` that is not where it may be has no instruction).
+
 ### Diagnostics
 
 > 🧩 The role of _analyzers_ in extensions like **RDCore.Diagnostics** is to inspect the flags and errors in

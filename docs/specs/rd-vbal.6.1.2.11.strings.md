@@ -119,8 +119,8 @@ The declared type survives external dispatch because each intrinsic stores its o
 ([**RD-VBAL §2.5.2.1.1** Numeric Values](rd-vbal.2.5.2.1.1.numeric-values.md)).
 
 👉 This is what lets `Len` return "the number of bytes required to store a variable" for the variable it is given.
-`Date` and `Double` are indistinguishable at external dispatch, and need not be distinguished, because they have the
-same width.
+`Date` and `Double` are indistinguishable at external dispatch. That costs `Len` nothing, because they have the same
+width; a parameter declared `Date` will need its declared type to recover its argument.
 
 ---
 > ⏮️ [**RD-VBAL §6.1.2.10** Math](rd-vbal.6.1.2.10.math.md) | ⏭️ [**RD-VBAL §6.1.2.12** SystemColorConstants](rd-vbal.6.1.2.12.systemcolorconstants.md)
