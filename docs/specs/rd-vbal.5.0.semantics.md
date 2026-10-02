@@ -172,6 +172,40 @@ the coercion of every assignment; with none, `CheckStructure` checks what needs 
 |A jump names a label that is defined.|`LabelNotDefined`|
 |A statement exists in the language: a bare `Print` is a statement of BASIC only.|`SubOrFunctionNotDefined`|
 
+A module is not valid for having valid procedures: what it declares is checked once for the module, by
+`DeclarationStaticSemanticsEvaluator`, and a `ModuleSemanticModel` holds those errors (`DeclarationErrors`) beside the
+model of each procedure, so that it is valid only when both are.
+
+|Rule|Reported as|
+|---|---|
+|A name is declared once in the scope of a module; the accessors of a property are the one declaration of it.|`DuplicateDeclaration`|
+|A declared type is a name that resolves to a type (**MS-VBAL §5.6.4**): of a variable, constant, parameter, result or local.|`UserDefinedTypeNotDefined`: _The declared type 'Missing' could not be resolved._|
+|What a class module declares about events (**MS-VBAL §5.2.4.3**, `§5.2.3.1.2`, `§5.3.1.8`).|`ClassModuleEventSemantics`|
+|What its `Implements` directives require of it (**MS-VBAL §5.2.4.2**, `§5.3.1.9`).|`ImplementsSemantics`|
+
+An unknown type is a type that is not known _yet_; a name that did not resolve is kept as one (`VBUnresolvedType`, which is an
+unknown type in every other respect) so that the error can say which. The host defines a module at a time, and a name that
+does not resolve while the module that declares it is defined may name a module defined after it, so the rule is asked for
+(`DeclarationRules.DeclaredTypes`) only when everything the declaration can see is defined: the name is then resolved again,
+and is an error if it still does not.
+
+### Expression facts
+
+Given the symbols of a workspace, the static pass records an
+[ExpressionFact](../api/RDCore.SDK.Semantics.ExpressionFact.html) for every expression it evaluates, in the
+`Expressions` of the procedure's model, by the expression's node identity. An operand has a fact of its own, evaluated before
+the expression that has it.
+
+|Member|Is|
+|---|---|
+|`DeclaredType`|The declared type of the expression (**RD-VBAL §5.0.1**); `null` when it is an error, which `Error` then holds.|
+|`Classification`|What it names (**MS-VBAL §5.6.1**): a value, variable, constant, function, property, subroutine, type, namespace, or the member of an object that is bound when it runs.|
+|`Binding`|The `SemanticId` of the symbol it refers to, when it resolved to one.|
+|`Flags`|[ValueExpressionSemanticFlags](../api/RDCore.SDK.Semantics.Flags.ValueExpressionSemanticFlags.html): `Literal`, `LateBound`, `DefaultMember`, `WithBlockRelative`, `DictionaryAccess`, `ProcedureCall`, `CaseMismatch`, and `ExplicitCallKeyword` on the callee of a `Call` statement written with the keyword.|
+
+Facts are descriptions, not opinions: whether a late-bound member, a name written in another case or the obsolete `Call` keyword
+is worth a diagnostic is for an analyzer to say.
+
 A statement inside an excluded `#If` branch is not analyzed and defines no label (**MS-VBAL §3.4.2**). Lowering a body to
 instructions ([**RD-VBAL §3.5.2** Instruction](rd-vbal.3.5.2.instruction.md)) reports exactly these errors, by calling
 `CheckStructure`: the rules are written in one place, and lowering only acts on the outcome (a jump that lands nowhere has no
