@@ -55,6 +55,12 @@ public readonly record struct ValueConversionResult(VBTypedValue? Value, VBRunti
 /// reached a rule keyed on a <c>Null</c> <em>source</em>: a <c>Null</c> assigned to a <c>Long</c> was an
 /// internal error instead.
 /// </para>
+/// <para>
+/// 👉 The same goes for an <c>Error</c> value, the other source the specification keys a rule on
+/// (<strong>MS-VBAL §5.5.1.2.9</strong>): it converts to none of these types, so every conversion here raises
+/// error 13 for one. The explicit-conversion functions that read an Error as its error code swap the code in
+/// before they convert.
+/// </para>
 /// </remarks>
 public static partial class ValueConversions
 {
