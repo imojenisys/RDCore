@@ -21,8 +21,9 @@ namespace RDCore.Runtime.Semantics.Statements;
 /// The replacement never makes the string longer: it is the least of the <c>length</c> asked for, what is left of the
 /// target from <c>start</c> on, and what the value has to give. The <c>B</c> forms count <em>bytes</em> of the string's
 /// in-memory form - two to a character, as <c>LenB</c> does, and the byte left over of a string whose data is an odd
-/// number of bytes - so that an odd position splits a character, which is the point of them. The trailing <c>$</c>
-/// changes nothing at run time.
+/// number of bytes - so that an odd position splits a character, which is the point of them. The other forms count and
+/// replace whole characters through the same bytes, two to a character, so the byte left over is not one of the
+/// characters they count and stays where it is. The trailing <c>$</c> changes nothing at run time.
 /// <para>
 /// The new string is Let-assigned to the target like any other value (<strong>§5.4.3.8</strong>), so the target can be any
 /// variable expression an assignment accepts, and a fixed-length <c>String</c> or a <c>Byte()</c> target is given back in
@@ -65,7 +66,7 @@ public sealed record class MidStatementRuntimeSemantics(
 
         var replaced = mid.IsByteMode
             ? ReplaceBytes(target, (int)start - 1, length, value!)
-            : new VBStringValue(Replace(Text(target), (int)start - 1, length, Text(value!)));
+            : ReplaceBytes(target, 2 * ((int)start - 1), 2 * CharactersReplaced(target, (int)start - 1, length, value!), value!);
 
         return Assignments.Assign(session, context, mid, mid.Target, mid.Value, replaced);
     }
@@ -74,12 +75,11 @@ public sealed record class MidStatementRuntimeSemantics(
 
     // "the next x characters within <string-argument> are replaced by the first x characters of v, where x = the least
     // of the following: <length>, the number of characters in <string-argument> after and including the first character
-    // to replace, or the number of characters in v."
-    private static string Replace(string target, int offset, long? length, string value)
-    {
-        var count = (int)Math.Min(Math.Min(length ?? int.MaxValue, target.Length - offset), value.Length);
-        return string.Concat(target.AsSpan(0, offset), value.AsSpan(0, count), target.AsSpan(offset + count));
-    }
+    // to replace, or the number of characters in v." Those are whole characters of both, two bytes each, and they are
+    // replaced as the bytes they are: what follows the target's last character - the byte left over of a string whose
+    // data is an odd number of bytes - is not one of them, and is left as it is.
+    private static long CharactersReplaced(VBStringValue target, int offset, long? length, VBStringValue value)
+        => Math.Min(Math.Min(length ?? int.MaxValue, Text(target).Length - offset), Text(value).Length);
 
     // the same in bytes: the string's data as it is stored - UTF-16 little-endian code units, and the byte left over of an
     // odd one - so a byte offset can fall inside a character. They are the string's own bytes (VBStringValue.GetBytes),

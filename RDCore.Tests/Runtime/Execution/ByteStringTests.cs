@@ -188,4 +188,19 @@ public sealed class ByteStringTests
 
         CollectionAssert.AreEqual(new[] { "65", "216", "4" }, printed.ToArray());
     }
+
+    [TestMethod]
+    [TestCategory("MS-VBAL 5.4.3.5 Mid/MidB/Mid$/MidB$ Statement")]
+    public void Mid_OnAnOddByteString_ReplacesTheCharacter_AndKeepsTheByteLeftOver()
+        // "A" is replaced by "Z" as the two bytes it is, and the byte after it is not a character: 5A 00 42.
+        => CollectionAssert.AreEqual(new[] { "3", "90", "66" },
+            Run("Mid(S, 1, 1) = \"Z\"", "Debug.Print LenB(S)", "B2 = S", "Debug.Print B2(0)", "Debug.Print B2(2)").ToArray());
+
+    [TestMethod]
+    [TestCategory("MS-VBAL 5.4.3.5 Mid/MidB/Mid$/MidB$ Statement")]
+    public void Mid_OnAnOddByteString_ReplacesWholeCharactersOnly()
+        // x is the least of the characters left in S from the start, one, and the characters of "ZQ", two: one character
+        // is replaced, and nothing of "Q" is written over the byte left over.
+        => CollectionAssert.AreEqual(new[] { "3", "1", "66" },
+            Run("Mid(S, 1) = \"ZQ\"", "Debug.Print LenB(S)", "Debug.Print Len(S)", "B2 = S", "Debug.Print B2(2)").ToArray());
 }
