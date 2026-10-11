@@ -75,6 +75,45 @@ public sealed class StdLibDispatchTests
     }
 
     [TestMethod]
+    [DataRow("Debug.Print CInt(\"x\")", DisplayName = "a conversion")]
+    [DataRow("Debug.Print Hex(\"x\")", DisplayName = "a conversion with a $ twin")]
+    [DataRow("Debug.Print Chr(-1)", DisplayName = "a member the dispatcher answers for")]
+    [DataRow("Err.Raise 5", DisplayName = "the error object")]
+    public void AnErrorALibraryMemberRaises_IsAtTheStatementThatCalledIt(string statement)
+    {
+        // a library member's code is not the workspace's, and cannot say where it was called from: the statement
+        // that called it is where its error is, and the run ends with the error Err reports, not a copy of it.
+        var (session, outcome) = RuntimeSourceHarness.Run(fileSystem: null, [], output: null, standardLibrary: true, "Dim z As Long", statement);
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
+        Assert.IsNotNull(outcome.ErrorInfo!.Location.Uri, outcome.ErrorInfo.Verbose);
+        Assert.AreEqual(2, outcome.ErrorInfo.Location.Range.Start.Line, "the third line of the document, counted from 0");
+        Assert.AreSame(outcome.ErrorInfo, session.Errors.Current);
+    }
+
+    [TestMethod]
+    public void AnErrorThatSaysWhereItWasRaised_KeepsItsOwnPlace()
+    {
+        // the statement stands in only for a location nothing gave: an operator's error is at its own expression.
+        var (_, outcome) = RuntimeSourceHarness.Run(fileSystem: null, [], output: null, standardLibrary: true, "Debug.Print 1 / 0");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
+        Assert.AreEqual(12, outcome.ErrorInfo!.Location.Range.Start.Character, "the division, not the statement");
+    }
+
+    [TestMethod]
+    [DataRow("Debug.Print CInt(\"x\")", DisplayName = "a conversion")]
+    [DataRow("Debug.Print Chr(-1)", DisplayName = "a member the dispatcher answers for")]
+    [DataRow("Err.Raise 5", DisplayName = "the error object")]
+    public void Erl_AfterAnErrorALibraryMemberRaised_IsTheLineThatCalledIt(string statement)
+    {
+        var output = Run("10 On Error Resume Next", $"20 {statement}", "30 Debug.Print Erl");
+
+        Assert.HasCount(1, output, string.Join(" / ", output));
+        Assert.AreEqual("3", output[0].Trim(), "the document line of the statement that called it");
+    }
+
+    [TestMethod]
     public void AConversionFunction_IsCalledFromSource()
     {
         var output = Run("10 Debug.Print CInt(\"7\") + 1", "20 Debug.Print CStr(2.5) & \"!\"", "30 Debug.Print Hex(255)");
