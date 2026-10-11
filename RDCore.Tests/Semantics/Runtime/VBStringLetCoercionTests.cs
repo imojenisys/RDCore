@@ -1,6 +1,8 @@
 using RDCore.Runtime.Semantics.LetCoercion;
 using RDCore.SDK.Model.Types;
+using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
+using RDCore.SDK.Model.Values.Runtime;
 
 namespace RDCore.Tests.Semantics.Runtime;
 
@@ -131,4 +133,45 @@ public sealed class VBStringLetCoercionTests : LetCoercionRuntimeSemanticsTests
         // fixed 2026-09-16: see VBNumericLetCoercionTests.EmptySource_IsZero for why this was
         // unreachable (MS-VBAL 5.5.1.2.11).
         => AssertCoercedTo<VBStringValue>(Coerce(Sut(), VBEmptyValue.Empty, VBStringType.TypeInfo), "");
+
+    // "a copy of the source string" is a copy of all of its data, not of the characters a managed string can hold.
+
+    [TestMethod]
+    public void StringSource_KeepsItsTrailingByte()
+    {
+        var result = (VBStringValue)Coerce(Sut(), VBStringValue.FromBytes([0x41, 0x00, 0x42]), VBStringType.TypeInfo).Result!;
+
+        Assert.AreEqual("A", result.Value);
+        Assert.AreEqual((byte)0x42, result.TrailingByte);
+    }
+
+    [TestMethod]
+    public void StringSource_TheNullString_StaysTheNullString()
+        => Assert.IsTrue(((VBStringValue)Coerce(Sut(), VBStringValue.VBNullString, VBStringType.TypeInfo).Result!).IsNullString);
+
+    [TestMethod]
+    [TestCategory("RD-VBAL §5.5.1.2.6 Let-coercion to and from a resizable Byte array")]
+    public void ByteArraySource_AnOddCount_KeepsTheTrailingByte()
+    {
+        var result = (VBStringValue)Coerce(Sut(), Bytes(0x41, 0x00, 0x42), VBStringType.TypeInfo).Result!;
+
+        Assert.AreEqual(3, result.ByteLength);
+        CollectionAssert.AreEqual(new byte[] { 0x41, 0x00, 0x42 }, result.GetBytes());
+    }
+
+    [TestMethod]
+    [TestCategory("RD-VBAL §5.5.1.2.6 Let-coercion to and from a resizable Byte array")]
+    public void ByteArraySource_ALoneSurrogate_IsNotReplaced()
+        // 00 D8 is the code unit U+D800 on its own, which a text encoding reads as U+FFFD instead.
+        => AssertCoercedTo<VBStringValue>(Coerce(Sut(), Bytes(0x00, 0xD8), VBStringType.TypeInfo), "\uD800");
+
+    private static VBResizableByteArrayValue Bytes(params byte[] bytes)
+    {
+        var array = new VBResizableByteArrayValue([(0, bytes.Length - 1)]);
+        for (var index = 0; index < bytes.Length; index++)
+        {
+            array.TrySetElement(new ValueBindingHandle(new VBRuntimeValue<byte>(bytes[index])), index);
+        }
+        return array;
+    }
 }

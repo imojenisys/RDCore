@@ -105,6 +105,23 @@ public sealed class DeclareTests
             "Debug.Print StringLength(vbNullString)",
             "Debug.Print StringLength(\"\")"));
 
+    // GetModuleHandleA tells a null pointer from a zero-length string, which lstrlenA does not: given a null pointer it answers the module of the process
+    // that calls it, and given a zero-length string, none. Its handle is declared As LongLong, a pointer's width in the 64-bit environment these run in.
+    [TestMethod]
+    public async Task VbNullString_ByValAsString_IsANullPointer_WhereAZeroLengthStringIsNot()
+        => CollectionAssert.AreEqual(new[] { "True", "False" }, await Run(
+            "Private Declare PtrSafe Function ModuleHandle Lib \"kernel32\" Alias \"GetModuleHandleA\" (ByVal name As String) As LongLong",
+            "Debug.Print ModuleHandle(vbNullString) <> 0",
+            "Debug.Print ModuleHandle(\"\") <> 0"));
+
+    [TestMethod]
+    public async Task VbNullString_AsAny_IsANullPointer_WhereAZeroLengthStringIsNot()
+        // an As Any argument is passed as what it is, and vbNullString is a String whose value is zero.
+        => CollectionAssert.AreEqual(new[] { "True", "False" }, await Run(
+            "Private Declare PtrSafe Function ModuleHandle Lib \"kernel32\" Alias \"GetModuleHandleA\" (ByVal name As Any) As LongLong",
+            "Debug.Print ModuleHandle(vbNullString) <> 0",
+            "Debug.Print ModuleHandle(\"\") <> 0"));
+
     [TestMethod]
     public async Task AnOrdinalAlias_NamesTheFunctionByItsNumber()
     {

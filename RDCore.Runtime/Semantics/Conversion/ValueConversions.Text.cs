@@ -2,9 +2,9 @@ using RDCore.SDK.Model;
 using RDCore.SDK.Model.Errors;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
 using System.Globalization;
-using System.Text;
 
 namespace RDCore.Runtime.Semantics.Conversion;
 
@@ -18,8 +18,9 @@ public static partial class ValueConversions
     /// <param name="source">The value, unwrapped from any <c>Variant</c> that held it.</param>
     public static ValueConversionResult ToText(VBTypedValue source) => source switch
     {
-        // result is a copy of the source string.
-        VBStringValue text => ValueConversionResult.Success(new VBStringValue(text.Value)),
+        // result is a copy of the source string: its runtime value, which is immutable, so the copy has every byte of
+        // its data - a trailing byte included - and a copy of vbNullString is vbNullString.
+        VBStringValue text => ValueConversionResult.Success(new VBStringValue(new ValueBindingHandle(text.RuntimeValue))),
 
         VBNumericTypedValue number => ValueConversionResult.Success(new VBStringValue(NumberToText(number))),
 
@@ -30,7 +31,14 @@ public static partial class ValueConversions
         // MS-VBAL 5.5.1.2.11: "The result is a 0-length string."
         VBEmptyValue => ValueConversionResult.Success(VBStringValue.ZeroLengthString),
 
-        VBArrayValue { ItemType: VBByteType } bytes => ValueConversionResult.Success(new VBStringValue(FromBytes(bytes))),
+        // MS-VBAL 5.5.1.2.6: "The binary data within the source Byte array is interpreted as if it represents the
+        // implementation-defined binary format used to store String data [...] This coercion never raises a runtime
+        // error. If the byte array is uninitialized, the result is a 0-length string." RDCore's format is UTF-16LE code
+        // units and, when the data is an odd number of bytes, the byte left over after them, so every byte array is one
+        // and every byte of it is kept: the specification's "?" for data that "cannot be represented on the current
+        // platform", and its discarded "trailing bytes leftover", describe formats that cannot hold some of them.
+        VBArrayValue { ItemType: VBByteType } bytes
+            => ValueConversionResult.Success(VBStringValue.FromBytes(VBByteArrayCoercionHelpers.Flatten(bytes))),
 
         VBNullValue => ValueConversionResult.Failure(VBRuntimeErrorId.InvalidUseOfNull),
 
@@ -39,21 +47,6 @@ public static partial class ValueConversions
 
         _ => ValueConversionResult.NotApplicable,
     };
-
-    // MS-VBAL 5.5.1.2.6: "The binary data within the source Byte array is interpreted as if it
-    // represents the implementation-defined binary format used to store String data [...] The result
-    // is the string produced. This coercion never raises a runtime error. If the byte array is
-    // uninitialized, the result is a 0-length string. [...] Any trailing bytes leftover at the end of
-    // the byte array that could not be interpreted are discarded." .NET's own String storage already
-    // is that binary format (UTF-16LE), and every 2-byte pairing is a valid .NET char - the spec's "?"
-    // fallback for a byte sequence that "cannot be represented on the current platform" describes other
-    // hosts whose internal string encoding isn't UTF-16; it has no unrepresentable case to fall back to
-    // here, so Encoding.Unicode.GetString (dropping an unpaired trailing byte) satisfies the rule as-is.
-    private static string FromBytes(VBArrayValue byteArraySource)
-    {
-        var bytes = VBByteArrayCoercionHelpers.Flatten(byteArraySource);
-        return Encoding.Unicode.GetString(bytes[..(bytes.Length - bytes.Length % 2)]);
-    }
 
     // MS-VBAL 5.5.1.2.4: if the day value of the source date is 12/30/1899, only the date's time is
     // converted (Long Time format) — compares DateTime.Date rather than requiring the exact zero serial value,

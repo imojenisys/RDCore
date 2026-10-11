@@ -255,6 +255,59 @@ public sealed class StdLibDispatchTests
     }
 
     [TestMethod]
+    public void AStringWithATrailingByte_ReachesATypedStringParameterWhole()
+    {
+        // a String's runtime value is all of its data, and the parameter is bound to that same value. AscB declares one.
+        var ascB = new StdLibSymbolReader(Root).Read(typeof(IStdStringsModule).Assembly)
+            .OfType<VBFunctionMemberSymbol>().Single(member => member.Name == "AscB");
+        var strings = Substitute.For<IStdStringsModule>();
+        strings.AscB(Arg.Any<VBStringValue>())
+            .Returns(RuntimeSemanticsEvaluationResult<VBIntegerValue>.Success(new VBIntegerValue(0)));
+        var dispatcher = new StdLibDispatcher(new Dictionary<Type, object> { [typeof(IStdStringsModule)] = strings });
+
+        var result = dispatcher.Dispatch(
+            new ExternalCallRequest(ascB, [VBRuntimeByteStringValue.FromBytes([0x41, 0x00, 0x42])]), Substitute.For<ISymbolResolver>());
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+        strings.Received().AscB(Arg.Is<VBStringValue>(text => text.Value == "A" && text.TrailingByte == 0x42));
+    }
+
+    [TestMethod]
+    public void TheNullString_ReachesATypedStringParameter()
+    {
+        // vbNullString's managed value is null, which no case for a managed value matches: it was refused, as error 5,
+        // before the member was reached.
+        var ascB = new StdLibSymbolReader(Root).Read(typeof(IStdStringsModule).Assembly)
+            .OfType<VBFunctionMemberSymbol>().Single(member => member.Name == "AscB");
+        var strings = Substitute.For<IStdStringsModule>();
+        strings.AscB(Arg.Any<VBStringValue>())
+            .Returns(RuntimeSemanticsEvaluationResult<VBIntegerValue>.Success(new VBIntegerValue(0)));
+        var dispatcher = new StdLibDispatcher(new Dictionary<Type, object> { [typeof(IStdStringsModule)] = strings });
+
+        var result = dispatcher.Dispatch(
+            new ExternalCallRequest(ascB, [new VBRuntimeValue<string>(null!)]), Substitute.For<ISymbolResolver>());
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+        strings.Received().AscB(Arg.Is<VBStringValue>(text => text.IsNullString));
+    }
+
+    [TestMethod]
+    public void AnUnassignedString_ReachesTheMemberItIsPassedTo()
+    {
+        // a String variable nothing has assigned is vbNullString, and passing it is not an error of its own.
+        var text = new VBModuleFieldVariableMemberSymbol(
+            Root, RuntimeSourceHarness.ModuleUri, "S", ScopeKind.Module, VBStringType.TypeInfo,
+            SourceRange.Empty, SourceRange.Empty, AccessModifier.Implicit);
+
+        var (_, outcome) = RuntimeSourceHarness.Run(
+            fileSystem: null, [text], output: null, standardLibrary: true, "Debug.Print InStrRev(S, \"x\")");
+
+        // 🚧 TODO when InStrRev is written: the call completes, and prints 0.
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
+        Assert.AreEqual("'InStrRev' is declared but not implemented yet.", outcome.ErrorInfo!.Verbose);
+    }
+
+    [TestMethod]
     public void ATypedParameter_TakesTheArgumentItsCallerCoerced()
     {
         // the call site Let-coerces an argument to the parameter's declared type, so a Double parameter's
