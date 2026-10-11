@@ -169,4 +169,23 @@ public sealed class ByteStringTests
 
         CollectionAssert.AreEqual(new[] { "3", "3" }, printed.ToArray());
     }
+
+    [TestMethod]
+    [TestCategory("MS-VBAL 5.4.3.5 Mid/MidB/Mid$/MidB$ Statement")]
+    public void MidB_OnAnOddByteString_CountsAndReplacesTheByteLeftOver()
+        // the byte left over is the third byte of S, so MidB can start there and replace it: 41 00 5A, still three bytes.
+        => CollectionAssert.AreEqual(new[] { "3", "90" }, Run("MidB(S, 3, 1) = \"Z\"", "Debug.Print LenB(S)", "B2 = S", "Debug.Print B2(2)").ToArray());
+
+    [TestMethod]
+    [TestCategory("MS-VBAL 5.4.3.5 Mid/MidB/Mid$/MidB$ Statement")]
+    public void MidB_SplittingACharacter_KeepsTheBytesItWrites()
+    {
+        // U is the character U+00D8, D8 00; written over the second byte of "AB" (41 00 42 00) it makes 41 D8, a lone
+        // surrogate, which the String's data holds as it is rather than as the replacement character's FD FF.
+        var printed = Run(
+            "ReDim B2(1)", "B2(0) = &HD8", "B2(1) = 0", "U = B2", "T = \"AB\"", "MidB(T, 2, 1) = U", "B2 = T",
+            "Debug.Print B2(0)", "Debug.Print B2(1)", "Debug.Print LenB(T)");
+
+        CollectionAssert.AreEqual(new[] { "65", "216", "4" }, printed.ToArray());
+    }
 }
