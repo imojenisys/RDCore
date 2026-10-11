@@ -986,7 +986,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
 
         // the value parameter is the last one, and the ones before it are what the property is indexed by.
         var valueParameter = parameters[^1];
-        if (BindArguments(session, context, parameters.RemoveAt(parameters.Length - 1), indexArguments, out var arguments) is { } bindingError)
+        if (BindArguments(session, context, parameters.RemoveAt(parameters.Length - 1), indexArguments, out var arguments, out _) is { } bindingError)
         {
             return bindingError;
         }
@@ -1326,7 +1326,8 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             return RuntimeSemanticsEvaluationResult.InternalError();
         }
 
-        if (BindArguments(session, context, parameters, argumentNodes, out var arguments, external: procedure is VBExternalFunctionMemberSymbol or VBExternalSubMemberSymbol)
+        if (BindArguments(session, context, parameters, argumentNodes, out var arguments, out var argumentsKnown,
+                external: procedure is VBExternalFunctionMemberSymbol or VBExternalSubMemberSymbol)
             is { } bindingError)
         {
             return bindingError;
@@ -1336,10 +1337,28 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
 
         // through a binding rather than straight to the invoker: whether this member's code is the workspace's
         // is the factory's decision, and a call site has no business knowing.
-        return Bindings is { } bindings
+        var returned = Bindings is { } bindings
             ? bindings.ForMember(procedure).Call(session.Symbols.Resolver, callArguments)
             : ProcedureInvoker.Invoke(procedure, session.Symbols.Resolver, callArguments);
+        return argumentsKnown ? returned : NotKnown(returned);
     }
+
+    /// <summary>
+    /// What a call made with an argument that is not known returns: the value it returned, which is not known either
+    /// (<see cref="VBTypedValue.IsIndeterminate"/>).
+    /// </summary>
+    /// <remarks>
+    /// An analysis runs the standard library for real, and an argument that is not known reaches it as the value its type assumes in its place, which
+    /// carries no knowledge: the library computes as it would for that value, and what it returns is derived from an assumed value - a stand-in, not a
+    /// fact about the code. A call that returns nothing has nothing to be known, and an error the call raised is returned as it was raised.
+    /// <para>
+    /// 👉 A call that is made with no argument, or with arguments that are all known, returns what the callee returned, known or not as the callee says.
+    /// </para>
+    /// </remarks>
+    private static RuntimeSemanticsEvaluationResult NotKnown(RuntimeSemanticsEvaluationResult returned)
+        => returned is { IsSuccess: true, Result: { } value } && value is not VBVoidValue
+            ? RuntimeSemanticsEvaluationResult.Success(value.AsIndeterminate())
+            : returned;
 
     /// <summary>
     /// Raises <paramref name="eventName"/>, an event of the class of the object whose code this is, on that object
@@ -1372,7 +1391,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             return RuntimeSemanticsEvaluationResult.InternalError();
         }
 
-        if (BindArguments(session, context, raised.Parameters, argumentNodes, out var arguments) is { } bindingError)
+        if (BindArguments(session, context, raised.Parameters, argumentNodes, out var arguments, out _) is { } bindingError)
         {
             return bindingError;
         }
@@ -1435,6 +1454,10 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
     /// <param name="parameters">The parameters of whatever is called, without its <c>Me</c>.</param>
     /// <param name="argumentNodes">The arguments, as written.</param>
     /// <param name="arguments">What the call is made with, one per parameter. Empty when binding failed.</param>
+    /// <param name="isKnown">
+    /// Whether every argument the binding evaluated is known. A variable passed by reference, and the elements of a <c>ParamArray</c>, are not
+    /// judged here: they are passed as storage that keeps whether what it holds is known (<see cref="IKnowledgeBinding"/>).
+    /// </param>
     /// <param name="external">
     /// Whether what is called is a <c>Declare</c>d procedure, whose arguments are passed the way a native library takes them: a <c>ByVal String</c> is the
     /// buffer of the variable it names, which the library may write to and which takes what it wrote, and an <c>As Any</c> parameter takes a variable of any
@@ -1443,9 +1466,10 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
     /// <returns>The error that stopped the binding, or <see langword="null"/> when every argument was bound.</returns>
     private RuntimeSemanticsEvaluationResult? BindArguments(
         IRuntimeSession session, RuntimeEvaluationContext context, ImmutableArray<VBParameterSymbol> parameters,
-        ImmutableArray<ExpressionNode> argumentNodes, out IRuntimeValue[] arguments, bool external = false)
+        ImmutableArray<ExpressionNode> argumentNodes, out IRuntimeValue[] arguments, out bool isKnown, bool external = false)
     {
         arguments = [];
+        isKnown = true;
         if (LetCoercionProvider is null)
         {
             return RuntimeSemanticsEvaluationResult.InternalError();
@@ -1529,6 +1553,9 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             {
                 return RuntimeSemanticsEvaluationResult.InternalError();
             }
+
+            // what is passed is a value, which keeps nothing of whether it is known: the call is told here.
+            isKnown &= !argumentResult.Value.Result!.IsIndeterminate;
 
             // an object passed to a parameter declared as a class or as Object is Set-assigned to the parameter's new
             // local (MS-VBAL §5.3.1.11): the parameter holds the reference, and nothing asks the object for a value. So is
