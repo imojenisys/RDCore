@@ -39,10 +39,8 @@ public sealed class BinaryConcatOperatorRuntimeTests : OperatorConcatRuntimeSema
 
     [TestMethod]
     public void DateAndString_CoercesDateOperandToString()
-    {
-        var date = new VBDateValue(2);
-        AssertResult<VBStringValue>(Evaluate(Concat(), date, new VBStringValue("x")), $"{date.Value.ToShortDateString()}x");
-    }
+        // the date written in the regional settings of the String coercion, which are invariant here.
+        => AssertResult<VBStringValue>(Evaluate(Concat(), new VBDateValue(2), new VBStringValue("x")), "01/01/1900x");
 
     [TestMethod]
     public void NullAndNull_IsNull()

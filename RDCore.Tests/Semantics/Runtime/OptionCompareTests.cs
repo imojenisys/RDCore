@@ -117,6 +117,21 @@ public sealed class OptionCompareTests : LetCoercionRuntimeSemanticsTests
     public void OptionCompareDatabase_IsNeverTheModeAnOperationRunsIn()
         => Assert.AreNotEqual(OptionCompare.Database, SessionIn(OptionCompare.Database, OptionCompare.Database).CurrentCompareMode());
 
+    [TestMethod]
+    public void StringComparisonIn_TakesTheModeGiven_AndTheEnvironmentsCulture()
+    {
+        // what a library member told which comparison to make compares with: the mode it is told, whatever the module's, and
+        // the environment's collation.
+        var rules = SessionIn(OptionCompare.Binary, lcid: 1055).StringComparisonIn(OptionCompare.Text);
+
+        Assert.AreEqual(0, rules.Comparer.Compare("i", "İ"), "Turkish's dotted capital I is the capital of i");
+    }
+
+    [TestMethod]
+    public void StringComparisonIn_Database_ResolvesTheWayAModulesDoes()
+        => Assert.AreEqual(OptionCompare.Binary,
+            SessionIn(declared: null, databaseCompare: OptionCompare.Binary).StringComparisonIn(OptionCompare.Database).Mode);
+
     #endregion
 
     #region evaluating a comparison

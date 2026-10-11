@@ -3,6 +3,7 @@ using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Model.Values.Runtime;
+using System.Globalization;
 
 namespace RDCore.Tests.Semantics.Runtime;
 
@@ -43,6 +44,18 @@ public sealed class ValueConversionsToTextTests
 
         Assert.AreEqual("A", text.Value);
         Assert.AreEqual((byte)0x42, text.TrailingByte);
+    }
+
+    [TestMethod]
+    public void ToText_OfANumber_IsInvariant_WhenGivenNoCulture()
+        => Assert.AreEqual("2.5", Text(new VBDoubleValue(2.5)).Value);
+
+    [TestMethod]
+    public void ToText_OfANumber_UsesTheDecimalSymbolOfTheCultureItIsGiven()
+    {
+        var conversion = ValueConversions.ToText(new VBDoubleValue(2.5), CultureInfo.GetCultureInfo(1031));
+
+        Assert.AreEqual("2,5", ((VBStringValue)conversion.Value!).Value);
     }
 
     [TestMethod]

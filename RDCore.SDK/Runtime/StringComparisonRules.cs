@@ -11,8 +11,8 @@ namespace RDCore.SDK.Runtime;
 /// </summary>
 /// <param name="Mode">
 /// The comparison mode of the module (<strong>MS-VBAL §5.2.1.1</strong>): <see cref="OptionCompare.Text"/> compares regardless of case,
-/// anything else compares the data of the strings (<see cref="Compare"/>). Never <see cref="OptionCompare.Database"/>: that is resolved to
-/// one of the two by the platform.
+/// anything else compares the data of the strings (<see cref="Compare(VBStringValue, VBStringValue)"/>). Never
+/// <see cref="OptionCompare.Database"/>: that is resolved to one of the two by the platform.
 /// </param>
 /// <param name="Culture">
 /// The regional settings of the environment, that text is collated by. The invariant culture when none is given.
@@ -30,14 +30,41 @@ public readonly record struct StringComparisonRules(OptionCompare Mode = OptionC
     public bool IgnoresCase => Mode == OptionCompare.Text;
 
     /// <summary>
-    /// Compares strings the way the relational operators do: by their data in binary mode (<see cref="Compare"/>), and regardless of case
-    /// according to the environment's collation in text mode.
+    /// What text mode disregards when it compares text: the case of a letter, and nothing else.
     /// </summary>
     /// <remarks>
-    /// 👉 A <see cref="string"/> is whole characters, so this cannot see a trailing byte: <see cref="Compare"/> is what compares two
-    /// <c>String</c> values, and agrees with this wherever neither has one.
+    /// In text mode "the text of the strings is compared in a case-insensitive manner, according to the host-defined regional settings"
+    /// (<strong>MS-VBAL §5.6.9.5</strong>). Every text comparison here is built from this one value - <see cref="Comparer"/> and the
+    /// <see cref="Compare(ReadOnlySpan{char}, ReadOnlySpan{char})"/> of <c>StrComp</c> - so
+    /// <c>StrComp(a, b, vbTextCompare) = 0</c> exactly when <c>a = b</c> under <c>Option Compare Text</c>, by construction. Folding
+    /// kana type and width as well would be one host's collation rather than the specification's case-insensitive comparison.
+    /// <para>
+    /// 👉 <c>Like</c> does not read this: it matches with <see cref="IgnoresCase"/> and <see cref="EffectiveCulture"/> on its own terms.
+    /// </para>
     /// </remarks>
-    public StringComparer Comparer => IgnoresCase ? StringComparer.Create(EffectiveCulture, ignoreCase: true) : BinaryComparer.Instance;
+    internal const CompareOptions TextOptions = CompareOptions.IgnoreCase;
+
+    /// <summary>
+    /// Compares strings the way the relational operators do: by their data in binary mode (<see cref="Compare(VBStringValue, VBStringValue)"/>),
+    /// and regardless of case according to the environment's collation in text mode.
+    /// </summary>
+    /// <remarks>
+    /// 👉 A <see cref="string"/> is whole characters, so this cannot see a trailing byte: <see cref="Compare(VBStringValue, VBStringValue)"/>
+    /// is what compares two <c>String</c> values, and agrees with this wherever neither has one.
+    /// </remarks>
+    public StringComparer Comparer => IgnoresCase ? EffectiveCulture.CompareInfo.GetStringComparer(TextOptions) : BinaryComparer.Instance;
+
+    /// <summary>
+    /// Compares two strings of whole characters the way the relational operators do, as <c>StrComp</c> reports it.
+    /// </summary>
+    /// <param name="left">The characters of the left operand.</param>
+    /// <param name="right">The characters of the right operand.</param>
+    /// <returns><c>-1</c> when <paramref name="left"/> is less than <paramref name="right"/>, <c>0</c> when they are equal, and
+    /// <c>1</c> otherwise.</returns>
+    public int Compare(ReadOnlySpan<char> left, ReadOnlySpan<char> right)
+        => IgnoresCase
+            ? Math.Sign(EffectiveCulture.CompareInfo.Compare(left, right, TextOptions))
+            : Math.Sign(CompareBinary(MemoryMarshal.AsBytes(left), MemoryMarshal.AsBytes(right)));
 
     /// <summary>
     /// Compares two <c>String</c> values the way the relational operators do (<strong>MS-VBAL §5.6.9.5</strong>), a trailing byte
@@ -61,12 +88,12 @@ public readonly record struct StringComparisonRules(OptionCompare Mode = OptionC
     {
         if (lhs.TrailingByte is null && rhs.TrailingByte is null)
         {
-            return Comparer.Compare(lhs.Value, rhs.Value);
+            return Compare(lhs.Value.AsSpan(), rhs.Value.AsSpan());
         }
 
         if (IgnoresCase)
         {
-            var text = Comparer.Compare(lhs.Value, rhs.Value);
+            var text = Compare(lhs.Value.AsSpan(), rhs.Value.AsSpan());
             return text != 0 ? text : Nullable.Compare(lhs.TrailingByte, rhs.TrailingByte);
         }
 

@@ -40,14 +40,20 @@ public readonly record struct ValueConversionResult(VBTypedValue? Value, VBRunti
 /// a value of one type <em>is</em>, expressed in another.
 /// </summary>
 /// <remarks>
-/// A conversion is a function of a value and a destination type, and nothing else: it needs no expression to
-/// be evaluating, no stack to recurse on, and no symbol to resolve. Let-coercion is the implicit use of it — an
-/// assignment, an operand, an argument — and the explicit-conversion functions of the standard library
-/// (<c>CInt</c>, <c>CDbl</c>, …) are the other; both are defined by the specification as "Let-coerced to
-/// <em>Type</em>", and both therefore get their value from here rather than one being built on the other, which
-/// would make a conversion function report itself as a coercion.
+/// A conversion is a function of a value and a destination type — and, to <c>String</c>, of the regional settings
+/// it writes in — and nothing else: it needs no expression to be evaluating, no stack to recurse on, and no symbol
+/// to resolve. Let-coercion is the implicit use of it — an assignment, an operand, an argument — and the
+/// explicit-conversion functions of the standard library (<c>CInt</c>, <c>CDbl</c>, …) are the other; both are
+/// defined by the specification as "Let-coerced to <em>Type</em>", and both therefore get their value from here
+/// rather than one being built on the other, which would make a conversion function report itself as a coercion.
 /// <para>
 /// All of it is pure, so it is static — the same as <c>VBNumericType.BankersRounding</c>, which it uses.
+/// </para>
+/// <para>
+/// 👉 The regional settings are an argument rather than something read, so that a conversion stays a function of
+/// what it is given: <see cref="ToText"/> takes a culture, and is invariant when it is given none. Let-coercion
+/// passes the session environment's, and so does <c>CStr</c>; the functions whose text the specification fixes
+/// pass the invariant culture themselves.
 /// </para>
 /// <para>
 /// 👉 A <c>Null</c> converts to no type that cannot hold it (<strong>MS-VBAL §5.5.1.2.10</strong>), so every

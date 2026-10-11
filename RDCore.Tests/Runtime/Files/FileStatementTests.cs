@@ -10,6 +10,7 @@ using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Runtime.Abstract;
 using RDCore.SDK.Runtime.Abstract.Execution;
+using System.Globalization;
 using System.IO.Abstractions.TestingHelpers;
 
 namespace RDCore.Tests.Runtime.Files;
@@ -219,6 +220,33 @@ public sealed class FileStatementTests
 
         Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
         Assert.AreEqual("1.5,2\r\n", fileSystem.File.ReadAllText($"{Root}/out.txt"));
+    }
+
+    [TestMethod]
+    public void Write_ADate_IsSpelledTheSameWhateverTheThreadCulture()
+    {
+        // "#yyyy-mm-dd hh:mm:ss#": the specification's spelling, like the '.' of a number. Under a culture with another
+        // calendar and another time separator it is still the Gregorian year and a ':', or Input # reads back another date.
+        var culture = (CultureInfo)CultureInfo.GetCultureInfo("th-TH").Clone();
+        culture.DateTimeFormat.TimeSeparator = ".";
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = culture;
+        try
+        {
+            var fileSystem = WithFile($"{Root}/out.txt");
+
+            var (_, outcome) = Run(fileSystem,
+                $"Open \"{Root}/out.txt\" For Output As #1",
+                "Write #1, #1/15/2020 1:45:00 PM#, #1/15/2020#",
+                "Close #1");
+
+            Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+            Assert.AreEqual("#2020-01-15 13:45:00#,#2020-01-15#\r\n", fileSystem.File.ReadAllText($"{Root}/out.txt"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     [TestMethod]

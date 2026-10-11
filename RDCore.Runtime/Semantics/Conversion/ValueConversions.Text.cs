@@ -15,18 +15,24 @@ public static partial class ValueConversions
     /// <c>String</c>, any numeric type, <c>Boolean</c>, <c>Date</c>, <c>Empty</c> (<strong>§5.5.1.2.11</strong>),
     /// or <c>Byte()</c> (<strong>§5.5.1.2.6</strong>).
     /// </summary>
+    /// <remarks>
+    /// A number is written with the regional decimal symbol, and a date in the regional Short Date and Long Time
+    /// formats: §5.5.1.2.4's "host-defined regional settings", which are <paramref name="culture"/>'s. The thread's
+    /// own culture is never read.
+    /// </remarks>
     /// <param name="source">The value, unwrapped from any <c>Variant</c> that held it.</param>
-    public static ValueConversionResult ToText(VBTypedValue source) => source switch
+    /// <param name="culture">The regional settings to write a number or a date in; the invariant culture when none is given.</param>
+    public static ValueConversionResult ToText(VBTypedValue source, CultureInfo? culture = null) => source switch
     {
         // result is a copy of the source string: its runtime value, which is immutable, so the copy has every byte of
         // its data - a trailing byte included - and a copy of vbNullString is vbNullString.
         VBStringValue text => ValueConversionResult.Success(new VBStringValue(new ValueBindingHandle(text.RuntimeValue))),
 
-        VBNumericTypedValue number => ValueConversionResult.Success(new VBStringValue(NumberToText(number))),
+        VBNumericTypedValue number => ValueConversionResult.Success(new VBStringValue(NumberToText(number, culture ?? CultureInfo.InvariantCulture))),
 
         VBBooleanValue boolean => ValueConversionResult.Success(new VBStringValue((bool)boolean.Value ? Tokens.True : Tokens.False)),
 
-        VBDateValue date => ValueConversionResult.Success(new VBStringValue(FormatDate(date.Value))),
+        VBDateValue date => ValueConversionResult.Success(new VBStringValue(FormatDate(date.Value, culture ?? CultureInfo.InvariantCulture))),
 
         // MS-VBAL 5.5.1.2.11: "The result is a 0-length string."
         VBEmptyValue => ValueConversionResult.Success(VBStringValue.ZeroLengthString),
@@ -54,16 +60,36 @@ public static partial class ValueConversions
     // full date and time value is converted (Short Date format); when the time-of-day is exactly midnight that
     // full value has nothing to add, so only the date prints — real VBA drops a trailing "12:00:00 AM" from a
     // date-only value.
-    private static string FormatDate(DateTime value) => value.Date == VBDateType.Zero.Value.Date
-        ? value.ToLongTimeString()
-        : value.TimeOfDay == TimeSpan.Zero
-            ? value.ToShortDateString()
-            : $"{value.ToShortDateString()} {value.ToLongTimeString()}";
-
-    private static string NumberToText(VBNumericTypedValue value)
+    private static string FormatDate(DateTime value, CultureInfo culture)
     {
-        var cultureInfo = CultureInfo.InvariantCulture;
+        var format = DateFormatOf(culture);
+        return value.Date == VBDateType.Zero.Value.Date
+            ? value.ToString("T", format)
+            : value.TimeOfDay == TimeSpan.Zero
+                ? value.ToString("d", format)
+                : $"{value.ToString("d", format)} {value.ToString("T", format)}";
+    }
 
+    // the formats of the culture, in the Gregorian calendar whatever calendar the culture writes in by default: MS-VBA's
+    // Calendar setting is "vbCalGreg 0 Use Gregorian calendar (default)", and MS-VBAL 6.1.2.4.2.1 gives the setting (the
+    // session's ISessionClock.Calendar) to "subsequent calls to the functions defined in section 6.1.2.4" only, so a
+    // let-coercion writes in the Gregorian calendar whatever it is: under th-TH a date is written with th-TH's patterns and
+    // 2020 is 2020, not 2563. A culture that offers no Gregorian calendar at all keeps its own.
+    private static DateTimeFormatInfo DateFormatOf(CultureInfo culture)
+    {
+        if (culture.Calendar is GregorianCalendar
+            || culture.OptionalCalendars.OfType<GregorianCalendar>().FirstOrDefault() is not { } gregorian)
+        {
+            return culture.DateTimeFormat;
+        }
+
+        var format = (DateTimeFormatInfo)culture.DateTimeFormat.Clone();
+        format.Calendar = gregorian;
+        return format;
+    }
+
+    private static string NumberToText(VBNumericTypedValue value, CultureInfo cultureInfo)
+    {
         // BoxedValue's CLR type tracks the source's own numeric type (int for Long, short for
         // Integer, ...), not always double — a direct (double) unboxing cast throws for anything
         // that isn't already a boxed double. AsDouble widens through Convert.ToDouble instead.

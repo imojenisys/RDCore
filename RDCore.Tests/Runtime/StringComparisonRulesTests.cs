@@ -1,6 +1,7 @@
 ﻿using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Runtime;
+using System.Globalization;
 
 namespace RDCore.Tests.Runtime;
 
@@ -193,6 +194,62 @@ public sealed class StringComparisonRulesTests
     [TestMethod]
     public void Compare_InTextMode_TheSameTrailingByte_LeavesTheTextsEqual()
         => Assert.AreEqual(0, Text.Compare(Bytes(0x61, 0x00, 0x42), Bytes(0x41, 0x00, 0x42)));
+
+    #endregion
+
+    #region comparing characters, as StrComp does
+
+    private const string SoftHyphen = "\u00AD";
+    private const string NullChar = "\0";
+
+    [TestMethod]
+    [DataRow("a", "A")]
+    [DataRow("À", "à")]
+    [DataRow("a" + NullChar, "a")]
+    [DataRow("a" + SoftHyphen + "b", "ab")]
+    [DataRow("B", "a")]
+    [DataRow("Ł", "B")]
+    [DataRow("", "x")]
+    public void Compare_AgreesWithTheComparer(string lhs, string rhs)
+    {
+        // StrComp and = are built from the same comparison, so StrComp(a, b) = 0 exactly when a = b, in either mode.
+        Assert.AreEqual(Math.Sign(Binary.Comparer.Compare(lhs, rhs)), Binary.Compare(lhs.AsSpan(), rhs.AsSpan()), "binary");
+        Assert.AreEqual(Math.Sign(Text.Comparer.Compare(lhs, rhs)), Text.Compare(lhs.AsSpan(), rhs.AsSpan()), "text");
+    }
+
+    [TestMethod]
+    public void Compare_IsMinusOneZeroOrOne()
+    {
+        Assert.AreEqual(-1, Binary.Compare("a".AsSpan(), "zzz".AsSpan()));
+        Assert.AreEqual(0, Text.Compare("abc".AsSpan(), "ABC".AsSpan()));
+        Assert.AreEqual(1, Text.Compare("zzz".AsSpan(), "a".AsSpan()));
+    }
+
+    [TestMethod]
+    public void Compare_InBinaryMode_OrdersCharactersTheWayTheRelationalOperatorsDo()
+    {
+        // 🎯 the order binary mode takes: by code unit for now, so U+0141 is after "B" and the euro sign (U+20AC) after U+00C0.
+        // Under the byte image both flip, with Compare_InBinaryMode_OrdersCodeUnits_ThenATrailingByte.
+        Assert.AreEqual(-1, Binary.Compare("B".AsSpan(), "a".AsSpan()));
+        Assert.AreEqual(1, Binary.Compare("Ł".AsSpan(), "B".AsSpan()));
+        Assert.AreEqual(1, Binary.Compare("€".AsSpan(), "À".AsSpan()));
+    }
+
+    [TestMethod]
+    public void Compare_InTextMode_TheCaseOfALetter_IsThatOfTheEnvironmentsCulture()
+    {
+        // the dotted capital I is the capital of i in Turkish, and of nothing in the invariant culture.
+        Assert.AreEqual(0, new StringComparisonRules(OptionCompare.Text, CultureInfo.GetCultureInfo("tr-TR")).Compare("i".AsSpan(), "İ".AsSpan()));
+        Assert.AreNotEqual(0, Text.Compare("i".AsSpan(), "İ".AsSpan()));
+    }
+
+    [TestMethod]
+    [DataRow("ａ", "a", DisplayName = "a full-width letter")]
+    [DataRow("ｱ", "ア", DisplayName = "a half-width katakana")]
+    [DataRow("あ", "ア", DisplayName = "a hiragana against its katakana")]
+    public void Compare_InTextMode_TheWidthOrKanaTypeOfACharacter_StillCounts(string lhs, string rhs)
+        // what text mode disregards is decided: the case of a letter. Kana type and width are not the specification's.
+        => Assert.AreNotEqual(0, Text.Compare(lhs.AsSpan(), rhs.AsSpan()));
 
     #endregion
 }
