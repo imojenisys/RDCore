@@ -108,6 +108,18 @@ public sealed class NullAndErrorAssignmentTests
     }
 
     [TestMethod]
+    [TestCategory("RD-VBAL §5.2.3.4 Let-coercion to an Enum type")]
+    public void PassingNull_AsInStrsCompare_IsInvalidUseOfNull()
+    {
+        // a ByVal argument is Let-coerced to its parameter's declared type like any other destination, and an Enum type
+        // means Long: the Null raises 94, as it would for a Long, before InStr is ever called.
+        var (_, outcome) = RuntimeSourceHarness.Run(
+            fileSystem: null, [], output: null, standardLibrary: true, "Debug.Print InStr(1, \"a\", \"A\", Null)");
+
+        AssertError(outcome, VBRuntimeErrorId.InvalidUseOfNull);
+    }
+
+    [TestMethod]
     [TestCategory("RD-VBAL §5.5.1.2.9 Let-coercion to and from Error")]
     public void AssigningAVariantHoldingAnError_ToALong_IsTypeMismatch()
         // "Error -> Any type except a fixed-size array or Variant: Runtime error 13 (Type mismatch) is raised."

@@ -129,6 +129,13 @@ public class LetCoercionRuntimeSemanticsProvider(
         LetCoercionStackFrame frame,
         LetCoercionResult? evaluated)
     {
+        // MS-VBAL §5.2.3.4: what is let-coerced to an enumeration is let-coerced to a Long, and is analyzed as the coercion it
+        // is evaluated as (Coerce): no strategy is keyed on an enumeration, and the facts are those of the Long's.
+        if (frame.DestinationTypeDesc.Target is VBEnumType)
+        {
+            frame = frame with { DestinationTypeDesc = new VBTypeDescValue(VBLongType.TypeInfo) };
+        }
+
         var coercionResult = LetCoercionResult.NotApplicable(frame);
         var context = new LetCoercionAnalysisContext(expression.Identity, coercionResult, 0);
 
