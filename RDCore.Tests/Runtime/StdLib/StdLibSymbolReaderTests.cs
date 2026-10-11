@@ -390,6 +390,21 @@ public sealed class StdLibSymbolReaderTests
     }
 
     [TestMethod]
+    [DataRow("VbCompareMethod", "vbTextCompare", 1)]
+    [DataRow("VbStrConv", "vbProperCase", 3)]
+    [DataRow("VbDayOfWeek", "vbUseSystemDayOfWeek", 0)]
+    public void APredefinedEnumConstant_CarriesItsValue(string enumName, string constantName, int expected)
+    {
+        // a constant has no storage to read a value from, so the symbol carries the value the declaration
+        // states (MS-VBAL 5.2.3.4). A zero is a value like any other, not the absence of one.
+        var @enum = Read().OfType<VBEnumMemberSymbol>().Single(symbol => symbol.Name == enumName);
+        var constant = ((VBEnumType)@enum.ResolvedType).Members.OfType<VBEnumConstMemberSymbol>().Single(member => member.Name == constantName);
+
+        Assert.IsTrue(constant.TryGetProperty(SymbolProperties.EnumValue, out var value));
+        Assert.AreEqual((long)expected, value);
+    }
+
+    [TestMethod]
     public void AnUnmarkedDeclaration_IsNotRead()
     {
         // the marker is what makes a declaration part of the library, so the reader can be handed a whole

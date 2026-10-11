@@ -234,10 +234,10 @@ public sealed class RuntimeProcedureInvoker(IRuntimeSession Session, IReadOnlyDi
             if (local is not VBLocalVariableSymbol variable)
             {
                 // VBLocalConstantSymbol (a local Const): MS-VBAL's own value is a compile-time
-                // substitution, never a runtime address - nothing yet threads a local Const's own
-                // initializer expression to where the runtime could evaluate it. A documented,
-                // deliberate gap, not a silent misread: reading one still resolves to InternalError,
-                // exactly as it already does today.
+                // substitution, never a runtime address - the symbol carries its declaration's own
+                // expression, and RuntimeExpressionEvaluator folds that at each use site, so there is
+                // nothing here to hoist. One that carries no expression has no value to read at all,
+                // and reading it resolves to InternalError.
                 continue;
             }
 

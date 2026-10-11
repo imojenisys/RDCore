@@ -232,7 +232,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
         {
             var returningMember = (VBTypeMemberSymbol)symbol;
             // Deliberately NOT VBReturningMemberSymbol (its own base type): that also covers
-            // Const/EnumConst/module-and-instance fields/UDT fields, every one of them a plain value to
+            // Const/EnumConst/module-and-instance fields/UDT fields, every one of them a value to fold or
             // read below, not a call - a pre-existing bug this fix surfaced (never reachable before,
             // since nothing had read a module-level field by bare name until S9a's own tests did).
             //
@@ -265,6 +265,15 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
         if (symbol is VBEnumConstMemberSymbol && symbol.TryGetProperty(SymbolProperties.EnumValue, out var enumValue))
         {
             return Assumed(RuntimeSemanticsEvaluationResult.Success(new VBLongValue(unchecked((int)enumValue))));
+        }
+
+        // a constant with no value to fold or state has no storage either, so there is nothing below for it to read:
+        // a workspace Enum member, whose value nothing gives its symbol yet, a Const that carries no expression, and
+        // an Enum's own name evaluated as a value. Each is an interpreter gap, not a program error, and GetValue would
+        // throw for want of a binding.
+        if (symbol is { Kind: SymbolKindExt.Constant or SymbolKindExt.EnumMember or SymbolKindExt.Enum })
+        {
+            return RuntimeSemanticsEvaluationResult.InternalError();
         }
 
         // static semantics should already have rejected an unresolved, ambiguous, or duplicate name;
@@ -497,8 +506,9 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
         => session.Symbols.Resolver.ResolveMember(qualifier, access.Member, context.Scope).Symbol is { } member
             && !NamespaceExpressions.IsNamespace(member) ? member : null;
 
-    // null for anything that is not a workspace Const, and for a Const whose declaration carried no
-    // expression - a library constant has a real binding to read instead, so it takes the path below.
+    // null for anything that is not a Const, and for a Const whose declaration carried no expression. No
+    // constant has a binding to read instead: a member of a library's enumeration has its value on the
+    // symbol (ReadSymbol), and one that has neither is an internal error.
     private static ExpressionNode? ConstantValueOf(Symbol? symbol) => symbol switch
     {
         VBConstantMemberSymbol { Value: { } value } => value,
