@@ -273,7 +273,16 @@ public static class StatementStaticSemanticsEvaluator
 
             // MS-VBAL §5.4.3.8: a value let-assigned to an object is assigned to its default member, which is not the coercion of the value to the object.
             var assignsADefaultMember = assignment.Kind != AssignmentKind.Set && targetResult.Result is VBClassType or VBObjectType;
-            if (targetResult.IsSuccess && valueResult.IsSuccess && !assignsADefaultMember && ResolveCoercionRule(assignment.Kind) is { } coercionRule)
+
+            // MS-VBAL §5.4.3.8, §5.4.3.9, §5.6.16.6: what is assigned to is a variable - or a property, or a function's own result - and never a
+            // constant nor a function of a library. A Let statement assigns an object's default member through whatever gives the object, a library's
+            // function too, and its target may be a library's function whose declared type is Variant (§5.4.3.8 has that raise error 450 when it
+            // runs); the target of an LSet or an RSet statement is a bound variable expression, whatever its declared type.
+            var isLet = assignment.Kind is AssignmentKind.ImplicitLet or AssignmentKind.ExplicitLet;
+            var letsADefaultMember = assignsADefaultMember && isLet;
+            var (role, section) = TargetOf(assignment.Kind);
+            if ((letsADefaultMember || RequireTarget(context, assignment.Target, role, section, isLet, walk)) && !assignsADefaultMember
+                && targetResult.IsSuccess && valueResult.IsSuccess && ResolveCoercionRule(assignment.Kind) is { } coercionRule)
             {
                 CollectError(coercionRule.DetermineDeclaredType(context, assignment.Value, valueResult.Result!, targetResult.Result!), walk);
             }
@@ -334,13 +343,18 @@ public static class StatementStaticSemanticsEvaluator
             }
 
             // what a statement writes to, apart from an assignment's target: the counter or the control variable of a loop, the string a Mid statement
-            // replaces a part of, and the array a ReDim gives its dimensions.
+            // replaces a part of, the array a ReDim gives its dimensions, and the arrays an Erase empties. The control variable of a loop is a bound
+            // variable expression, which is "invalid if it is classified as something other than a variable expression" (MS-VBAL §5.4.2.3, §5.4.2.4,
+            // §5.6.16.6); the name a ReDim matches is the "redimensioned variable" (§5.4.3.3); and an element of an Erase "MUST be classified as a
+            // variable, property, function or unbound member" (§5.4.3.4). None of them is ever a constant.
             switch (statement)
             {
                 case ForStatementNode forStatement:
+                    RequireVariable(context, forStatement.ControlExpression, "The control variable of a For statement", "5.6.16.6", walk);
                     MarkWritten(context, forStatement.ControlExpression);
                     break;
                 case ForEachStatementNode forEachStatement:
+                    RequireVariable(context, forEachStatement.ControlExpression, "The control variable of a For Each statement", "5.6.16.6", walk);
                     MarkWritten(context, forEachStatement.ControlExpression);
                     break;
                 case MidStatementNode midStatement:
@@ -349,7 +363,16 @@ public static class StatementStaticSemanticsEvaluator
                 case RedimDeclarationNode redim:
                     // the target is the array, which is not one of the statement's operands: it is evaluated here.
                     CollectError(ExpressionStaticSemanticsEvaluator.Evaluate(context, redim.Target), walk);
+                    RequireVariable(context, redim.Target, "The target of a ReDim statement", "5.4.3.3", walk);
                     MarkWritten(context, redim.Target);
+                    break;
+                case KeywordStatementNode { Token: Tokens.Erase } erase:
+                    var elements = new StatementOperandChecks(context);
+                    foreach (var element in erase.Inputs.OfType<ExpressionNode>())
+                    {
+                        elements.RequireNotAValue(element, "An element of an Erase statement", "5.4.3.4");
+                    }
+                    walk.Errors.AddRange(elements.Errors);
                     break;
             }
 
@@ -681,6 +704,38 @@ public static class StatementStaticSemanticsEvaluator
         AssignmentKind.Set => SetCoercionStaticSemantics.Instance,
         _ => null,
     };
+
+    // what the target of each kind of assignment is to its statement, and the section of MS-VBAL that says what it can be: the target of an LSet or
+    // an RSet statement is a bound variable expression.
+    private static (string Role, string Section) TargetOf(AssignmentKind kind) => kind switch
+    {
+        AssignmentKind.Set => ("The target of a Set assignment", "5.4.3.9"),
+        AssignmentKind.LSet => ("The target of an LSet statement", "5.6.16.6"),
+        AssignmentKind.RSet => ("The target of an RSet statement", "5.6.16.6"),
+        _ => ("The target of a Let assignment", "5.4.3.8"),
+    };
+
+    // reports an operand that has to be a variable and certainly is not one (StatementOperandChecks.RequireVariable): whether it may be one.
+    private static bool RequireVariable(StaticEvaluationContext context, ExpressionNode operand, string role, string section, Walk walk)
+        => RequireTarget(context, operand, role, section, isLet: false, walk);
+
+    // the same, for the target of an assignment: a Let statement's may also be a library's function whose declared type is a class, Object or Variant
+    // (StatementOperandChecks.RequireLetTarget).
+    private static bool RequireTarget(StaticEvaluationContext context, ExpressionNode operand, string role, string section, bool isLet, Walk walk)
+    {
+        var checks = new StatementOperandChecks(context);
+        if (isLet)
+        {
+            checks.RequireLetTarget(operand, role, section);
+        }
+        else
+        {
+            checks.RequireVariable(operand, role, section);
+        }
+
+        walk.Errors.AddRange(checks.Errors);
+        return checks.Errors.IsEmpty;
+    }
 
     private static void CollectError(StaticSemanticsEvaluationResult result, Walk walk)
     {
