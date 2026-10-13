@@ -20,13 +20,30 @@ public sealed class VBEnumTypeTests
 {
     private static readonly Uri Root = TestUri.WorkspaceRoot();
 
-    [TestMethod]
-    public void CreateValue_BindingHandle_IsALongBoundToIt()
+    private static VBEnumType Colour()
     {
         var symbol = new VBEnumMemberSymbol(Root, TestUri.TestModuleUri(), "Colour", ScopeKind.Module, SymbolKindExt.Enum,
             VBUnknownType.TypeInfo, SourceRange.Empty, SourceRange.Empty, AccessModifier.Public);
-        var type = new VBEnumType(symbol, [new VBEnumConstMemberSymbol(
+        return new VBEnumType(symbol, [new VBEnumConstMemberSymbol(
             Root, symbol.Uri, "Red", ScopeKind.Module, SymbolKindExt.EnumMember, SourceRange.Empty, SourceRange.Empty)]);
+    }
+
+    [TestMethod]
+    public void AsDeclaredType_AnEnum_IsLong()
+        => Assert.AreEqual(VBLongType.TypeInfo, VBEnumType.AsDeclaredType(Colour()));
+
+    [TestMethod]
+    public void AsDeclaredType_AnyOtherType_IsItself()
+    {
+        Assert.AreEqual(VBLongType.TypeInfo, VBEnumType.AsDeclaredType(VBLongType.TypeInfo));
+        Assert.AreEqual(VBIntegerType.TypeInfo, VBEnumType.AsDeclaredType(VBIntegerType.TypeInfo));
+        Assert.AreEqual(VBVariantType.TypeInfo, VBEnumType.AsDeclaredType(VBVariantType.TypeInfo));
+    }
+
+    [TestMethod]
+    public void CreateValue_BindingHandle_IsALongBoundToIt()
+    {
+        var type = Colour();
         var handle = new ValueBindingHandle(new VBRuntimeValue<int>(1));
 
         var value = type.CreateValue(handle);

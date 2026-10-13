@@ -65,6 +65,18 @@ public sealed class DeclareTests
             "Debug.Print frequency > 0"));
 
     [TestMethod]
+    public async Task AVariableOfAnEnum_ByReferenceToALong_IsTheVariableTheFunctionWritesTo()
+        // an Enum is the declared type Long (MS-VBAL §5.2.3.4), so the variable is passed by its address and not copied. The interval between the clock's
+        // adjustments is a number of 100-nanosecond units, never 0.
+        => CollectionAssert.AreEqual(new[] { "True" }, await Run(
+            "Private Declare PtrSafe Function GetSystemTimeAdjustment Lib \"kernel32\" (ByRef adjustment As Long, ByRef increment As Long, ByRef disabled As Long) As Long",
+            "Dim adjustment As Long",
+            "Dim increment As VbDayOfWeek",
+            "Dim disabled As Long",
+            "GetSystemTimeAdjustment adjustment, increment, disabled",
+            "Debug.Print increment > 0"));
+
+    [TestMethod]
     public async Task ACurrencyByReference_IsItsScaled64Bits_AsTheIdiomHasIt()
         => CollectionAssert.AreEqual(new[] { "True" }, await Run(
             "Private Declare PtrSafe Function QueryPerformanceCounter Lib \"kernel32\" (ByRef counter As Currency) As Long",

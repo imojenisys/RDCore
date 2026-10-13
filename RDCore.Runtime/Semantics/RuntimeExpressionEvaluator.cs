@@ -1747,7 +1747,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
     // MS-VBAL §5.3.1.11: a ByRef parameter whose mapped argument's expression is "classified as a
     // variable" gets a real reference-parameter binding instead of a copy - narrowly recognized here as
     // a bare SimpleName resolving to an addressable, writable variable/parameter whose declared type
-    // either matches the parameter's own exactly or is Variant (the two shapes the spec allows a plain
+    // either is the parameter's own declared type or is Variant (the two shapes the spec allows a plain
     // reference binding for without a class/Object copy-back dance, which isn't modeled yet - an
     // Object-typed ByRef parameter falls through to a ByVal-style copy today, a documented, narrower-
     // than-spec gap rather than a wrong result). Anything else (an expression, a literal, a mismatched-
@@ -1779,7 +1779,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
 
         var result = session.Symbols.Resolver.ResolveValue(simpleName, ScopeKind.Local, context.Scope);
         if (result.Symbol is not { } argumentSymbol || argumentSymbol is not ITypedSymbol typed
-            || (!parameter.ResolvedType.Equals(typed.ResolvedType) && parameter.ResolvedType is not VBVariantType))
+            || (!IsOfDeclaredType(parameter, typed.ResolvedType) && parameter.ResolvedType is not VBVariantType))
         {
             return false;
         }
@@ -1793,6 +1793,11 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
         reference = new VBRuntimeReference(address, ReferencedType(parameter, DeclaredTypeOf(session, argumentSymbol, typed.ResolvedType)));
         return true;
     }
+
+    // whether a variable of this declared type is one a ByRef parameter can be bound to without a copy: one of the parameter's own declared type, an
+    // enumeration being the declared type Long (MS-VBAL §5.2.3.4), so a variable of one and a Long parameter, or two enumerations, are the same type.
+    private static bool IsOfDeclaredType(VBParameterSymbol parameter, VBType variableType)
+        => VBEnumType.AsDeclaredType(parameter.ResolvedType).Equals(VBEnumType.AsDeclaredType(variableType));
 
     // MS-VBAL §5.3.1.11: a Variant parameter given a variable of another type is bound to it, and the binding knows what the variable is declared to be - the
     // binding reads as a Variant, and is assigned as that type. A parameter of the variable's own type needs nothing more than the address.
@@ -1821,7 +1826,7 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
             return false;
         }
 
-        if (!parameter.ResolvedType.Equals(fieldType) && parameter.ResolvedType is not VBVariantType)
+        if (!IsOfDeclaredType(parameter, fieldType) && parameter.ResolvedType is not VBVariantType)
         {
             return false;
         }

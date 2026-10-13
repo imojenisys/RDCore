@@ -549,7 +549,8 @@ public static class StatementStaticSemanticsEvaluator
 
     // MS-VBAL §5.3.1.11, for each mapped parameter: a class or Object parameter takes an argument of a specific class or
     // Object, and a ByVal one a Variant too; a ByRef parameter of any other type but Variant takes an argument of exactly
-    // its declared type. Null when the argument is compatible, or not known to be incompatible.
+    // its declared type, an Enum being the declared type Long (§5.2.3.4). Null when the argument is compatible, or not
+    // known to be incompatible.
     private static string? ArgumentIncompatibility(
         StaticEvaluationContext context, VBParameterSymbol parameter, ExpressionNode argument, VBType argumentType)
     {
@@ -570,7 +571,7 @@ public static class StatementStaticSemanticsEvaluator
         // Let-assigned, which is no reference to a type: only an argument that is a variable is passed by reference.
         // 🚧 TODO a member access that names a field is a variable too; it is taken for a value, and not checked.
         if (byRef && parameter.ResolvedType is not VBVariantType && IsVariable(context, argument)
-            && !string.Equals(parameter.ResolvedType.Name, argumentType.Name, StringComparison.OrdinalIgnoreCase))
+            && !ParameterLists.SameType(parameter.ResolvedType, argumentType))
         {
             return $"a ByRef parameter of type {parameter.ResolvedType.Name} takes a variable of exactly that type, and the argument is a {argumentType.Name}";
         }
