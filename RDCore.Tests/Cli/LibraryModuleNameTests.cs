@@ -5,7 +5,8 @@ namespace RDCore.Tests.Cli;
 /// <summary>
 /// A name that a library's procedural module has - <c>Strings</c>, <c>Math</c> - is the module unless another procedural module of the enclosing project has
 /// an accessible member of that name, which comes first (<strong>MS-VBAL §5.6.10</strong>: the enclosing project's procedural modules' members, then a
-/// referenced project's procedural modules). Run through <see cref="ModuleWorkspace"/>, so the binding that loads the module is the one that runs it.
+/// referenced project's procedural modules). Run through <see cref="ModuleWorkspace"/>, so the binding that loads the module is the one that runs it. As a
+/// declared type, the name is likewise the project's own user-defined type or Enum of that name before it is the library's module.
 /// </summary>
 [TestClass]
 [TestCategory("MS-VBAL 5.6.10 Simple Name Expressions")]
@@ -47,6 +48,42 @@ public sealed class LibraryModuleNameTests
         var mod2 = ("Mod2", StandardModule("Mod2", "Option Explicit", declaration));
 
         CollectionAssert.AreEqual(new[] { expected }, await RunAsync([], [mod2], Program($"Debug.Print {name}")));
+    }
+
+    [TestMethod]
+    [TestCategory("MS-VBAL 5.6.4 Type Binding Context")]
+    public async Task AnotherModulesType_NamedLikeALibrarysModule_IsTheType()
+    {
+        // MS-VBAL §5.6.10's type binding context ranks another module's accessible type ahead of a referenced project's procedural module. Bound to the
+        // library's module, the variable was no record, and x.X stopped as "cannot run yet".
+        var mod2 = ("Mod2", StandardModule("Mod2", "Option Explicit", "Public Type Strings", "X As Long", "End Type"));
+
+        CollectionAssert.AreEqual(new[] { "3" }, await RunAsync([], [mod2], Program("Dim x As Strings", "x.X = 3", "Debug.Print x.X")));
+    }
+
+    [TestMethod]
+    [TestCategory("MS-VBAL 5.6.4 Type Binding Context")]
+    public async Task AnotherModulesEnum_NamedLikeALibrarysModule_IsTheType()
+    {
+        // a variable of the Enum holds a Long. Bound to the library's module, the declaration is a compile error, as it is when no module declares the Enum.
+        var mod2 = ("Mod2", StandardModule("Mod2", "Option Explicit", "Public Enum Strings", "First = 5", "End Enum"));
+        var withoutTheEnum = ("Mod2", StandardModule("Mod2", "Option Explicit"));
+
+        var output = await RunAsync([], [mod2], Program("Dim x As Strings", "x = 5", "Debug.Print x"));
+        var control = await LoadErrorsAsync([], [withoutTheEnum], Program("Dim x As Strings"));
+
+        CollectionAssert.AreEqual(new[] { "5" }, output);
+        Assert.HasCount(1, control, string.Join("; ", control));
+    }
+
+    [TestMethod]
+    [TestCategory("MS-VBAL 5.6.4 Type Binding Context")]
+    public async Task AClassOfTheProject_NamedLikeALibrarysModule_IsTheClass()
+    {
+        // a class module of the enclosing project is a name of the type binding context's second tier, ahead of a referenced project's procedural module.
+        var strings = ("Strings", ClassModule("Strings", "Option Explicit", "Public X As Long"));
+
+        CollectionAssert.AreEqual(new[] { "2" }, await RunAsync([strings], Program("Dim s As Strings", "Set s = New Strings", "s.X = 2", "Debug.Print s.X")));
     }
 
     [TestMethod]

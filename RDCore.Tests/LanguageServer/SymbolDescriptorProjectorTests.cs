@@ -5,7 +5,9 @@ using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Platform.Protocol;
+using RDCore.SDK.Runtime.Libraries;
 using RDCore.Symbols;
+using RDCore.Tests.Runtime.Libraries;
 
 namespace RDCore.Tests.LanguageServer;
 
@@ -258,6 +260,42 @@ public sealed class SymbolDescriptorProjectorTests
 
         Assert.AreEqual(SymbolDescriptorKind.Procedure, descriptor.Kind);
         Assert.AreEqual(0, descriptor.Members.Length);
+    }
+
+    [TestMethod]
+    public void ALocalConstantOfAnUnresolvedType_ProjectsWithTheNameItWasWrittenWith()
+        // as a variable's does: the host resolves it again, and says so if it does not resolve to a type. It travelled as no type at all.
+    {
+        var descriptor = Project("""
+            Public Sub DoWork()
+                Const Max As CWidget = 10
+                Const Min As Long = 1
+            End Sub
+            """).Single();
+
+        Assert.AreEqual("CWidget", descriptor.Constants.Single(constant => constant.Name == "Max").DeclaredTypeName);
+        Assert.AreEqual("Long", descriptor.Constants.Single(constant => constant.Name == "Min").DeclaredTypeName);
+    }
+
+    [TestMethod]
+    public void ALocalConstantOfALibrarysEnum_ProjectsWithTheLibrarysName_AsAVariableDoes()
+        // the host resolves the name again: bare, it binds whatever ranks first there, which can be a procedural module of that name and not the library's type.
+    {
+        var parseResult = new ModuleParser().Parse(new Uri("file:///c:/ws/src/Mod1.bas"), """
+            Public Sub DoWork()
+                Const Initial As Widgets.WidgetMode = 1
+                Dim Current As Widgets.WidgetMode
+            End Sub
+            """);
+        var resolver = WorkspaceSymbolResolver.Compose(
+            WorkspaceRoot, [(ModuleUri, ModuleType.StdModule, parseResult)], new IntrinsicSymbolResolver(),
+            libraries: new LibrarySymbolReader(WorkspaceRoot).Read([LibraryFixtures.Widgets]));
+        var symbols = new SyntaxTreeSymbolProvider(WorkspaceRoot, ModuleUri, ModuleType.StdModule, parseResult, resolver).ProvideSymbols();
+
+        var descriptor = SymbolDescriptorProjector.Project(symbols, ModuleUri).Single();
+
+        Assert.AreEqual("Widgets.WidgetMode", descriptor.Locals.Single().DeclaredTypeName);
+        Assert.AreEqual("Widgets.WidgetMode", descriptor.Constants.Single().DeclaredTypeName);
     }
 
     [TestMethod]

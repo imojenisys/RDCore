@@ -272,8 +272,10 @@ public static class SymbolDescriptorProjector
             builder.Add(new ConstantDescriptor
             {
                 Name = constant.Name,
-                // another module's Enum travels with that module's name, as it does for a variable.
-                DeclaredTypeName = type is VBUnknownType or VBVoidType ? null : OfAnotherModule(type, moduleKey) ?? type.Name,
+                // the name travels as a variable's does: as it was written when it did not resolve, so that the host can say it is not a type, and a
+                // referenced library's type with the library's name, as another module's Enum has its module's, so that the host resolves that type and not
+                // what the bare name binds first.
+                DeclaredTypeName = TypeNameOf(type, moduleKey),
                 Value = value,
                 Range = (constant as WorkspaceSymbol)?.Range ?? default,
                 SelectionRange = (constant as WorkspaceSymbol)?.SelectionRange ?? default,

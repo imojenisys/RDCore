@@ -881,6 +881,79 @@ public sealed class ScopeTreeSymbolResolverTests
     }
 
     [TestMethod]
+    public void ResolveType_AnotherModulesPublicType_BeatsALibrarysModuleOfTheSameName()
+        // MS-VBAL 5.6.10's type binding context: an accessible UDT or Enum of another module of the enclosing project (its third tier)
+        // comes before a referenced project's procedural module (its fourth).
+    {
+        var strings = LibraryModule("Strings");
+        var other = Module("Other");
+        var udt = Udt(other.Uri, "Strings", AccessModifier.Public);
+        var caller = Module("Caller");
+
+        Assert.AreSame(udt, Resolver(strings, other, udt, caller).ResolveType("Strings", ScopeKind.Unallocated, caller.Uri).Symbol);
+    }
+
+    [TestMethod]
+    public void ResolveType_AnotherModulesPublicEnum_BeatsALibrarysModuleOfTheSameName()
+    {
+        var constants = LibraryModule("Constants");
+        var other = Module("Other");
+        var enumeration = EnumType(other.Uri, "Constants");
+        var caller = Module("Caller");
+
+        Assert.AreSame(enumeration, Resolver(constants, other, enumeration, caller).ResolveType("Constants", ScopeKind.Unallocated, caller.Uri).Symbol);
+    }
+
+    [TestMethod]
+    public void ResolveType_ALibrarysModule_StillBinds_WhenTheProjectHasNoTypeOfItsName()
+        // it binds, and a declaration that names it is what is wrong: a procedural module is not a type (DeclarationStaticSemanticsEvaluator).
+    {
+        var strings = LibraryModule("Strings");
+        var other = Module("Other");
+        var point = Udt(other.Uri, "Point", AccessModifier.Public);
+        var caller = Module("Caller");
+
+        Assert.AreSame(strings, Resolver(strings, other, point, caller).ResolveType("Strings", ScopeKind.Unallocated, caller.Uri).Symbol);
+    }
+
+    [TestMethod]
+    public void ResolveType_ALibrarysModule_BeatsAnotherLibrarysTypeOfTheSameName()
+        // MS-VBAL 5.6.10: a referenced project's procedural module (the type binding context's fourth tier) comes before the types of a
+        // referenced project's modules (its fifth), whatever the priority of the libraries - with Excel referenced, `As Constants` names
+        // VBA's module Constants, not Excel's Enum Constants, although Excel is referenced later.
+    {
+        var constants = LibraryModule("Constants", "VBA", priority: 0);
+        var excel = LibraryModule("_Excel", "Excel", priority: 2);
+        var enumeration = (VBEnumMemberSymbol)EnumType(excel.Uri, "Constants").With(SymbolProperties.Library, "Excel").With(SymbolProperties.LibraryPriority, 2);
+        var caller = Module("Caller");
+
+        Assert.AreSame(constants, Resolver(constants, excel, enumeration, caller).ResolveType("Constants", ScopeKind.Unallocated, caller.Uri).Symbol);
+    }
+
+    [TestMethod]
+    public void ResolveType_ALibrarysType_StillLosesToTheProjectsTypeOfTheSameName_AndBindsAlone()
+        // the project tier's two halves keep the order its shadowing gave them: the workspace's type, then the library's.
+    {
+        var excel = LibraryModule("_Excel", "Excel", priority: 2);
+        var libraryEnum = (VBEnumMemberSymbol)EnumType(excel.Uri, "XlDirection").With(SymbolProperties.Library, "Excel").With(SymbolProperties.LibraryPriority, 2);
+        var other = Module("Other");
+        var projectEnum = EnumType(other.Uri, "XlDirection");
+        var caller = Module("Caller");
+
+        Assert.AreSame(projectEnum, Resolver(excel, libraryEnum, other, projectEnum, caller).ResolveType("XlDirection", ScopeKind.Unallocated, caller.Uri).Symbol);
+        Assert.AreSame(libraryEnum, Resolver(excel, libraryEnum, caller).ResolveType("XlDirection", ScopeKind.Unallocated, caller.Uri).Symbol);
+    }
+
+    [TestMethod]
+    public void ResolveType_ALibrarysClass_StillBinds()
+    {
+        var collection = (VBClassModuleSymbol)ClassModule("Collection").With(SymbolProperties.Library, "VBA").With(SymbolProperties.LibraryPriority, 0);
+        var caller = Module("Caller");
+
+        Assert.AreSame(collection, Resolver(collection, caller).ResolveType("Collection", ScopeKind.Unallocated, caller.Uri).Symbol);
+    }
+
+    [TestMethod]
     public void ResolveValue_AClassModule_IsNotACandidate()
         // MS-VBAL 5.6.10: the default binding context lists no class module - a class is a name there only
         // through its predeclared instance (5.2.4.1.2).
