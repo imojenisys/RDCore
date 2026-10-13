@@ -1,4 +1,5 @@
 using RDCore.SDK.Model.Types.Abstract;
+using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Intrinsic;
 using System.Text;
@@ -163,7 +164,8 @@ public static class VBUserDefinedTypeImage
         VBByteType => [Convert.ToByte(Boxed(value) ?? (byte)0)],
         VBBooleanType => BitConverter.GetBytes(Convert.ToBoolean(Boxed(value) ?? false) ? BooleanTrue : (short)0),
         VBIntegerType => BitConverter.GetBytes(Convert.ToInt16(Boxed(value) ?? (short)0)),
-        VBLongType or VBErrorType => BitConverter.GetBytes(Convert.ToInt32(Boxed(value) ?? 0)),
+        // an Enum field holds a Long (MS-VBAL §5.2.3.4), and its four bytes are the Long's.
+        VBLongType or VBErrorType or VBEnumType => BitConverter.GetBytes(Convert.ToInt32(Boxed(value) ?? 0)),
         VBLongLongType => BitConverter.GetBytes(Convert.ToInt64(Boxed(value) ?? 0L)),
         VBSingleType => BitConverter.GetBytes(Convert.ToSingle(Boxed(value) ?? 0f)),
         // a Currency is a 64-bit integer of ten-thousandths, which is what makes its arithmetic exact.
@@ -182,7 +184,7 @@ public static class VBUserDefinedTypeImage
         VBByteType => new VBByteValue(bytes[0]),
         VBBooleanType => new VBBooleanValue(BitConverter.ToInt16(bytes) != 0),
         VBIntegerType => new VBIntegerValue(BitConverter.ToInt16(bytes)),
-        VBLongType => new VBLongValue(BitConverter.ToInt32(bytes)),
+        VBLongType or VBEnumType => new VBLongValue(BitConverter.ToInt32(bytes)),
         VBLongLongType => new VBLongLongValue(BitConverter.ToInt64(bytes)),
         VBSingleType => new VBSingleValue(BitConverter.ToSingle(bytes)),
         VBCurrencyType => new VBCurrencyValue(BitConverter.ToInt64(bytes) / CurrencyScale),
