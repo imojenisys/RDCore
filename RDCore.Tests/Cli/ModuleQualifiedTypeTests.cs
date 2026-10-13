@@ -34,11 +34,34 @@ public sealed class ModuleQualifiedTypeTests
     }
 
     [TestMethod]
+    [DataRow("", "Dim h As Mod2.Helpers\r\nh = 1\r\nDebug.Print h", DisplayName = "A local")]
+    [DataRow("Private h As Mod2.Helpers", "h = 1\r\nDebug.Print h", DisplayName = "A variable of the module")]
+    [DataRow("Private Type TRecord\r\nh As Mod2.Helpers\r\nEnd Type", "Dim t As TRecord\r\nt.h = 1\r\nDebug.Print t.h", DisplayName = "A field")]
+    [DataRow("Private Sub Show(ByVal h As Mod2.Helpers)\r\nDebug.Print h\r\nEnd Sub", "Show 1", DisplayName = "A ByVal parameter")]
+    [DataRow("Private Sub Fill(ByRef h As Mod2.Helpers)\r\nh = 1\r\nEnd Sub", "Dim v As Mod2.Helpers\r\nFill v\r\nDebug.Print v", DisplayName = "A ByRef parameter")]
+    [DataRow("Private Function Make() As Mod2.Helpers\r\nMake = 1\r\nEnd Function", "Debug.Print Make()", DisplayName = "A function's result")]
+    public async Task AnEnumQualifiedByItsModule_WhoseBareNameIsAProceduralModule_IsTheEnum(string declarations, string body)
+    {
+        // by its bare name the host bound the module Helpers, and assigning the variable raised error 13; qualified by its module, it is the Enum, a Long.
+        var mod2 = Module("Mod2", "Public Enum Helpers", "hOne = 1", "End Enum");
+
+        CollectionAssert.AreEqual(new[] { "1" }, await RunAsync([], [Helpers, mod2], Program(declarations, body)));
+    }
+
+    [TestMethod]
     public async Task ATypeQualifiedByItsModule_NamedLikeTheEnclosingModule_IsTheType()
     {
         var mod2 = Module("Mod2", "Public Type Program", "X As Long", "End Type");
 
         CollectionAssert.AreEqual(new[] { "1" }, await RunAsync([], [mod2], Program("", "Dim p As Mod2.Program", "p.X = 1", "Debug.Print p.X")));
+    }
+
+    [TestMethod]
+    public async Task AnEnumQualifiedByItsModule_NamedLikeTheEnclosingModule_IsTheEnum()
+    {
+        var mod2 = Module("Mod2", "Public Enum Program", "pOne = 1", "End Enum");
+
+        CollectionAssert.AreEqual(new[] { "1" }, await RunAsync([], [mod2], Program("", "Dim p As Mod2.Program", "p = 1", "Debug.Print p")));
     }
 
     [TestMethod]
@@ -55,13 +78,13 @@ public sealed class ModuleQualifiedTypeTests
     }
 
     [TestMethod]
-    public async Task AnEnumTwoModulesDeclare_QualifiedByEither_Loads()
+    public async Task AnEnumTwoModulesDeclare_QualifiedByEither_IsThatModulesEnum()
     {
         var mod2 = Module("Mod2", "Public Enum Colours", "cRed = 1", "End Enum");
         var mod3 = Module("Mod3", "Public Enum Colours", "cBlue = 2", "End Enum");
 
-        CollectionAssert.AreEqual(new[] { "1" }, await RunAsync([], [mod2, mod3], Program(
-            "Private Sub Paint(ByVal c As Mod3.Colours)\r\nEnd Sub", "Dim c As Mod2.Colours", "Debug.Print 1")));
+        CollectionAssert.AreEqual(new[] { "1", "2" }, await RunAsync([], [mod2, mod3], Program(
+            "Private Sub Paint(ByVal c As Mod3.Colours)\r\nDebug.Print c\r\nEnd Sub", "Dim c As Mod2.Colours", "c = 1", "Debug.Print c", "Paint 2")));
     }
 
     [TestMethod]
@@ -97,7 +120,8 @@ public sealed class ModuleQualifiedTypeTests
     {
         var shapes = ("Shapes", ClassModule("Shapes", "Option Explicit", "Public Type TRec", "X As Long", "End Type", "Public Enum Colours", "cRed = 1", "End Enum"));
 
-        CollectionAssert.AreEqual(new[] { "3" }, await RunAsync([shapes], Program("", "Dim t As Shapes.TRec", "Dim e As Shapes.Colours", "t.X = 3", "Debug.Print t.X")));
+        CollectionAssert.AreEqual(new[] { "3", "2" }, await RunAsync([shapes], Program(
+            "", "Dim t As Shapes.TRec", "Dim e As Shapes.Colours", "t.X = 3", "e = 2", "Debug.Print t.X", "Debug.Print e")));
     }
 
     [TestMethod]
