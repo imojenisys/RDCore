@@ -22,6 +22,21 @@ public sealed class SymbolDescriptorProjectorTests
         return [.. SymbolDescriptorProjector.Project(symbols, ModuleUri)];
     }
 
+    // Mod1, projected beside the other modules of its workspace, every one of them bound against all of them as the language server binds them.
+    private static SymbolDescriptor[] ProjectBeside(string source, params (string Name, ModuleType Type, string Source)[] others)
+    {
+        var modules = others
+            .Select(other => (
+                Uri: new UriBuilder(WorkspaceRoot) { Fragment = other.Name }.Uri,
+                other.Type,
+                Parse: new ModuleParser().Parse(new Uri($"file:///c:/ws/src/{other.Name}.{(other.Type == ModuleType.ClassModule ? "cls" : "bas")}"), other.Source)))
+            .Append((Uri: ModuleUri, Type: ModuleType.StdModule, Parse: new ModuleParser().Parse(new Uri("file:///c:/ws/src/Mod1.bas"), "Attribute VB_Name = \"Mod1\"\r\n" + source)))
+            .ToArray();
+        var resolver = WorkspaceSymbolResolver.Compose(WorkspaceRoot, modules.Select(module => (module.Uri, module.Type, module.Parse)), new IntrinsicSymbolResolver());
+        var symbols = new SyntaxTreeSymbolProvider(WorkspaceRoot, ModuleUri, ModuleType.StdModule, modules[^1].Parse, resolver).ProvideSymbols();
+        return [.. SymbolDescriptorProjector.Project(symbols, ModuleUri)];
+    }
+
     [TestMethod]
     public void Function_ProjectsWithIntrinsicReturnTypeNameAndParameters()
     {
@@ -87,6 +102,62 @@ public sealed class SymbolDescriptorProjectorTests
         Assert.AreEqual(2, point.Members.Length);
         Assert.IsTrue(point.Members.All(m => m.Kind == SymbolDescriptorKind.UserDefinedTypeField));
         Assert.IsTrue(point.Members.All(m => m.DeclaredTypeName == "Long"));
+    }
+
+    [TestMethod]
+    public void AnotherModulesTypeAndEnum_ProjectWithThatModulesName()
+        // the host resolves the name again, from this module: by its bare name it binds whatever ranks first there, which can be a procedural module, a
+        // library's class or another module's type of that name, and not the type the language server bound.
+    {
+        var descriptors = ProjectBeside("""
+            Private Rec As TRec
+            Private Items(1 To 2) As Mod2.TRec
+            Private Const Initial As Colours = 1
+            Public Function Paint(ByVal c As Mod2.Colours) As Colours
+                Dim r As TRec
+                Const k As Mod2.Colours = 1
+            End Function
+            """, ("Mod2", ModuleType.StdModule, "Attribute VB_Name = \"Mod2\"\r\nPublic Type TRec\r\nX As Long\r\nEnd Type\r\nPublic Enum Colours\r\ncRed = 1\r\nEnd Enum\r\n"));
+
+        Assert.AreEqual("Mod2.TRec", descriptors.Single(descriptor => descriptor.Name == "Rec").DeclaredTypeName);
+        var items = descriptors.Single(descriptor => descriptor.Name == "Items");
+        Assert.AreEqual("Mod2.TRec", items.DeclaredTypeName);
+        Assert.IsNotNull(items.Array);
+        var initial = descriptors.Single(descriptor => descriptor.Name == "Initial");
+        Assert.AreEqual("Mod2.Colours", initial.DeclaredTypeName);
+        Assert.AreEqual("Mod2.Colours", initial.Constants.Single().DeclaredTypeName);
+        var paint = descriptors.Single(descriptor => descriptor.Name == "Paint");
+        Assert.AreEqual("Mod2.Colours", paint.DeclaredTypeName);
+        Assert.AreEqual("Mod2.Colours", paint.Parameters.Single().DeclaredTypeName);
+        Assert.AreEqual("Mod2.TRec", paint.Locals.Single().DeclaredTypeName);
+        Assert.AreEqual("Mod2.Colours", paint.Constants.Single().DeclaredTypeName);
+    }
+
+    [TestMethod]
+    public void TheModulesOwnTypes_AndAClassOfTheWorkspace_ProjectWithTheirOwnName()
+        // the host binds the module's own types first, a Private one included, so their bare name is the type; a class travels by its own name.
+    {
+        var descriptors = ProjectBeside("""
+            Private Type TOwn
+                Inner As Mod2.TRec
+                Shade As EOwn
+            End Type
+            Private Enum EOwn
+                eA = 1
+            End Enum
+            Private Mine As TOwn
+            Private Same As Mod1.TOwn
+            Private Widget As CWidget
+            """,
+            ("Mod2", ModuleType.StdModule, "Attribute VB_Name = \"Mod2\"\r\nPublic Type TRec\r\nX As Long\r\nEnd Type\r\n"),
+            ("CWidget", ModuleType.ClassModule, "Attribute VB_Name = \"CWidget\"\r\nPublic Total As Long\r\n"));
+
+        Assert.AreEqual("TOwn", descriptors.Single(descriptor => descriptor.Name == "Mine").DeclaredTypeName);
+        Assert.AreEqual("TOwn", descriptors.Single(descriptor => descriptor.Name == "Same").DeclaredTypeName);
+        Assert.AreEqual("CWidget", descriptors.Single(descriptor => descriptor.Name == "Widget").DeclaredTypeName);
+        var own = descriptors.Single(descriptor => descriptor.Name == "TOwn");
+        Assert.AreEqual("Mod2.TRec", own.Members.Single(field => field.Name == "Inner").DeclaredTypeName);
+        Assert.AreEqual("EOwn", own.Members.Single(field => field.Name == "Shade").DeclaredTypeName);
     }
 
     [TestMethod]
