@@ -409,12 +409,12 @@ public sealed class StdLibDispatchTests
             Root, RuntimeSourceHarness.ModuleUri, "S", ScopeKind.Module, VBStringType.TypeInfo,
             SourceRange.Empty, SourceRange.Empty, AccessModifier.Implicit);
 
+        var output = new RuntimeOutputBuffer();
         var (_, outcome) = RuntimeSourceHarness.Run(
-            fileSystem: null, [text], output: null, standardLibrary: true, "Debug.Print InStrRev(S, \"x\")");
+            fileSystem: null, [text], output, standardLibrary: true, "Debug.Print InStrRev(S, \"x\")");
 
-        // 🚧 TODO when InStrRev is written: the call completes, and prints 0.
-        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
-        Assert.AreEqual("'InStrRev' is declared but not implemented yet.", outcome.ErrorInfo!.Verbose);
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual("0", output.Lines.Single().Trim());
     }
 
     [TestMethod]

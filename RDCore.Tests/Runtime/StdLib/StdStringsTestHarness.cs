@@ -96,7 +96,13 @@ internal static class StdStringsTestHarness
         where TValue : VBTypedValue
         => ValueOf(result) is VBNullValue;
 
-    public static short IntegerOf(RuntimeSemanticsEvaluationResult<VBIntegerValue> result) => ((VBIntegerValue)ValueOf(result)).Value;
+    public static short IntegerOf<TValue>(RuntimeSemanticsEvaluationResult<TValue> result)
+        where TValue : VBTypedValue
+        => ValueOf(result) is VBIntegerValue number ? number.Value : throw new AssertFailedException($"not an Integer: {ValueOf(result).TypeInfo.Name}");
+
+    public static int LongOf<TValue>(RuntimeSemanticsEvaluationResult<TValue> result)
+        where TValue : VBTypedValue
+        => ValueOf(result) is VBLongValue number ? number.Value : throw new AssertFailedException($"not a Long: {ValueOf(result).TypeInfo.Name}");
 
     /// <summary>Asserts that the result is an error, and gives its number.</summary>
     public static int ErrorOf<TValue>(RuntimeSemanticsEvaluationResult<TValue> result)
@@ -141,16 +147,30 @@ internal static class StdStringsTestHarness
         return [.. lines.Select(line => line.Trim())];
     }
 
+    /// <summary>
+    /// Runs <paramref name="body"/> to its end in a module whose <c>Option Compare</c> is <paramref name="mode"/>, or that states none,
+    /// and gives what it printed, each line trimmed.
+    /// </summary>
+    public static string[] RunUnder(OptionCompare? mode, params string[] body) => RunIn(Under(mode), [], body);
+
     /// <summary>Runs <paramref name="body"/>, asserts that it ends in an error, and gives the error's number.</summary>
     public static int RunToError(params string[] body) => RunToErrorWith([], body);
 
     /// <inheritdoc cref="RunToError(string[])"/>
-    public static int RunToErrorWith(Symbol[] fields, params string[] body)
+    public static int RunToErrorWith(Symbol[] fields, params string[] body) => RunToErrorIn(new RuntimeSourceHarness.Surroundings(), fields, body);
+
+    /// <summary>Runs <paramref name="body"/> like <see cref="RunUnder"/>, asserts that it ends in an error, and gives the error's number.</summary>
+    public static int RunToErrorUnder(OptionCompare? mode, params string[] body) => RunToErrorIn(Under(mode), [], body);
+
+    private static int RunToErrorIn(RuntimeSourceHarness.Surroundings surroundings, Symbol[] fields, string[] body)
     {
-        var (outcome, lines) = Execute(fields, new RuntimeSourceHarness.Surroundings(), body);
+        var (outcome, lines) = Execute(fields, surroundings, body);
         Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind, string.Join(" / ", lines));
         return outcome.ErrorInfo!.ErrorId;
     }
+
+    private static RuntimeSourceHarness.Surroundings Under(OptionCompare? mode)
+        => new() { Directives = mode is { } compare ? new ModuleDirectives(Compare: compare) : ModuleDirectives.None };
 
     /// <summary>Runs <paramref name="body"/> to its end with a spy in front of the dispatcher, and gives the members it was asked for.</summary>
     public static (string[] Lines, string[] Members) RunSpied(params string[] body)

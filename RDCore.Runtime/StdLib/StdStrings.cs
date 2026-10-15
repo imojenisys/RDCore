@@ -33,7 +33,8 @@ namespace RDCore.Runtime.StdLib;
 /// way a parameter of the type it needs would be Let-coerced, and always in one order: the arguments' coercions in the order
 /// they are declared, then a Null operand, which makes the result Null, then the values' own checks in the order they are
 /// declared. A character member reads a <c>String</c>'s characters, so a trailing byte is not one of them, as <see cref="Len"/>
-/// does not count it; a byte member (<c>AscB</c>, <c>ChrB</c>, <c>LeftB</c>, <c>RightB</c>, <c>MidB</c>) reads every byte.
+/// does not count it; a byte member (<c>AscB</c>, <c>ChrB</c>, <c>LeftB</c>, <c>RightB</c>, <c>MidB</c>, <c>InStrB</c>) reads every
+/// byte.
 /// Each <c>$</c> function is its <c>Variant</c> twin's result Let-coerced to <c>String</c>, so where the twin returns Null it
 /// raises error 94.
 /// </para>
@@ -485,11 +486,168 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
 
     public RuntimeSemanticsEvaluationResult<VBStringValue> FormatPercent( VBVariantValue expression, VBLongValue? numDigitsAfterDecimal = default, VBTriState includeLeadingDigit = VBTriState.VBUseDefault, VBTriState useParensForNegativeNumbers = VBTriState.VBUseDefault, VBTriState groupDigits = VBTriState.VBUseDefault) => NotImplemented<VBStringValue>(nameof(FormatPercent));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> InStr( VBVariantValue? arg1 = default, VBVariantValue? arg2 = default, VBVariantValue? arg3 = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(InStr));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// Without <paramref name="arg3"/>, "Arg1 is used as the string to be searched, and Arg2 is used as the pattern (and the start
+    /// position is 1)"; with it, Arg1 is the start, Arg2 the String to search and Arg3 the pattern, as the page's table has it where its
+    /// prose says "Arg1 is used as a string". 👉 <paramref name="arg3"/> is left out when it arrives as <c>null</c> (omitted, or a
+    /// caller's Missing passed on) and given otherwise, so an explicit Empty is a zero-length pattern. A start left out before a given
+    /// <paramref name="arg3"/> is 1, "if omitted, search begins at the first character position"; a String to search or a pattern left
+    /// out is error 449, as any required argument left out is.
+    /// </para>
+    /// <para>
+    /// The start is Let-coerced as a <c>Long</c> parameter would be ("if start contains the data value Null, an error occurs") and the
+    /// Strings as <c>String</c> parameters, in that order; a Null String makes the result Null before the start is checked. Then a
+    /// zero-length String to search is 0, a zero-length pattern is the start, and a pattern not found is 0. 👉 The table's "Arg1 &gt;
+    /// Arg3" row is read as a start past the end of the String to search, or more than one past it for a zero-length pattern, so
+    /// <c>InStr(4, "abc", "")</c> is 4; a start below 1 is error 5, as it is to the <c>Mid</c> statement (<strong>MS-VBAL §5.4.3.5</strong>).
+    /// </para>
+    /// <para>
+    /// A text comparison finds a run as long as the pattern that <c>=</c> calls equal to it (<see cref="StringComparisonRules.TryFind"/>),
+    /// so <c>Mid</c> reads back what was found. 👉 An explicit Compare is <c>vbBinaryCompare</c> or <c>vbTextCompare</c>, and anything
+    /// else, the LCID the table mentions included, is error 5.
+    /// </para>
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> InStr(VBVariantValue? arg1 = default, VBVariantValue? arg2 = default, VBVariantValue? arg3 = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare)
+        => Search(nameof(InStr), arg1, arg2, arg3, compare, inBytes: false);
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> InStrB( VBVariantValue? arg1 = default, VBVariantValue? arg2 = default, VBVariantValue? arg3 = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(InStrB));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <see cref="InStr"/> in bytes: "instead of returning the character position of the first occurrence of one string within
+    /// another, InStrB returns the byte position", so the start and the result are 1-based positions in the String's bytes, a trailing
+    /// one included, and a match may begin inside a character. 🎯 A text comparison is a comparison of characters, which is all that
+    /// case is a property of: it searches the characters from the one at or after the start, and gives the byte position of the
+    /// character found.
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> InStrB(VBVariantValue? arg1 = default, VBVariantValue? arg2 = default, VBVariantValue? arg3 = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare)
+        => Search(nameof(InStrB), arg1, arg2, arg3, compare, inBytes: true);
 
-    public RuntimeSemanticsEvaluationResult<VBLongValue> InStrRev( VBStringValue stringCheck, VBStringValue stringMatch, VBLongValue? start = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBLongValue>(nameof(InStrRev));
+    // InStr and InStrB: the shape of the call, then the coercions in the order the parameters are declared, then a Null String, then
+    // the start's check and Compare's.
+    private RuntimeSemanticsEvaluationResult<VBVariantValue> Search(string member, VBVariantValue? arg1, VBVariantValue? arg2, VBVariantValue? arg3, VBCompareMethod compare, bool inBytes)
+    {
+        var start = arg3 is null ? null : arg1;
+        var searched = arg3 is null ? arg1 : arg2;
+        var sought = arg3 ?? arg2;
+        if (searched is null || sought is null)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.ArgumentNotOptional, member, "the String to search and the pattern are required");
+        }
+
+        var from = 1;
+        IVBRaisableError? error;
+        if (start is not null && !TryReadLong(start, member, "Start", out from, out error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        if (!TryReadString(searched, member, "the String to search", out var text, out error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        if (!TryReadString(sought, member, "the pattern", out var pattern, out error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        if (text is null || pattern is null)
+        {
+            return InVariant(VBNullValue.Null);
+        }
+
+        if (from < 1)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, member, $"Start is at least 1, not {from}");
+        }
+
+        if (!TryRulesFor(compare, member, out var rules, out error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        return InVariant(new VBLongValue(inBytes ? BytePosition(text, pattern, from, rules) : CharacterPosition(Text(text), Text(pattern), from, rules)));
+    }
+
+    // the 1-based position of the first run of characters from the start that is equal to the pattern, or 0. A zero-length String has
+    // none, and a zero-length pattern is found at the start, up to one past the end.
+    private static int CharacterPosition(string text, string pattern, int from, StringComparisonRules rules)
+        => text.Length > 0 && from <= text.Length + 1 && rules.TryFind(text.AsSpan(from - 1), pattern, out var index, out _) ? from + index : 0;
+
+    // the byte position of the first run of bytes from the start that is the pattern's, or 0, by the same rules in bytes.
+    private static int BytePosition(VBStringValue text, VBStringValue pattern, int from, StringComparisonRules rules)
+    {
+        var bytes = text.GetBytes();
+        var sought = pattern.GetBytes();
+        if (bytes.Length == 0 || from > bytes.Length + 1)
+        {
+            return 0;
+        }
+
+        if (sought.Length == 0)
+        {
+            return from;
+        }
+
+        if (!rules.IgnoresCase)
+        {
+            var index = bytes.AsSpan(from - 1).IndexOf(sought);
+            return index < 0 ? 0 : from + index;
+        }
+
+        // 🎯 text mode searches characters: from the one at or after the start's byte, and the k-th character begins at byte 2k - 1.
+        var found = CharacterPosition(Text(text), Text(pattern), from / 2 + 1, rules);
+        return found == 0 ? 0 : 2 * found - 1;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// The position of the last run of StringCheck that ends by Start and is equal to StringMatch, or 0; runs may overlap, so
+    /// <c>InStrRev("aaa", "aa")</c> is 2. A zero-length StringCheck is 0, a zero-length StringMatch is Start, and "Start &gt;
+    /// Len(StringMatch)" is read as a Start past the end of StringCheck, which is 0. The table's Null rows cannot be reached: both
+    /// Strings are declared <c>As String</c>, so a Null one is error 94 at the call site.
+    /// </para>
+    /// <para>
+    /// 👉 Start left out is the declared -1, the end of StringCheck, which the table calls "the data value 1"; a Start of 0 or below -1
+    /// is error 5, as a Start below 1 is to the <c>Mid</c> statement (<strong>MS-VBAL §5.4.3.5</strong>). Compare left out is the
+    /// calling module's <c>Option Compare</c>, as its runtime semantics say and its table does not, and an explicit one is
+    /// <c>vbBinaryCompare</c> or <c>vbTextCompare</c>, else error 5.
+    /// </para>
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBLongValue> InStrRev(VBStringValue stringCheck, VBStringValue stringMatch, VBLongValue? start = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare)
+    {
+        var from = Given(start).Value;
+        if (from is 0 or < -1)
+        {
+            return Fail<VBLongValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, nameof(InStrRev), $"Start is -1 or at least 1, not {from}");
+        }
+
+        if (!TryRulesFor(compare, nameof(InStrRev), out var rules, out var error))
+        {
+            return Fail<VBLongValue>(error);
+        }
+
+        var text = Text(stringCheck);
+        var pattern = Text(stringMatch);
+        var end = from == -1 ? text.Length : from;
+        int position;
+        if (text.Length == 0 || end > text.Length)
+        {
+            position = 0;
+        }
+        else if (pattern.Length == 0)
+        {
+            position = end;
+        }
+        else
+        {
+            position = rules.TryFindLast(text.AsSpan(0, end), pattern, out var index, out _) ? index + 1 : 0;
+        }
+
+        return Succeed(new VBLongValue(position));
+    }
 
     public RuntimeSemanticsEvaluationResult<VBStringValue> Join(VBVariantValue sourceArray, VBVariantValue? delimiter = default) => NotImplemented<VBStringValue>(nameof(Join));
 
@@ -735,7 +893,38 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
 
     public RuntimeSemanticsEvaluationResult<VBVariantValue> Split( VBStringValue expression, VBVariantValue? delimiter = default, VBLongValue? limit = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(Split));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> StrComp( VBVariantValue string1, VBVariantValue string2, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(StrComp));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// -1, 0 or 1 as String1 "is less than", equal to or "greater than" String2, as an Integer; "String1 or String2 is Null" is Null,
+    /// whatever Compare is. Each argument is Let-coerced as a <c>String</c> parameter would be, and the two are compared the way the
+    /// relational operators compare them (<strong>MS-VBAL §5.6.9.5</strong>), a trailing byte included, so <c>StrComp(a, b)</c> is 0
+    /// exactly when <c>a = b</c> under the <c>Option Compare</c> that Compare names. An explicit Compare is <c>vbBinaryCompare</c> or
+    /// <c>vbTextCompare</c>, else error 5.
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> StrComp(VBVariantValue string1, VBVariantValue string2, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare)
+    {
+        if (!TryReadString(string1, nameof(StrComp), "String1", out var left, out var error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        if (!TryReadString(string2, nameof(StrComp), "String2", out var right, out error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        if (left is null || right is null)
+        {
+            return InVariant(VBNullValue.Null);
+        }
+
+        if (!TryRulesFor(compare, nameof(StrComp), out var rules, out error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        return InVariant(new VBIntegerValue((short)Math.Sign(rules.Compare(left, right))));
+    }
 
     public RuntimeSemanticsEvaluationResult<VBVariantValue> StrConv(VBVariantValue @string, VBStrConv conversion, VBLongValue? localeID = default) => NotImplemented<VBVariantValue>(nameof(StrConv));
 
