@@ -448,6 +448,9 @@ public sealed class StdLibDispatchTests
             VBCompareMethod compare = VBCompareMethod.VBBinaryCompare);
 
         RuntimeSemanticsEvaluationResult<VBLongValue> Total(VBLongValue first, params VBVariantValue[] rest);
+
+        RuntimeSemanticsEvaluationResult<VBLongValue> Same(
+            VBStringValue string1, VBStringValue string2, [StdLibOptionCompare] VBCompareMethod compare = VBCompareMethod.VBBinaryCompare);
     }
 
     private static (StdLibDispatcher Dispatcher, IStdLibOmittable Implementation, VBFunctionMemberSymbol Member) Omittable(string member)
@@ -455,6 +458,7 @@ public sealed class StdLibDispatchTests
         var implementation = Substitute.For<IStdLibOmittable>();
         implementation.Split(default!, default, default, default).ReturnsForAnyArgs(RuntimeSemanticsEvaluationResult<VBLongValue>.Success(new VBLongValue(0)));
         implementation.Total(default!, default!).ReturnsForAnyArgs(RuntimeSemanticsEvaluationResult<VBLongValue>.Success(new VBLongValue(0)));
+        implementation.Same(default!, default!, default).ReturnsForAnyArgs(RuntimeSemanticsEvaluationResult<VBLongValue>.Success(new VBLongValue(0)));
         var symbol = new StdLibSymbolReader(Root).Read([typeof(IStdLibOmittable), typeof(VBCompareMethod)]).OfType<VBFunctionMemberSymbol>().Single(symbol => symbol.Name == member);
         return (new StdLibDispatcher(new Dictionary<Type, object> { [typeof(IStdLibOmittable)] = implementation }), implementation, symbol);
     }
@@ -503,6 +507,20 @@ public sealed class StdLibDispatchTests
 
         Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
         implementation.Received().Total(Arg.Is<VBLongValue>(first => first.Value == 1), Arg.Is<VBVariantValue[]>(rest => rest != null && rest.Length == 0));
+    }
+
+    [TestMethod]
+    public void AnOptionCompareLeftOutByADirectCaller_IsTheDeclaredDefault()
+    {
+        // a direct caller has no calling module, so there is no Option Compare to take: the declaration's own vbBinaryCompare stands.
+        var (dispatcher, implementation, same) = Omittable("Same");
+
+        var result = dispatcher.Dispatch(
+            new ExternalCallRequest(same, [new VBStringValue("a").RuntimeValue, new VBStringValue("A").RuntimeValue]), Substitute.For<ISymbolResolver>());
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+        Assert.IsTrue(same.Parameters.Last().GetProperty(SymbolProperties.DefaultsToOptionCompare));
+        implementation.Received().Same(Arg.Any<VBStringValue>(), Arg.Any<VBStringValue>(), VBCompareMethod.VBBinaryCompare);
     }
 
     #endregion

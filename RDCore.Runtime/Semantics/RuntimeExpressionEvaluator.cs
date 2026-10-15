@@ -24,8 +24,10 @@ using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Model.Values.Meta;
 using RDCore.SDK.Model.Values.Runtime;
+using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract;
 using RDCore.SDK.Runtime.Abstract.Execution;
+using RDCore.SDK.Runtime.Abstract.StdLib;
 using RDCore.SDK.Runtime.Shared;
 using RDCore.SDK.Semantics;
 using RDCore.SDK.Semantics.Facts;
@@ -556,6 +558,10 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
     /// and gets the coercion's error.
     /// </para>
     /// <para>
+    /// A standard-library <c>Compare</c> parameter that takes the calling module's <c>Option Compare</c> when omitted
+    /// (<see cref="SymbolProperties.DefaultsToOptionCompare"/>) takes that instead of its declared default.
+    /// </para>
+    /// <para>
     /// A call's argument binding, the call a Let-coercion makes to an object's default member, and the declared defaults a variable
     /// starts as (<see cref="DeclaredVariableDefaults"/>) all ask here, so that they agree.
     /// </para>
@@ -569,6 +575,16 @@ public sealed class RuntimeExpressionEvaluator(IOperatorRuntimeSemanticsProvider
     /// <returns>The value, or the error reducing or coercing the default raised.</returns>
     public RuntimeSemanticsEvaluationResult OmittedArgument(IRuntimeSession session, VBParameterSymbol parameter)
     {
+        // MS-VBAL 6.1.2.11: a comparing member's omitted Compare "uses the <option-compare-directive> of the calling module". A call
+        // binds its arguments before the callee's frame is pushed, and an external call pushes none, so the current frame is still the
+        // caller's; and CurrentCompareMode has already resolved Option Compare Database the way the comparison operators do. The value is
+        // a VbCompareMethod constant, which needs no coercion. The declared default is what a caller with no calling module gets.
+        if (parameter.TryGetProperty(SymbolProperties.DefaultsToOptionCompare, out var optionCompare) && optionCompare)
+        {
+            return RuntimeSemanticsEvaluationResult.Success(new VBLongValue(
+                (int)(session.CurrentCompareMode() is OptionCompare.Text ? VBCompareMethod.VBTextCompare : VBCompareMethod.VBBinaryCompare)));
+        }
+
         if (parameter.DefaultValue is not { } declaredDefault)
         {
             return RuntimeSemanticsEvaluationResult.Success(RuntimeProcedureInvoker.OmittedArgumentValue(parameter));

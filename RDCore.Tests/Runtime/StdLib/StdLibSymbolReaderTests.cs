@@ -548,6 +548,65 @@ public sealed class StdLibSymbolReaderTests
         Assert.Contains($"'{parameter}' in '{declaration.Name}.", exception.Message);
     }
 
+    [TestMethod]
+    public void AnOptionCompareParameter_IsFlagged_AndKeepsItsDeclaredDefault()
+    {
+        // MS-VBAL 6.1.2.11.1.36: StrComp(..., Optional Compare As VbCompareMethod = vbBinaryCompare), "if omitted, it uses the
+        // <option-compare-directive> of the calling module". The declaration says = vbBinaryCompare, which is what a caller with no calling
+        // module gets; the flag says what a call from source fills in.
+        var find = (VBFunctionMemberSymbol)new StdLibSymbolReader(Root).Read([typeof(IStdLibWithAnOptionCompare), typeof(VBCompareMethod)])
+            .Single(symbol => symbol.Name == "Find");
+
+        var compare = find.Parameters.Single(p => p.Name == "Compare");
+        Assert.IsTrue(compare.GetProperty(SymbolProperties.DefaultsToOptionCompare));
+        Assert.AreEqual(0, Convert.ToInt32(((LiteralExpressionNode)compare.DefaultValue!).StaticValue.Handle.Value.BoxedValue));
+        Assert.IsFalse(find.Parameters.Single(p => p.Name == "Text").TryGetProperty(SymbolProperties.DefaultsToOptionCompare, out _));
+    }
+
+    [TestMethod]
+    [DataRow(typeof(IStdLibWithALongOptionCompare), DisplayName = "a Long")]
+    [DataRow(typeof(IStdLibWithARequiredOptionCompare), DisplayName = "a required parameter")]
+    [DataRow(typeof(IStdLibWithAByRefOptionCompare), DisplayName = "a ByRef parameter")]
+    [DataRow(typeof(IStdLibWithAParamArrayOptionCompare), DisplayName = "a ParamArray")]
+    public void AnOptionCompareMarkerOnAParameterThatCannotTakeIt_IsRefused(Type declaration)
+    {
+        // what takes the caller's Option Compare is a comparing member's Compare, declared as the specification declares it.
+        var reader = new StdLibSymbolReader(Root);
+
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => reader.Read([declaration, typeof(VBCompareMethod)]));
+        Assert.Contains($"in '{declaration.Name}.Find'", exception.Message);
+    }
+
+    [StdLibModule("Compare")]
+    private interface IStdLibWithAnOptionCompare
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Find(VBStringValue text, [StdLibOptionCompare] VBCompareMethod compare = VBCompareMethod.VBBinaryCompare);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithALongOptionCompare
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Find([StdLibOptionCompare] VBLongValue? compare = default);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithARequiredOptionCompare
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Find([StdLibOptionCompare] VBCompareMethod compare);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAByRefOptionCompare
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Find([System.Runtime.InteropServices.Optional, StdLibOptionCompare] ref VBCompareMethod compare);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAParamArrayOptionCompare
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Find([StdLibOptionCompare] params VBVariantValue[] compare);
+    }
+
     [StdLibModule("Defaults")]
     private interface IStdLibWithStatedDefaults
     {

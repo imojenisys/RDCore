@@ -393,6 +393,16 @@ public sealed class StdLibSymbolReader
                     $"'{name}' in '{method.DeclaringType?.Name}.{method.Name}' states a default, which a ParamArray cannot have.");
             }
 
+            // what takes the calling module's Option Compare when omitted is the Compare of a comparing member, declared as the
+            // specification declares it: Optional ByVal Compare As VbCompareMethod = vbBinaryCompare.
+            var optionCompare = parameter.GetCustomAttribute<StdLibOptionCompareAttribute>() is not null;
+            if (optionCompare && (paramArray || byRef || !parameter.IsOptional || declared != typeof(VBCompareMethod)))
+            {
+                throw new InvalidOperationException(
+                    $"'{name}' in '{method.DeclaringType?.Name}.{method.Name}' takes the calling module's Option Compare when omitted, " +
+                    $"which only an optional ByVal parameter declared as a {nameof(VBCompareMethod)} can.");
+            }
+
             if (paramArray)
             {
                 builder.Add(new ParamArrayParameterSymbol(
@@ -403,10 +413,13 @@ public sealed class StdLibSymbolReader
             var declaredType = array is not null
                 ? ArrayTypeOf(DeclaredTypeOf(array.ElementType, method, enumTypes, classTypes))
                 : DeclaredTypeOf(declared, method, enumTypes, classTypes);
-            builder.Add(new VBParameterSymbol(
+            var symbol = new VBParameterSymbol(
                 _workspaceRoot, memberUri, name, SourceRange.Empty, SourceRange.Empty,
                 byRef ? ParameterKind.ExplicitByRef : ParameterKind.ExplicitByVal,
-                declaredType, parameter.IsOptional, DefaultValueOf(parameter, declaredType, name, method, memberUri)));
+                declaredType, parameter.IsOptional, DefaultValueOf(parameter, declaredType, name, method, memberUri));
+
+            // the declared default stays: it is what a caller with no calling module gets.
+            builder.Add(optionCompare ? (VBParameterSymbol)symbol.With(SymbolProperties.DefaultsToOptionCompare, true) : symbol);
         }
 
         return builder.ToImmutable();
