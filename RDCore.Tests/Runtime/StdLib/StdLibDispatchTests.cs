@@ -182,7 +182,7 @@ public sealed class StdLibDispatchTests
     [TestMethod]
     [DataRow("Left$ \"abc\", 1", DisplayName = "a bare call")]
     [DataRow("Debug.Print Left$(\"abc\", 1)", DisplayName = "an argument list")]
-    public void ATypedCall_ReachesTheTwinOfAMemberNothingImplementsYet(string statement)
+    public void ATypedCall_ReachesTheTwinOfAStringsMember(string statement)
     {
         // Strings' twins are declared like Conversion's; which member a call reached is what the dispatcher was handed.
         RuntimeSourceHarness.RecordingDispatcher? spy = null;
@@ -192,8 +192,7 @@ public sealed class StdLibDispatchTests
             statement);
 
         Assert.AreEqual("Left$", spy!.Requests.Single().Member.Name);
-        // 🚧 TODO when Left$ is written: the call completes.
-        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
     }
 
     [TestMethod]

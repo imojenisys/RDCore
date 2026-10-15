@@ -493,51 +493,226 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
 
     public RuntimeSemanticsEvaluationResult<VBStringValue> Join(VBVariantValue sourceArray, VBVariantValue? delimiter = default) => NotImplemented<VBStringValue>(nameof(Join));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> LCase(VBVariantValue @string) => NotImplemented<VBVariantValue>(nameof(LCase));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "Only uppercase letters are converted to lowercase; all lowercase letters and non-letter characters remain unchanged", by
+    /// the casing of the environment's regional settings (a Turkish <c>I</c> becomes a dotless <c>i</c>), one character for one.
+    /// "If String contains the data value Null, Null is returned."
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> LCase(VBVariantValue @string) => Cased(nameof(LCase), @string, upper: false);
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> LCaseString(VBVariantValue @string) => NotImplemented<VBStringValue>(nameof(LCaseString));
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> LCaseString(VBVariantValue @string) => Twin("LCase$", LCase(@string));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> Left(VBVariantValue @string, VBLongValue length) => NotImplemented<VBVariantValue>(nameof(Left));
+    // LCase and UCase: TextInfo maps each character to one character, so "ß" stays "ß" and the length never changes.
+    private RuntimeSemanticsEvaluationResult<VBVariantValue> Cased(string member, VBVariantValue @string, bool upper)
+    {
+        if (!TryReadString(@string, member, "String", out var text, out var error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> LeftB(VBVariantValue @string, VBLongValue length) => NotImplemented<VBVariantValue>(nameof(LeftB));
+        if (text is null)
+        {
+            return InVariant(VBNullValue.Null);
+        }
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> LeftString(VBVariantValue @string, VBLongValue length) => NotImplemented<VBStringValue>(nameof(LeftString));
+        var casing = session.Environment.Culture.TextInfo;
+        return InVariant(upper ? casing.ToUpper(Text(text)) : casing.ToLower(Text(text)));
+    }
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> LeftBString(VBVariantValue @string, VBLongValue length) => NotImplemented<VBStringValue>(nameof(LeftBString));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The first Length characters, "the entire string" when Length is at least its length, a zero-length string for 0; "if string
+    /// contains Null, Null is returned", whatever Length is. A character is a UTF-16 code unit, so a surrogate pair can be split.
+    /// 👉 A negative Length is error 5, as a negative length is to the <c>Mid</c> statement (<strong>MS-VBAL §5.4.3.5</strong>).
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> Left(VBVariantValue @string, VBLongValue length) => Take(nameof(Left), @string, length, fromEnd: false, inBytes: false);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <see cref="Left"/> in bytes: "instead of specifying the number of characters to return, length specifies the number of
+    /// bytes", so an odd Length gives a String that ends in a byte.
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> LeftB(VBVariantValue @string, VBLongValue length) => Take(nameof(LeftB), @string, length, fromEnd: false, inBytes: true);
 
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> LeftString(VBVariantValue @string, VBLongValue length) => Twin("Left$", Left(@string, length));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> LTrim(VBVariantValue @string) => NotImplemented<VBVariantValue>(nameof(LTrim));
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> LeftBString(VBVariantValue @string, VBLongValue length) => Twin("LeftB$", LeftB(@string, length));
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> LTrimString(VBVariantValue @string) => NotImplemented<VBStringValue>(nameof(LTrimString));
+    // Left, Right and their byte forms: the String's coercion, then its Null, then Length's check.
+    private RuntimeSemanticsEvaluationResult<VBVariantValue> Take(string member, VBVariantValue @string, VBLongValue length, bool fromEnd, bool inBytes)
+    {
+        if (!TryReadString(@string, member, "String", out var text, out var error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> RTrim(VBVariantValue @string) => NotImplemented<VBVariantValue>(nameof(RTrim));
+        if (text is null)
+        {
+            return InVariant(VBNullValue.Null);
+        }
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> RTrimString(VBVariantValue @string) => NotImplemented<VBStringValue>(nameof(RTrimString));
+        var count = length.Value;
+        if (count < 0)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, member, $"Length cannot be negative, not {count}");
+        }
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> Trim(VBVariantValue @string) => NotImplemented<VBVariantValue>(nameof(Trim));
+        if (inBytes)
+        {
+            var bytes = text.GetBytes();
+            var taken = Math.Min(count, bytes.Length);
+            return InVariant(VBStringValue.FromBytes(fromEnd ? bytes.AsSpan(bytes.Length - taken) : bytes.AsSpan(0, taken)));
+        }
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> TrimString(VBVariantValue @string) => NotImplemented<VBStringValue>(nameof(TrimString));
+        var characters = Text(text);
+        var kept = Math.Min(count, characters.Length);
+        return InVariant(fromEnd ? characters[^kept..] : characters[..kept]);
+    }
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> Mid(VBVariantValue @string, VBLongValue start, VBVariantValue? length = default) => NotImplemented<VBVariantValue>(nameof(Mid));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "A copy of a specified string without leading spaces": spaces are U+0020, and nothing else is removed. "If String contains
+    /// the data value Null, Null is returned."
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> LTrim(VBVariantValue @string) => Trimmed(nameof(LTrim), @string, leading: true, trailing: false);
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> MidB(VBVariantValue @string, VBLongValue start, VBVariantValue? length = default) => NotImplemented<VBVariantValue>(nameof(MidB));
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> LTrimString(VBVariantValue @string) => Twin("LTrim$", LTrim(@string));
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> MidString(VBVariantValue @string, VBLongValue start, VBVariantValue? length = default) => NotImplemented<VBStringValue>(nameof(MidString));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "A copy of a specified string without [...] trailing spaces": spaces are U+0020, and nothing else is removed. "If String
+    /// contains the data value Null, Null is returned."
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> RTrim(VBVariantValue @string) => Trimmed(nameof(RTrim), @string, leading: false, trailing: true);
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> MidBString(VBVariantValue @string, VBLongValue start, VBVariantValue? length = default) => NotImplemented<VBStringValue>(nameof(MidBString));
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> RTrimString(VBVariantValue @string) => Twin("RTrim$", RTrim(@string));
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "A copy of a specified string without [...] both leading and trailing spaces": spaces are U+0020, so a tab, a line break, a
+    /// no-break space or an ideographic space stays. "If String contains the data value Null, Null is returned."
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> Trim(VBVariantValue @string) => Trimmed(nameof(Trim), @string, leading: true, trailing: true);
+
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> TrimString(VBVariantValue @string) => Twin("Trim$", Trim(@string));
+
+    private RuntimeSemanticsEvaluationResult<VBVariantValue> Trimmed(string member, VBVariantValue @string, bool leading, bool trailing)
+    {
+        if (!TryReadString(@string, member, "String", out var text, out var error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        if (text is null)
+        {
+            return InVariant(VBNullValue.Null);
+        }
+
+        var characters = Text(text);
+        return InVariant(leading && trailing
+            ? characters.Trim(SpaceCharacter)
+            : leading ? characters.TrimStart(SpaceCharacter) : characters.TrimEnd(SpaceCharacter));
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Length characters from Start: "if omitted or if there are fewer than Length characters in the text (including the character
+    /// at start), all characters from the start position to the end of the string are returned", and "if Start is greater than the
+    /// number of characters in String, Mid returns a zero-length string". "If String contains the data value Null, Null is
+    /// returned." Length is a <c>Variant</c>, Let-coerced here as a <c>Long</c> parameter would be, after the String and before
+    /// its Null. 👉 A Start below 1 and a negative Length are error 5, past the end or not, as they are to the <c>Mid</c>
+    /// statement (<strong>MS-VBAL §5.4.3.5</strong>).
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> Mid(VBVariantValue @string, VBLongValue start, VBVariantValue? length = default) => Middle(nameof(Mid), @string, start, length, inBytes: false);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <see cref="Mid"/> in bytes: "the arguments specify numbers of bytes", so a slice can begin or end inside a character.
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> MidB(VBVariantValue @string, VBLongValue start, VBVariantValue? length = default) => Middle(nameof(MidB), @string, start, length, inBytes: true);
+
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> MidString(VBVariantValue @string, VBLongValue start, VBVariantValue? length = default) => Twin("Mid$", Mid(@string, start, length));
+
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> MidBString(VBVariantValue @string, VBLongValue start, VBVariantValue? length = default) => Twin("MidB$", MidB(@string, start, length));
+
+    private RuntimeSemanticsEvaluationResult<VBVariantValue> Middle(string member, VBVariantValue @string, VBLongValue start, VBVariantValue? length, bool inBytes)
+    {
+        // the coercions in the order the parameters are declared: String, then Length (the call site coerced Start, a Long).
+        if (!TryReadString(@string, member, "String", out var text, out var error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        int? count = null;
+        if (length is not null)
+        {
+            if (!TryReadLong(length, member, "Length", out var given, out error))
+            {
+                return Fail<VBVariantValue>(error);
+            }
+
+            count = given;
+        }
+
+        if (text is null)
+        {
+            return InVariant(VBNullValue.Null);
+        }
+
+        var from = start.Value;
+        if (from < 1)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, member, $"Start is at least 1, not {from}");
+        }
+
+        if (count < 0)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, member, $"Length cannot be negative, not {count}");
+        }
+
+        if (inBytes)
+        {
+            var bytes = text.GetBytes();
+            var restOfBytes = from > bytes.Length ? ReadOnlySpan<byte>.Empty : bytes.AsSpan(from - 1);
+            return InVariant(VBStringValue.FromBytes(restOfBytes[..Math.Min(count ?? restOfBytes.Length, restOfBytes.Length)]));
+        }
+
+        var characters = Text(text).AsSpan();
+        var rest = from > characters.Length ? ReadOnlySpan<char>.Empty : characters[(from - 1)..];
+        return InVariant(rest[..Math.Min(count ?? rest.Length, rest.Length)].ToString());
+    }
 
     public RuntimeSemanticsEvaluationResult<VBStringValue> MonthName(VBLongValue month, VBBooleanValue? abbreviate = default) => NotImplemented<VBStringValue>(nameof(MonthName));
 
     public RuntimeSemanticsEvaluationResult<VBStringValue> Replace( VBStringValue expression, VBStringValue find, VBStringValue replace, VBLongValue? start = default, VBLongValue? count = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBStringValue>(nameof(Replace));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> Right(VBVariantValue @string, VBLongValue length) => NotImplemented<VBVariantValue>(nameof(Right));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The last Length characters, the mirror of <see cref="Left"/>: "the entire string" when Length is at least its length, a
+    /// zero-length string for 0, Null for a Null String whatever Length is, and error 5 for a negative Length.
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> Right(VBVariantValue @string, VBLongValue length) => Take(nameof(Right), @string, length, fromEnd: true, inBytes: false);
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> RightB(VBVariantValue @string, VBLongValue length) => NotImplemented<VBVariantValue>(nameof(RightB));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <see cref="Right"/> in bytes: the last Length bytes, so an odd Length gives a String that begins inside a character.
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> RightB(VBVariantValue @string, VBLongValue length) => Take(nameof(RightB), @string, length, fromEnd: true, inBytes: true);
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> RightString(VBVariantValue @string, VBLongValue length) => NotImplemented<VBStringValue>(nameof(RightString));
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> RightString(VBVariantValue @string, VBLongValue length) => Twin("Right$", Right(@string, length));
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> RightBString(VBVariantValue @string, VBLongValue length) => NotImplemented<VBStringValue>(nameof(RightBString));
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> RightBString(VBVariantValue @string, VBLongValue length) => Twin("RightB$", RightB(@string, length));
 
     /// <inheritdoc/>
     /// <remarks>
@@ -643,9 +818,16 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
         return Succeed(new VBStringValue(new string(characters)));
     }
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> UCase(VBVariantValue @string) => NotImplemented<VBVariantValue>(nameof(UCase));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "Only lowercase letters are converted to uppercase; all uppercase letters and non-letter characters remain unchanged", by
+    /// the casing of the environment's regional settings (a Turkish <c>i</c> becomes a dotted <c>I</c>), one character for one,
+    /// so "ß" stays "ß". "If String contains the data value Null, Null is returned."
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> UCase(VBVariantValue @string) => Cased(nameof(UCase), @string, upper: true);
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> UCaseString(VBVariantValue @string) => NotImplemented<VBStringValue>(nameof(UCaseString));
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> UCaseString(VBVariantValue @string) => Twin("UCase$", UCase(@string));
 
     public RuntimeSemanticsEvaluationResult<VBStringValue> WeekdayName( VBLongValue weekday, VBBooleanValue? abbreviate = default, VBDayOfWeek firstDayOfWeek = VBDayOfWeek.VBUseSystemDayOfWeek) => NotImplemented<VBStringValue>(nameof(WeekdayName));
 
