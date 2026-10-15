@@ -584,10 +584,11 @@ public sealed class StdLibDispatchTests
     public void StrConv_WithTheLocaleLeftOut_ReachesTheMember()
     {
         // a call with two arguments was 449, Argument not optional, before the member was reached.
-        var (_, outcome) = RuntimeSourceHarness.Run(fileSystem: null, [], output: null, standardLibrary: true, "Debug.Print StrConv(\"a\", 3)");
+        var output = new RuntimeOutputBuffer();
+        var (_, outcome) = RuntimeSourceHarness.Run(fileSystem: null, [], output, standardLibrary: true, "Debug.Print StrConv(\"a\", 3)");
 
-        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
-        Assert.AreEqual("'StrConv' is declared but not implemented yet.", outcome.ErrorInfo!.Verbose);
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual("A", output.Lines.Single().TrimEnd('\r', '\n'));
     }
 
     #endregion

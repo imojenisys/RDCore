@@ -12,6 +12,7 @@ using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Abstract.StdLib;
 using RDCore.SDK.Runtime.Shared;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -22,14 +23,15 @@ namespace RDCore.Runtime.StdLib;
 /// <para>
 /// 👉 The session is what these members read of the world: the regional settings of its environment, which a number or a
 /// date is written in when a <c>Variant</c> argument is read as a <c>String</c> (as Let-coercion writes it,
-/// <strong>MS-VBAL §5.5.1.2.4</strong>) and which <c>LCase</c> and <c>UCase</c> case by; the environment's ANSI code page,
-/// which is what the implementation-defined character codes of <c>Asc</c>, <c>Chr</c> and <c>String</c> are; and the
-/// comparison an explicit <c>Compare</c> names.
+/// <strong>MS-VBAL §5.5.1.2.4</strong>) and which <c>LCase</c>, <c>UCase</c> and <c>StrConv</c> case by; the environment's
+/// ANSI code page, which is what the implementation-defined character codes of <c>Asc</c>, <c>Chr</c> and <c>String</c> are,
+/// and what <c>StrConv</c> converts to and from; and the comparison an explicit <c>Compare</c> names.
 /// </para>
 /// <para>
 /// 👉 What a member is given has been through the call site first. A typed parameter's argument was Let-coerced to its type,
 /// so a Null <c>String</c> or <c>Long</c> was error 94 before any member was reached; a typed optional left out arrives as its
-/// declared default (<c>StdLibDefault</c>), and a <c>Compare</c> left out as the calling module's <c>Option Compare</c>
+/// declared default (<c>StdLibDefault</c>), or as <c>null</c> when it declares none (<c>StrConv</c>'s <c>LocaleID</c>, which its
+/// member reads as left out), and a <c>Compare</c> left out as the calling module's <c>Option Compare</c>
 /// (<c>StdLibOptionCompare</c>). An omitted <c>Variant</c> optional, or a caller's Missing passed on to one, arrives as
 /// <c>null</c>, and nothing else is read as omitted: an explicit Empty is Empty. A member reads a <c>Variant</c> argument the
 /// way a parameter of the type it needs would be Let-coerced, and always in one order: the arguments' coercions in the order
@@ -50,7 +52,9 @@ namespace RDCore.Runtime.StdLib;
 /// </para>
 /// <para>
 /// 🚧 A member whose body returns <see cref="NotImplemented{TValue}"/> is declared and not written yet: the symbol resolves,
-/// the call is well-formed, and the platform has not got the code yet.
+/// the call is well-formed, and the platform has not got the code yet. Those are the <c>Format</c> family (<c>Format</c>,
+/// <c>FormatCurrency</c>, <c>FormatDateTime</c>, <c>FormatNumber</c> and <c>FormatPercent</c>), <c>MonthName</c> and
+/// <c>WeekdayName</c>.
 /// </para>
 /// </remarks>
 /// <param name="session">The session whose environment (regional settings, ANSI code page) and comparison rules these members read.</param>
@@ -103,8 +107,9 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
     // a byte member never comes through here.
     private static string Text(VBStringValue value) => value.Value;
 
-    // a typed optional is filled from its declaration before any call reaches a member - by the call site from source, by the
-    // dispatcher for a direct call that leaves it out - so null here is a C# caller's mistake. Members never restate a default.
+    // a typed optional that declares a default is filled from its declaration before any call reaches a member - by the call site
+    // from source, by the dispatcher for a direct call that leaves it out or passes Missing - so null here is a C# caller's mistake.
+    // Members never restate a default. One that declares none (StrConv's LocaleID) arrives as null, and is not read through here.
     private static TValue Given<TValue>(TValue? argument, [CallerArgumentExpression(nameof(argument))] string name = "")
         where TValue : VBTypedValue
         => argument ?? throw new ArgumentNullException(name, "an omitted optional is filled from its declaration before the call reaches its implementation");
@@ -1191,7 +1196,127 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
         return InVariant(new VBIntegerValue((short)Math.Sign(rules.Compare(left, right))));
     }
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> StrConv(VBVariantValue @string, VBStrConv conversion, VBLongValue? localeID = default) => NotImplemented<VBVariantValue>(nameof(StrConv));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "Returns a String converted as specified", Conversion being "the sum of values specifying the type of conversion to
+    /// perform", of which "most can be combined [...] except when they are mutually exclusive". <c>vbUpperCase</c> and
+    /// <c>vbLowerCase</c> case as <see cref="UCase"/> and <see cref="LCase"/> do, by the regional settings of LocaleID, or of the
+    /// environment when it is left out or 0. <c>vbProperCase</c> "converts the first letter of every word in string to
+    /// uppercase", a word beginning where the String does and after each of "the valid word separators for proper casing":
+    /// <c>Chr$(0)</c>, <c>Chr$(9)</c> to <c>Chr$(13)</c> and <c>Chr$(32)</c>. <c>vbUnicode</c> reads the String's bytes, a
+    /// trailing one included, as text in "the default code page of the system", which is the environment's ANSI code page, and
+    /// <c>vbFromUnicode</c> writes its characters as that code page's bytes, a character the code page lacks being what its
+    /// encoder maps it to; LocaleID does not change the code page. A Null String is Null.
+    /// <para>
+    /// 👉 <c>vbUnicode</c> converts first and <c>vbFromUnicode</c> last, so a case conversion sees the characters the bytes are and
+    /// is what gets written; <c>vbProperCase</c> also lowercases the rest of each word, and starts none after punctuation, a
+    /// no-break space or an ideographic space. Both conversions of a pair (<c>vbWide</c> and <c>vbNarrow</c>, <c>vbKatakana</c>
+    /// and <c>vbHiragana</c>, <c>vbUnicode</c> and <c>vbFromUnicode</c>), a Conversion outside 0 to 255, and a LocaleID that names
+    /// no locale are error 5.
+    /// </para>
+    /// <para>
+    /// 🚧 <c>vbWide</c>, <c>vbNarrow</c>, <c>vbKatakana</c> and <c>vbHiragana</c> are error 5 in every locale: they "cause
+    /// run-time errors when used in locales where they do not apply", and where they do apply, East Asian and Japanese
+    /// locales, they are not implemented. TODO.
+    /// </para>
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> StrConv(VBVariantValue @string, VBStrConv conversion, VBLongValue? localeID = default)
+    {
+        if (!TryReadString(@string, nameof(StrConv), "String", out var text, out var error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        if (text is null)
+        {
+            return InVariant(VBNullValue.Null);
+        }
+
+        // then the values, in the order they are declared: Conversion, then LocaleID.
+        var settings = (int)conversion;
+        if (settings is < 0 or > 0xFF)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, nameof(StrConv), $"Conversion is a sum of VbStrConv values, 0 to 255, not {settings}");
+        }
+
+        foreach (var (pair, names) in ExclusiveConversions)
+        {
+            if ((settings & (int)pair) == (int)pair)
+            {
+                return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, nameof(StrConv), $"Conversion cannot combine {names}");
+            }
+        }
+
+        if ((settings & (int)EastAsianConversions) != 0)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, nameof(StrConv), "vbWide, vbNarrow, vbKatakana and vbHiragana are not implemented");
+        }
+
+        // LocaleID has no default: left out, it is null, and 0 is the environment's locale too.
+        var culture = session.Environment.Culture;
+        if (localeID is { Value: not 0 and var lcid })
+        {
+            try
+            {
+                culture = CultureInfo.GetCultureInfo(lcid);
+            }
+            catch (Exception exception) when (exception is CultureNotFoundException or ArgumentOutOfRangeException)
+            {
+                return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, nameof(StrConv), $"LocaleID {lcid} names no locale");
+            }
+        }
+
+        if (settings == 0)
+        {
+            // nothing to convert: the String as it was given, a trailing byte and all.
+            return InVariant(text);
+        }
+
+        var ansi = session.Environment.AnsiEncoding;
+        var converted = (settings & (int)VBStrConv.VBUnicode) != 0 ? ansi.GetString(text.GetBytes()) : Text(text);
+        var casing = culture.TextInfo;
+        converted = (VBStrConv)(settings & (int)VBStrConv.VBProperCase) switch
+        {
+            VBStrConv.VBUpperCase => casing.ToUpper(converted),
+            VBStrConv.VBLowerCase => casing.ToLower(converted),
+            VBStrConv.VBProperCase => ProperCased(converted, casing),
+            _ => converted,
+        };
+
+        return (settings & (int)VBStrConv.VBFromUnicode) != 0
+            ? InVariant(VBStringValue.FromBytes(ansi.GetBytes(converted)))
+            : InVariant(converted);
+    }
+
+    // "mutually exclusive, for example, vbUnicode + vbFromUnicode": each pair converts one way and its opposite.
+    private static readonly (VBStrConv Pair, string Names)[] ExclusiveConversions =
+    [
+        (VBStrConv.VBWide | VBStrConv.VBNarrow, "vbWide and vbNarrow"),
+        (VBStrConv.VBKatakana | VBStrConv.VBHiragana, "vbKatakana and vbHiragana"),
+        (VBStrConv.VBUnicode | VBStrConv.VBFromUnicode, "vbUnicode and vbFromUnicode"),
+    ];
+
+    private const VBStrConv EastAsianConversions = VBStrConv.VBWide | VBStrConv.VBNarrow | VBStrConv.VBKatakana | VBStrConv.VBHiragana;
+
+    // "the valid word separators for proper casing: Null (Chr$(0)), horizontal tab (Chr$(9)), linefeed (Chr$(10)), vertical tab
+    // (Chr$(11)), form feed (Chr$(12)), carriage return (Chr$(13)), space (SBCS) (Chr$(32))".
+    private const string WordSeparators = "\0\t\n\v\f\r ";
+
+    // vbProperCase: each word's first character up and every other one down, a word beginning where the String does and after
+    // a word separator, and nowhere else.
+    private static string ProperCased(string text, TextInfo casing)
+    {
+        var characters = casing.ToLower(text).ToCharArray();
+        for (var index = 0; index < characters.Length; index++)
+        {
+            if (index == 0 || WordSeparators.Contains(characters[index - 1]))
+            {
+                characters[index] = casing.ToUpper(characters[index]);
+            }
+        }
+
+        return new string(characters);
+    }
 
     /// <inheritdoc/>
     /// <remarks>
