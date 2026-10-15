@@ -47,8 +47,8 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     /// list somebody can read. An interface absent from it is a module nothing implements yet, and every
     /// member of it says so when called.
     /// <para>
-    /// 🚧 TODO as each module lands: <c>Math</c>,
-    /// <c>RegExp</c>, and the constant modules.
+    /// 🚧 TODO as each module lands: <c>Math</c> and <c>RegExp</c>. A constant module needs no implementation: its
+    /// constants are substituted where they are used, never called.
     /// </para>
     /// </remarks>
     /// <param name="session">The session the implementations read their state from.</param>
@@ -66,7 +66,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
         {
             [typeof(IStdInformationModule)] = new StdInformation(session),
             [typeof(IStdFileSystemModule)] = new StdFileSystem(session),
-            [typeof(IStdStringsModule)] = new StdStrings(),
+            [typeof(IStdStringsModule)] = new StdStrings(session),
             [typeof(IStdFinancialModule)] = new StdFinancial(),
             [typeof(IStdDateTimeModule)] = new StdDateTime(session),
             [typeof(IStdErrClass)] = new ErrObject(session),
