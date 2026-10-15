@@ -46,8 +46,10 @@ Instruction-list lowering is told the language the body is written in (`Instruct
 
 ## Runtime Semantics
 
-> [!NOTE]
-> Reserved. This section has no content yet.
+A number or a date in an output list is let-coerced to `String`, as **MS-VBAL §5.4.5.8.1** says, in the regional
+settings of the session's environment ([**RD-VBAL §5.5.1.2.4** Let-coercion to and from String](rd-vbal.5.5.1.2.runtime-semantics.md#55124-let-coercion-to-and-from-string)).
+Every form of `Print` is a text channel: a `String` is written as its whole characters, and a trailing byte is not
+written ([**RD-VBAL §2.4.1.2** VBStringType](rd-vbal.2.4.1.intrinsic-types.md#2412-vbstringtype)).
 
 ## Implementation
 
