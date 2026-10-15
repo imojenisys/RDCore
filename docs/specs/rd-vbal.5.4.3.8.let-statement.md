@@ -9,6 +9,10 @@
 |---|---|---|
 |[AssignmentStatementNode](../api/RDCore.SDK.Model.AST.Statements.AssignmentStatementNode.html) (`Kind`: `ImplicitLet` or `ExplicitLet`)|`Simple`|`[Let] lExpression = expression`. The `Target` of an `AssignmentStatementNode` is always an `lExpression`; see [**RD-VBAL §3.0.2** Node Types](rd-vbal.3.0.2.node-types.md).|
 
+The target of an implicit Let is never the `Print` of an object with an output list, since an l-expression has none: `Debug.Print x = 0` is the
+print of the comparison `x = 0` ([**RD-VBAL §5.4.5.8** Print Statement](rd-vbal.5.4.5.8.print-statement.md)). `Let Debug.Print x = 0`, with
+the explicit `Let`, is still a Let statement whose target is an `ObjectPrintExpressionNode`, and it does not run.
+
 See [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md).
 
 ## Static Semantics

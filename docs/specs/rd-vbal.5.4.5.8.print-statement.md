@@ -12,6 +12,10 @@
 |`Owner.Print`|[ObjectPrintExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.ObjectPrintExpressionNode.html)|—|The object-qualified form.|
 |`Debug.Print`|[DebugPrintStatementNode](../api/RDCore.SDK.Model.AST.Statements.DebugPrintStatementNode.html)|`Simple`|The object-qualified form whose owner is `Debug`.|
 
+An output list is a list of expressions, so in `Debug.Print x = 0` and `Owner.Print x = 0` the output list is the comparison `x = 0`: neither is a
+Let statement, whose target is never the `Print` of an object with an output list
+([**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.let-statement.md)).
+
 The output list these nodes carry is described in [5.4.5.8.1 Output Lists](#54581-output-lists) below. See
 [**RD-VBAL §3.4.3** File Statements](rd-vbal.3.4.3.file-statements.md).
 
