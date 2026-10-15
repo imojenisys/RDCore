@@ -507,6 +507,91 @@ public sealed class StdLibSymbolReaderTests
         Assert.Contains(member, exception.Message);
     }
 
+    [TestMethod]
+    [DataRow("Limit", "Long", -1)]
+    [DataRow("Count", "Integer", (short)3)]
+    [DataRow("Include", "Boolean", true)]
+    [DataRow("Delimiter", "String", " ")]
+    public void AStatedDefault_IsCarriedAsAValueOfTheDeclaredType(string parameter, string type, object expected)
+    {
+        // MS-VBAL 6.1.2.11.1.35: Split(..., Optional Limit As Long = -1, ...). A typed optional's C# default can only be null, which states
+        // no <default-value> clause at all, so the declaration states the clause, and the symbol carries it the way an enumeration's is.
+        var stated = (VBFunctionMemberSymbol)new StdLibSymbolReader(Root).Read([typeof(IStdLibWithStatedDefaults)]).Single(symbol => symbol.Name == "Stated");
+
+        var symbol = stated.Parameters.Single(p => p.Name == parameter);
+        var value = ((LiteralExpressionNode)symbol.DefaultValue!).StaticValue;
+        Assert.IsTrue(symbol.IsOptional);
+        Assert.AreEqual(type, value.TypeInfo.Name);
+        Assert.AreEqual(symbol.ResolvedType, value.TypeInfo);
+        Assert.AreEqual(expected, value switch
+        {
+            VBStringValue text => text.Value,
+            VBBooleanValue flag => (bool)flag.Value,
+            _ => value.Handle.Value.BoxedValue,
+        });
+    }
+
+    [TestMethod]
+    [DataRow(typeof(IStdLibWithARequiredDefault), "Start", DisplayName = "a required parameter")]
+    [DataRow(typeof(IStdLibWithAParamArrayDefault), "Rest", DisplayName = "a ParamArray")]
+    [DataRow(typeof(IStdLibWithAnEnumDefault), "Compare", DisplayName = "an enumeration, whose C# default states it")]
+    [DataRow(typeof(IStdLibWithAMistypedDefault), "Limit", DisplayName = "a Boolean for a Long")]
+    [DataRow(typeof(IStdLibWithAnOverflowingDefault), "Count", DisplayName = "70000 for an Integer")]
+    [DataRow(typeof(IStdLibWithAVariantDefault), "Value", DisplayName = "a Variant")]
+    public void AStatedDefaultForAParameterThatCannotTakeIt_IsRefused(Type declaration, string parameter)
+    {
+        // a default that is not a value of the parameter's type, or one stated where no default can be, would be a <default-value> clause no
+        // VBA declaration could have written.
+        var reader = new StdLibSymbolReader(Root);
+
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => reader.Read([declaration, typeof(VBCompareMethod)]));
+        Assert.Contains($"'{parameter}' in '{declaration.Name}.", exception.Message);
+    }
+
+    [StdLibModule("Defaults")]
+    private interface IStdLibWithStatedDefaults
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Stated(
+            [StdLibDefault(-1)] VBLongValue? limit = default, [StdLibDefault(3)] VBIntegerValue? count = default,
+            [StdLibDefault(true)] VBBooleanValue? include = default, [StdLibDefault(" ")] VBStringValue? delimiter = default);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithARequiredDefault
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Find([StdLibDefault(1)] VBLongValue start);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAParamArrayDefault
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Total([StdLibDefault(1)] params VBVariantValue[] rest);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAnEnumDefault
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Compare([StdLibDefault(1)] VBCompareMethod compare = VBCompareMethod.VBBinaryCompare);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAMistypedDefault
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Split([StdLibDefault(true)] VBLongValue? limit = default);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAnOverflowingDefault
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Repeat([StdLibDefault(70000)] VBIntegerValue? count = default);
+    }
+
+    [StdLibModule("Bad")]
+    private interface IStdLibWithAVariantDefault
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Hold([StdLibDefault(1)] VBVariantValue? value = default);
+    }
+
     private interface IUnmarked
     {
         RuntimeSemanticsEvaluationResult<VBLongValue> Whatever();

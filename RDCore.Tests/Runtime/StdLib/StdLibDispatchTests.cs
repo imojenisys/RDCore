@@ -436,4 +436,74 @@ public sealed class StdLibDispatchTests
         Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
         math.Received().Atn(Arg.Is<VBDoubleValue>(number => number.Value == 0.5));
     }
+
+    #region what a direct caller leaves out
+
+    /// <summary>A declaration of the shapes an omitted argument can have, which a substitute stands in for.</summary>
+    [StdLibModule("Omittable")]
+    public interface IStdLibOmittable
+    {
+        RuntimeSemanticsEvaluationResult<VBLongValue> Split(
+            VBStringValue expression, VBVariantValue? delimiter = default, [StdLibDefault(-1)] VBLongValue? limit = default,
+            VBCompareMethod compare = VBCompareMethod.VBBinaryCompare);
+
+        RuntimeSemanticsEvaluationResult<VBLongValue> Total(VBLongValue first, params VBVariantValue[] rest);
+    }
+
+    private static (StdLibDispatcher Dispatcher, IStdLibOmittable Implementation, VBFunctionMemberSymbol Member) Omittable(string member)
+    {
+        var implementation = Substitute.For<IStdLibOmittable>();
+        implementation.Split(default!, default, default, default).ReturnsForAnyArgs(RuntimeSemanticsEvaluationResult<VBLongValue>.Success(new VBLongValue(0)));
+        implementation.Total(default!, default!).ReturnsForAnyArgs(RuntimeSemanticsEvaluationResult<VBLongValue>.Success(new VBLongValue(0)));
+        var symbol = new StdLibSymbolReader(Root).Read([typeof(IStdLibOmittable), typeof(VBCompareMethod)]).OfType<VBFunctionMemberSymbol>().Single(symbol => symbol.Name == member);
+        return (new StdLibDispatcher(new Dictionary<Type, object> { [typeof(IStdLibOmittable)] = implementation }), implementation, symbol);
+    }
+
+    [TestMethod]
+    public void AnArgumentItsCallerLeftOutOrPassedAsMissing_TakesTheDefaultItsDeclarationStates()
+    {
+        // a call from source arrives complete; a direct caller can stop short, and what it left out is what the interpreter would have
+        // filled in: Limit's stated -1, which the member cannot tell apart from an explicit -1, where null would have been told apart from
+        // nothing; the enumeration's constant; and null, the "Missing" of a Variant with no default. A Missing it passes is an omitted
+        // argument, as it is to any COM member, and is filled the same way.
+        var expression = new VBStringValue("a b").RuntimeValue;
+        var missing = new VBVariantValue(VBMissingValue.Missing).RuntimeValue;
+        foreach (var arguments in new IRuntimeValue[][] { [expression], [expression, missing, missing, missing] })
+        {
+            var (dispatcher, implementation, split) = Omittable("Split");
+
+            var result = dispatcher.Dispatch(new ExternalCallRequest(split, arguments), Substitute.For<ISymbolResolver>());
+
+            Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+            implementation.Received().Split(
+                Arg.Is<VBStringValue>(text => text.Value == "a b"), null, Arg.Is<VBLongValue?>(limit => limit != null && limit.Value == -1), VBCompareMethod.VBBinaryCompare);
+        }
+    }
+
+    [TestMethod]
+    public void ARequiredArgumentItsCallerLeftOut_IsRefused()
+    {
+        // the member was called with null for it, and failed inside.
+        var (dispatcher, implementation, split) = Omittable("Split");
+
+        var result = dispatcher.Dispatch(new ExternalCallRequest(split, []), Substitute.For<ISymbolResolver>());
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual((int)VBRuntimeErrorId.InvalidProcedureCallOrArgument, result.ErrorInfo!.ErrorId);
+        Assert.IsEmpty(implementation.ReceivedCalls());
+    }
+
+    [TestMethod]
+    public void AParamArrayItsCallerLeftOut_IsAnEmptyArray()
+    {
+        // what a call from source that passes it nothing collects (MS-VBAL 5.3.1.11: bounds 0 to -1), where the member was given null.
+        var (dispatcher, implementation, total) = Omittable("Total");
+
+        var result = dispatcher.Dispatch(new ExternalCallRequest(total, [new VBLongValue(1).RuntimeValue]), Substitute.For<ISymbolResolver>());
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+        implementation.Received().Total(Arg.Is<VBLongValue>(first => first.Value == 1), Arg.Is<VBVariantValue[]>(rest => rest != null && rest.Length == 0));
+    }
+
+    #endregion
 }
