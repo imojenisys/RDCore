@@ -144,7 +144,7 @@ public sealed class StdStrings : IStdStringsModule
 
     public RuntimeSemanticsEvaluationResult<VBStringValue> ChrWString(VBLongValue charCode) => NotImplemented<VBStringValue>(nameof(ChrWString));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> Filter( VBResizableArrayValue sourceArray, VBStringValue match, VBBooleanValue? include = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(Filter));
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> Filter( VBVariantValue sourceArray, VBStringValue match, VBBooleanValue? include = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(Filter));
 
     public RuntimeSemanticsEvaluationResult<VBVariantValue> Format( VBVariantValue expression, VBVariantValue? format = default, VBDayOfWeek firstDayOfWeek = VBDayOfWeek.VBSunday, VBFirstWeekOfYear firstWeekOfYear = VBFirstWeekOfYear.VBFirstJan1) => NotImplemented<VBVariantValue>(nameof(Format));
 
@@ -164,7 +164,7 @@ public sealed class StdStrings : IStdStringsModule
 
     public RuntimeSemanticsEvaluationResult<VBLongValue> InStrRev( VBStringValue stringCheck, VBStringValue stringMatch, VBLongValue? start = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBLongValue>(nameof(InStrRev));
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> Join(VBResizableArrayValue sourceArray, VBVariantValue? delimiter = default) => NotImplemented<VBStringValue>(nameof(Join));
+    public RuntimeSemanticsEvaluationResult<VBStringValue> Join(VBVariantValue sourceArray, VBVariantValue? delimiter = default) => NotImplemented<VBStringValue>(nameof(Join));
 
     public RuntimeSemanticsEvaluationResult<VBVariantValue> LCase(VBVariantValue @string) => NotImplemented<VBVariantValue>(nameof(LCase));
 
@@ -220,7 +220,7 @@ public sealed class StdStrings : IStdStringsModule
 
     public RuntimeSemanticsEvaluationResult<VBVariantValue> StrComp( VBVariantValue string1, VBVariantValue string2, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(StrComp));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> StrConv(VBVariantValue @string, VBStrConv conversion, VBLongValue localeID) => NotImplemented<VBVariantValue>(nameof(StrConv));
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> StrConv(VBVariantValue @string, VBStrConv conversion, VBLongValue? localeID = default) => NotImplemented<VBVariantValue>(nameof(StrConv));
 
     public RuntimeSemanticsEvaluationResult<VBVariantValue> Repeat(VBLongValue number, VBVariantValue character) => NotImplemented<VBVariantValue>(nameof(Repeat));
 

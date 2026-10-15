@@ -352,11 +352,97 @@ public sealed class StdLibSymbolReaderTests
     [TestMethod]
     public void AnArrayParameter_IsDeclaredAsAVariantArray()
     {
-        // MS-VBAL 6.1.2.11.1.16: Join(SourceArray() As Variant, ...) - an array parameter declared with
-        // empty parentheses and no bounds (MS-VBAL 5.3.1.5).
-        var join = (VBFunctionMemberSymbol)MembersOf(Module("Strings")).Single(member => member.Name == "Join");
+        // an array parameter declared with empty parentheses and no bounds (MS-VBAL 5.3.1.5), of the element type a VBResizableArrayValue
+        // alone reads as.
+        var concat = (VBFunctionMemberSymbol)new StdLibSymbolReader(Root).Read([typeof(IStdLibWithTypedArrays)])
+            .Single(symbol => symbol.Name == "Concat");
 
-        Assert.IsInstanceOfType<VBResizableArrayType>(join.Parameters.First().ResolvedType);
+        var type = (VBResizableArrayType)concat.Parameters.Single().ResolvedType;
+        Assert.AreEqual(VBVariantType.TypeInfo, type.ItemType);
+    }
+
+    [TestMethod]
+    [DataRow("Join")]
+    [DataRow("Filter")]
+    public void JoinAndFiltersSourceArray_IsAVariant_WhateverTheSpecificationsDeclarationSays(string member)
+    {
+        // MS-VBAL 6.1.2.11.1.16 and 6.1.2.11.1.7 declare SourceArray() As Variant. An array parameter takes an array of its own element type,
+        // which would refuse the String() Split returns: as a Variant, Join(Split(s)) and Join(Array(...)) both reach the member.
+        var function = (VBFunctionMemberSymbol)MembersOf(Module("Strings")).Single(symbol => symbol.Name == member);
+
+        Assert.AreEqual(VBVariantType.TypeInfo, function.Parameters.Single(p => p.Name == "SourceArray").ResolvedType);
+    }
+
+    [TestMethod]
+    public void StrConvsLocaleID_IsOptional_WithNoDefaultClause_WhateverTheSpecificationsDeclarationSays()
+    {
+        // MS-VBAL 6.1.2.11.1.37 declares LocaleID required, where the documented call and most code pass two arguments.
+        var strConv = (VBFunctionMemberSymbol)MembersOf(Module("Strings")).Single(symbol => symbol.Name == "StrConv");
+
+        var localeID = strConv.Parameters.Single(p => p.Name == "LocaleID");
+        Assert.IsTrue(localeID.IsOptional);
+        Assert.IsNull(localeID.DefaultValue);
+        Assert.AreEqual(VBLongType.TypeInfo, localeID.ResolvedType);
+    }
+
+    [TestMethod]
+    [DataRow("Split", "Limit", -1)]
+    [DataRow("Replace", "Start", 1)]
+    [DataRow("Replace", "Count", -1)]
+    // the declaration's -1, where the page's parameter table says 1.
+    [DataRow("InStrRev", "Start", -1)]
+    [DataRow("Filter", "Include", true)]
+    public void ATypedOptionalOfTheStringsModule_KeepsItsDeclaredDefault(string member, string parameter, object expected)
+    {
+        var function = (VBFunctionMemberSymbol)MembersOf(Module("Strings")).Single(symbol => symbol.Name == member);
+
+        var value = ((LiteralExpressionNode)function.Parameters.Single(p => p.Name == parameter).DefaultValue!).StaticValue;
+        Assert.AreEqual(expected, value is VBBooleanValue flag ? (bool)flag.Value : value.Handle.Value.BoxedValue);
+    }
+
+    [TestMethod]
+    public void EveryComparingMember_TakesTheCallersOptionCompare_WhenCompareIsOmitted()
+    {
+        // MS-VBAL 6.1.2.11.1: "if omitted, it uses the <option-compare-directive> of the calling module", for InStrRev too, whose parameter
+        // table says otherwise and whose runtime semantics say so.
+        var flagged = MembersOf(Module("Strings")).OfType<VBFunctionMemberSymbol>()
+            .Where(member => member.Parameters.Any(p => p.GetProperty(SymbolProperties.DefaultsToOptionCompare)))
+            .Select(member => member.Name).ToArray();
+
+        CollectionAssert.AreEquivalent(new[] { "Filter", "InStr", "InStrB", "InStrRev", "Replace", "Split", "StrComp" }, flagged);
+    }
+
+    [TestMethod]
+    public void TheStringsModule_DeclaresExactlyTheStringTwinsOfItsSpecification()
+    {
+        // MS-VBAL 6.1.2.11.1 titles 15 subsections with a $ form, LTrim$ / RTrim$ / Trim$ being one of them. A typed name the library
+        // does not declare is refused for the whole module, so a twin too many or too few changes what compiles.
+        var twins = MembersOf(Module("Strings")).Select(member => member.Name).Where(name => name.EndsWith('$')).ToArray();
+
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                "Chr$", "ChrB$", "ChrW$", "Format$", "LCase$", "Left$", "LeftB$", "LTrim$", "Mid$", "MidB$",
+                "Right$", "RightB$", "RTrim$", "Space$", "String$", "Trim$", "UCase$",
+            },
+            twins);
+    }
+
+    [TestMethod]
+    public void VbStrConv_HasEveryConstantOfTheSpecification()
+    {
+        // MS-VBAL 6.1.1.14, vbNarrow among them.
+        var strConv = Read().OfType<VBEnumMemberSymbol>().Single(symbol => symbol.Name == "VbStrConv");
+        var constants = ((VBEnumType)strConv.ResolvedType).Members.OfType<VBEnumConstMemberSymbol>()
+            .Select(constant => (constant.Name, constant.GetProperty(SymbolProperties.EnumValue))).ToArray();
+
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                ("vbUpperCase", 1L), ("vbLowerCase", 2L), ("vbProperCase", 3L), ("vbWide", 4L), ("vbNarrow", 8L),
+                ("vbKatakana", 16L), ("vbHiragana", 32L), ("vbUnicode", 64L), ("vbFromUnicode", 128L),
+            },
+            constants);
     }
 
     [TestMethod]
@@ -670,6 +756,8 @@ public sealed class StdLibSymbolReaderTests
         RuntimeSemanticsEvaluationResult<VBLongValue> Checksum([StdLibArray(typeof(VBByteValue))] VBResizableArrayValue bytes);
 
         RuntimeSemanticsEvaluationResult<VBLongValue> Digest([StdLibArray(typeof(VBByteValue))] VBResizableByteArrayValue bytes);
+
+        RuntimeSemanticsEvaluationResult<VBStringValue> Concat(VBResizableArrayValue values);
     }
 
     [StdLibModule("Bad")]

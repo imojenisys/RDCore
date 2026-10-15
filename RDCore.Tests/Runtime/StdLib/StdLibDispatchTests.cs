@@ -299,11 +299,11 @@ public sealed class StdLibDispatchTests
     }
 
     [TestMethod]
-    public void AnArrayArgument_ReachesAnArrayParameter()
+    public void AnArrayArgument_ReachesAVariantParameterWhole()
     {
         // the call site coerces an array argument into a fresh copy nothing has bound yet, and reading that
         // copy's value threw out of the interpreter before anything was called. Join is not written yet, so
-        // the error saying so is what shows the call arrived.
+        // the error saying so is what shows the call arrived. Its SourceArray is a Variant, which takes the array whole.
         var values = new VBModuleFieldVariableMemberSymbol(
             Root, RuntimeSourceHarness.ModuleUri, "V", ScopeKind.Module, new VBFixedSizeArrayType(VBVariantType.TypeInfo),
             SourceRange.Empty, SourceRange.Empty, AccessModifier.Implicit);
@@ -521,6 +521,75 @@ public sealed class StdLibDispatchTests
         Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
         Assert.IsTrue(same.Parameters.Last().GetProperty(SymbolProperties.DefaultsToOptionCompare));
         implementation.Received().Same(Arg.Any<VBStringValue>(), Arg.Any<VBStringValue>(), VBCompareMethod.VBBinaryCompare);
+    }
+
+    #endregion
+
+    #region what a call from source fills in
+
+    // the calls the body makes to the library, as they reach the dispatcher: what a member is called with, whether or not it is written yet.
+    private static IReadOnlyList<ExternalCallRequest> Requests(
+        ModuleDirectives directives, IEnumerable<Symbol> symbols, IReadOnlyList<(VBTypeMemberSymbol, string[])> procedures, params string[] body)
+    {
+        RuntimeSourceHarness.RecordingDispatcher? recorder = null;
+        RuntimeSourceHarness.Run(
+            fileSystem: null, symbols, output: null, standardLibrary: true, arrange: null,
+            new RuntimeSourceHarness.Surroundings
+            {
+                Directives = directives,
+                Procedures = procedures,
+                Dispatcher = inner => recorder = new RuntimeSourceHarness.RecordingDispatcher(inner),
+            },
+            body);
+        return recorder!.Requests;
+    }
+
+    private static object? CompareOf(IReadOnlyList<ExternalCallRequest> requests)
+        => requests.Single(request => request.Member.Name == "StrComp").Arguments[2].BoxedValue;
+
+    [TestMethod]
+    [DataRow(OptionCompare.Binary, (int)VBCompareMethod.VBBinaryCompare)]
+    [DataRow(OptionCompare.Text, (int)VBCompareMethod.VBTextCompare)]
+    // the environment's DatabaseCompare, which is Text unless it says otherwise.
+    [DataRow(OptionCompare.Database, (int)VBCompareMethod.VBTextCompare)]
+    public void AnOmittedCompare_IsTheCallingModulesOptionCompare(OptionCompare mode, int expected)
+        => Assert.AreEqual(expected, CompareOf(Requests(new ModuleDirectives(Compare: mode), [], [], "Debug.Print StrComp(\"a\", \"A\")")));
+
+    [TestMethod]
+    public void AnOmittedCompare_InAClassModulesCode_IsThatClassModulesOptionCompare()
+    {
+        // Widget states Option Compare Text, the module that calls it Binary: the code calling StrComp is Widget's.
+        var widget = new VBClassModuleSymbol(Root, Root, "Widget") { Directives = new ModuleDirectives(Compare: OptionCompare.Text) };
+        var go = new VBProcedureMemberSymbol(Root, widget.Uri, "Go", ScopeKind.Instance, SymbolKindExt.Procedure, VBVoidType.TypeInfo,
+            SourceRange.Empty, SourceRange.Empty, AccessModifier.Public);
+        go = go with { Parameters = [new VBParameterSymbol(Root, go.Uri, "Me", SourceRange.Empty, SourceRange.Empty, ParameterKind.ImplicitByRef, VBObjectType.TypeInfo)] };
+        widget = widget with { Members = [go], DefaultInterfaceMembers = [go] };
+        var w = new VBModuleFieldVariableMemberSymbol(Root, RuntimeSourceHarness.ModuleUri, "W", ScopeKind.Module, VBClassType.FromClassModule(widget),
+            SourceRange.Empty, SourceRange.Empty, AccessModifier.Private);
+
+        var requests = Requests(new ModuleDirectives(Compare: OptionCompare.Binary), [widget, go, w], [(go, ["Debug.Print StrComp(\"a\", \"A\")"])],
+            "Set W = New Widget", "W.Go");
+
+        Assert.AreEqual((int)VBCompareMethod.VBTextCompare, CompareOf(requests));
+    }
+
+    [TestMethod]
+    public void AnOmittedTypedOptional_FromSource_ArrivesAsItsDeclaredDefault()
+    {
+        // Split's Limit As Long = -1, which the member could not tell from an explicit 0 had it arrived as the type's default.
+        var split = Requests(ModuleDirectives.None, [], [], "Debug.Print Split(\"a b\")").Single(request => request.Member.Name == "Split");
+
+        Assert.AreEqual(-1, split.Arguments[2].BoxedValue);
+    }
+
+    [TestMethod]
+    public void StrConv_WithTheLocaleLeftOut_ReachesTheMember()
+    {
+        // a call with two arguments was 449, Argument not optional, before the member was reached.
+        var (_, outcome) = RuntimeSourceHarness.Run(fileSystem: null, [], output: null, standardLibrary: true, "Debug.Print StrConv(\"a\", 3)");
+
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
+        Assert.AreEqual("'StrConv' is declared but not implemented yet.", outcome.ErrorInfo!.Verbose);
     }
 
     #endregion
