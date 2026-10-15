@@ -8,6 +8,7 @@ using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
@@ -110,6 +111,65 @@ internal static class StdStringsTestHarness
     {
         Assert.IsTrue(result.IsError, result.IsSuccess ? $"succeeded with {result.Result}" : "an internal error");
         return result.ErrorInfo!.ErrorId;
+    }
+
+    #endregion
+
+    #region arrays
+
+    /// <summary>A <c>Variant</c> holding a <c>String()</c> from 0 of these elements.</summary>
+    public static VBVariantValue StringArray(params string[] elements)
+    {
+        var array = new VBResizableArrayValue([(0, elements.Length - 1)], VBStringType.TypeInfo);
+        for (var index = 0; index < elements.Length; index++)
+        {
+            array.TrySetElement(BindingKnowledge.NewCell(new VBStringValue(elements[index])), index);
+        }
+
+        return new(array);
+    }
+
+    /// <summary>A <c>Variant</c> holding a <c>Variant()</c> from 0 of these elements, an element never assigned where one is <c>null</c>.</summary>
+    public static VBVariantValue VariantArray(params VBTypedValue?[] elements)
+    {
+        var array = new VBResizableArrayValue([(0, elements.Length - 1)], VBVariantType.TypeInfo);
+        for (var index = 0; index < elements.Length; index++)
+        {
+            if (elements[index] is { } element)
+            {
+                array.TrySetElement(BindingKnowledge.NewCell(new VBVariantValue(element)), index);
+            }
+        }
+
+        return new(array);
+    }
+
+    /// <summary>A <c>Variant</c> holding a fixed-size <c>String(lower To ...)</c> of these elements.</summary>
+    public static VBVariantValue FixedStringArray(int lower, params string[] elements)
+    {
+        var array = new VBFixedSizeArrayValue([(lower, lower + elements.Length - 1)], VBStringType.TypeInfo);
+        for (var index = 0; index < elements.Length; index++)
+        {
+            array.TrySetElement(BindingKnowledge.NewCell(new VBStringValue(elements[index])), lower + index);
+        }
+
+        return new(array);
+    }
+
+    /// <summary>The array a successful result holds.</summary>
+    public static VBArrayValue ArrayOf<TValue>(RuntimeSemanticsEvaluationResult<TValue> result)
+        where TValue : VBTypedValue
+        => ValueOf(result) as VBArrayValue ?? throw new AssertFailedException($"not an array: {ValueOf(result).TypeInfo.Name}");
+
+    /// <summary>The elements of the <c>String()</c> a successful result holds, after asserting that it is one, from 0.</summary>
+    public static string[] ElementsOf<TValue>(RuntimeSemanticsEvaluationResult<TValue> result)
+        where TValue : VBTypedValue
+    {
+        var array = ArrayOf(result);
+        Assert.AreEqual(VBStringType.TypeInfo, array.ItemType);
+        Assert.HasCount(1, array.Dimensions);
+        Assert.AreEqual(0, array.Dimensions[0].LowerBound);
+        return [.. Enumerable.Range(0, array.Length).Select(index => ((VBStringValue)array.ElementAt(index)!).Value)];
     }
 
     #endregion

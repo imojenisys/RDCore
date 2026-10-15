@@ -301,25 +301,24 @@ public sealed class StdLibDispatchTests
     public void AnArrayArgument_ReachesAVariantParameterWhole()
     {
         // the call site coerces an array argument into a fresh copy nothing has bound yet, and reading that
-        // copy's value threw out of the interpreter before anything was called. Join is not written yet, so
-        // the error saying so is what shows the call arrived. Its SourceArray is a Variant, which takes the array whole.
+        // copy's value threw out of the interpreter before anything was called. Join's SourceArray is a Variant,
+        // which takes the array whole.
         var values = new VBModuleFieldVariableMemberSymbol(
             Root, RuntimeSourceHarness.ModuleUri, "V", ScopeKind.Module, new VBFixedSizeArrayType(VBVariantType.TypeInfo),
             SourceRange.Empty, SourceRange.Empty, AccessModifier.Implicit);
         var array = new VBFixedSizeArrayValue([(0, 1)], VBVariantType.TypeInfo);
         array.TrySetElement(new ValueBindingHandle(new VBVariantValue(new VBStringValue("a")).RuntimeValue), 0);
         array.TrySetElement(new ValueBindingHandle(new VBVariantValue(new VBStringValue("b")).RuntimeValue), 1);
+        var output = new RuntimeOutputBuffer();
 
         var (_, outcome) = RuntimeSourceHarness.Run(
-            fileSystem: null, [values], output: null, standardLibrary: true,
+            fileSystem: null, [values], output, standardLibrary: true,
             session => session.Symbols.Resolver.GetValue(values).SetValue(
                 session.Symbols.Resolver, new VBRuntimeValue<VBRuntimeArrayValue>(new VBRuntimeArrayValue(array))),
             "Debug.Print Join(V)");
 
-        // 🚧 TODO when Join is written: the call completes, and prints "a b".
-        Assert.AreEqual(RuntimeExecutionOutcomeKind.Error, outcome.Kind);
-        Assert.AreEqual((int)VBRuntimeErrorId.ApplicationDefinedOrObjectDefinedError, outcome.ErrorInfo!.ErrorId, outcome.ErrorInfo.Verbose);
-        Assert.AreEqual("'Join' is declared but not implemented yet.", outcome.ErrorInfo.Verbose);
+        Assert.AreEqual(RuntimeExecutionOutcomeKind.ExitProcedure, outcome.Kind, outcome.ErrorInfo?.Verbose);
+        Assert.AreEqual("a b", output.Lines.Single().Trim());
     }
 
     [TestMethod]

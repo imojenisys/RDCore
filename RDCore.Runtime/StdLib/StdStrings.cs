@@ -5,6 +5,7 @@ using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
@@ -12,6 +13,7 @@ using RDCore.SDK.Runtime.Abstract.StdLib;
 using RDCore.SDK.Runtime.Shared;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace RDCore.Runtime.StdLib;
 
@@ -472,7 +474,40 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
     /// <inheritdoc/>
     public RuntimeSemanticsEvaluationResult<VBStringValue> ChrWString(VBLongValue charCode) => Twin("ChrW$", ChrW(charCode));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> Filter( VBVariantValue sourceArray, VBStringValue match, VBBooleanValue? include = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(Filter));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "A zero-based array containing subset of a string array based on a specified filter criteria", zero-based whatever the
+    /// calling module's <c>Option Base</c>: the elements that contain Match "as a substring", or with Include False the ones that do
+    /// not, in their order, "only enough elements to contain the number of matched items", and an array with no elements when
+    /// none is kept. "An error occurs if SourceArray is the data value Null or is not a one-dimensional array": error 13, as the
+    /// declared <c>SourceArray()</c> would raise.
+    /// <para>
+    /// 👉 An element contains Match when <c>InStr</c> would find it there, so a zero-length element contains nothing and a
+    /// zero-length Match is in every other element. Each element is read as a <c>String</c> parameter would Let-coerce it, all of
+    /// them before any is kept, so a Null element is error 94 whether it would be kept or not; an element never assigned in a
+    /// <c>Variant()</c> is Empty, a zero-length string. What is kept is that <c>String</c>, unchanged: the filter selects
+    /// elements, and transforms none.
+    /// </para>
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> Filter(VBVariantValue sourceArray, VBStringValue match, VBBooleanValue? include = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare)
+    {
+        if (!TryReadArray(sourceArray, nameof(Filter), out var array, out var error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        var keep = (bool)Given(include).Value;
+        if (!TryRulesFor(compare, nameof(Filter), out var rules, out error)
+            || !TryReadElements(array, nameof(Filter), out var elements, out error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        var pattern = Text(match);
+        return InArray([.. elements.Where(element => Contains(Text(element)) == keep)]);
+
+        bool Contains(string element) => CharacterPosition(element, pattern, 1, rules) > 0;
+    }
 
     public RuntimeSemanticsEvaluationResult<VBVariantValue> Format( VBVariantValue expression, VBVariantValue? format = default, VBDayOfWeek firstDayOfWeek = VBDayOfWeek.VBSunday, VBFirstWeekOfYear firstWeekOfYear = VBFirstWeekOfYear.VBFirstJan1) => NotImplemented<VBVariantValue>(nameof(Format));
 
@@ -649,7 +684,33 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
         return Succeed(new VBLongValue(position));
     }
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> Join(VBVariantValue sourceArray, VBVariantValue? delimiter = default) => NotImplemented<VBStringValue>(nameof(Join));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "A string created by joining a number of substrings contained in an array", in index order from its lower bound, whatever
+    /// that is. The Delimiter, "if omitted, the space character", and "if Delimiter is a zero-length string (""), all items in the
+    /// list are concatenated with no delimiters". An array with no elements joins to a zero-length string.
+    /// <para>
+    /// 👉 The Delimiter and each element are read as a <c>String</c> parameter would Let-coerce them: Empty is a zero-length string,
+    /// a number is written in the environment's regional settings, Null is error 94, and an Error, an object or an array that is not
+    /// a <c>Byte()</c> is error 13; so is a SourceArray that is not a one-dimensional array, as <see cref="Filter"/>'s is. An element
+    /// never assigned in a <c>Variant()</c> is Empty. The elements are read as characters, so an element's trailing byte is dropped.
+    /// </para>
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> Join(VBVariantValue sourceArray, VBVariantValue? delimiter = default)
+    {
+        if (!TryReadArray(sourceArray, nameof(Join), out var array, out var error))
+        {
+            return Fail<VBStringValue>(error);
+        }
+
+        if (!TryReadDelimiter(delimiter, nameof(Join), out var separator, out error)
+            || !TryReadElements(array, nameof(Join), out var elements, out error))
+        {
+            return Fail<VBStringValue>(error);
+        }
+
+        return Succeed(new VBStringValue(string.Join(separator, elements.Select(Text))));
+    }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -851,7 +912,61 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
 
     public RuntimeSemanticsEvaluationResult<VBStringValue> MonthName(VBLongValue month, VBBooleanValue? abbreviate = default) => NotImplemented<VBStringValue>(nameof(MonthName));
 
-    public RuntimeSemanticsEvaluationResult<VBStringValue> Replace( VBStringValue expression, VBStringValue find, VBStringValue replace, VBLongValue? start = default, VBLongValue? count = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBStringValue>(nameof(Replace));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "A String, with substitutions made, that begins at the position specified by Start and concludes at the end of the Expression
+    /// string. It is not a copy of the original string from start to finish." A zero-length Expression, or a Start past its end, is
+    /// a zero-length string; a zero-length Find or a Count of 0 is the String from Start on, unchanged; a zero-length Replace removes
+    /// what is found. Matches are found from left to right as <c>InStr</c> finds them, never overlapping, and what a replacement
+    /// puts in is not searched again. A Null Expression is error 94 at the call site ("Expression is Null - An error").
+    /// <para>
+    /// 👉 A Start below 1 and a Count below -1 are error 5, as a Start below 1 is to the <c>Mid</c> statement
+    /// (<strong>MS-VBAL §5.4.3.5</strong>), and they are checked first, so <c>Replace("", "a", "b", 0)</c> is 5 too.
+    /// </para>
+    /// <para>
+    /// 👉 The table gives "Copy of Expression" for a zero-length Find and for a Count of 0. It is read through the prose's "begins at
+    /// the position specified by Start", so with a Start above 1 those are the String from Start: <c>Replace("abcabc", "", "X", 3)</c>
+    /// is "cabc".
+    /// </para>
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> Replace(VBStringValue expression, VBStringValue find, VBStringValue replace, VBLongValue? start = default, VBLongValue? count = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare)
+    {
+        var from = Given(start).Value;
+        if (from < 1)
+        {
+            return Fail<VBStringValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, nameof(Replace), $"Start is at least 1, not {from}");
+        }
+
+        var most = Given(count).Value;
+        if (most < -1)
+        {
+            return Fail<VBStringValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, nameof(Replace), $"Count is -1 (every match) or more, not {most}");
+        }
+
+        if (!TryRulesFor(compare, nameof(Replace), out var rules, out var error))
+        {
+            return Fail<VBStringValue>(error);
+        }
+
+        var characters = Text(expression);
+        var rest = from > characters.Length ? string.Empty : characters[(from - 1)..];
+        var pattern = Text(find);
+        if (pattern.Length == 0 || most == 0)
+        {
+            return Succeed(new VBStringValue(rest));
+        }
+
+        var matches = rules.FindAll(rest, pattern);
+        var replaced = new StringBuilder(rest.Length);
+        var copied = 0;
+        foreach (var (index, length) in most == -1 ? matches : matches.Take(most))
+        {
+            replaced.Append(rest, copied, index - copied).Append(Text(replace));
+            copied = index + length;
+        }
+
+        return Succeed(new VBStringValue(replaced.Append(rest, copied, rest.Length - copied).ToString()));
+    }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -891,7 +1006,157 @@ public sealed class StdStrings(IRuntimeSession session) : IStdStringsModule
     /// <inheritdoc/>
     public RuntimeSemanticsEvaluationResult<VBStringValue> SpaceString(VBLongValue number) => Twin("Space$", Space(number));
 
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> Split( VBStringValue expression, VBVariantValue? delimiter = default, VBLongValue? limit = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare) => NotImplemented<VBVariantValue>(nameof(Split));
+    /// <inheritdoc/>
+    /// <remarks>
+    /// "A zero-based, one-dimensional array containing a specified number of substrings", zero-based whatever the calling module's
+    /// <c>Option Base</c>, of <c>String</c> elements. "If expression is a zero-length string (""), Split returns an empty array, that
+    /// is, an array with no elements and no data"; the Delimiter, "if omitted, the space character", and "if delimiter is a
+    /// zero-length string, a single-element array containing the entire expression string is returned". Every delimiter found
+    /// ends an element, so two together make a zero-length one between them; delimiters are found from left to right as
+    /// <c>InStr</c> finds them, never overlapping. With a Limit of n, the n-th element is the rest of the String, delimiters and all.
+    /// <para>
+    /// 👉 The Delimiter is read as a <c>String</c> parameter would Let-coerce it: Empty is a zero-length string, Null is error 94.
+    /// A Limit of 0 is an array with no elements, and a Limit below -1 is error 5, as a negative length is to the <c>Mid</c>
+    /// statement (<strong>MS-VBAL §5.4.3.5</strong>).
+    /// </para>
+    /// </remarks>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> Split(VBStringValue expression, VBVariantValue? delimiter = default, VBLongValue? limit = default, VBCompareMethod compare = VBCompareMethod.VBBinaryCompare)
+    {
+        if (!TryReadDelimiter(delimiter, nameof(Split), out var separator, out var error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        var most = Given(limit).Value;
+        if (most < -1)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, nameof(Split), $"Limit is -1 (every substring) or more, not {most}");
+        }
+
+        if (!TryRulesFor(compare, nameof(Split), out var rules, out error))
+        {
+            return Fail<VBVariantValue>(error);
+        }
+
+        var characters = Text(expression);
+        if (characters.Length == 0 || most == 0)
+        {
+            return InArray([]);
+        }
+
+        var parts = new List<VBStringValue>();
+        var from = 0;
+        foreach (var (index, length) in rules.FindAll(characters, separator))
+        {
+            if (parts.Count == most - 1)
+            {
+                break;
+            }
+
+            parts.Add(new VBStringValue(characters[from..index]));
+            from = index + length;
+        }
+
+        parts.Add(new VBStringValue(characters[from..]));
+        return InArray(parts);
+    }
+
+    // Join's and Split's Delimiter: a space when it is left out, else its String; a Null one is 94, as it would be to a String parameter.
+    private bool TryReadDelimiter(VBVariantValue? delimiter, string member, out string separator, [NotNullWhen(false)] out IVBRaisableError? error)
+    {
+        separator = SpaceCharacter.ToString();
+        error = null;
+        if (delimiter is null)
+        {
+            return true;
+        }
+
+        if (!TryReadString(delimiter, member, "Delimiter", out var text, out error))
+        {
+            return false;
+        }
+
+        if (text is null)
+        {
+            error = Failure(VBRuntimeErrorId.InvalidUseOfNull, member, "Delimiter is Null");
+            return false;
+        }
+
+        separator = Text(text);
+        return true;
+    }
+
+    // Join's and Filter's SourceArray, declared SourceArray() and a Variant here only so that a String() reaches the member: a
+    // one-dimensional array of any element type, fixed or resizable, and anything else 13, as the declaration would raise.
+    private static bool TryReadArray(VBVariantValue sourceArray, string member, [NotNullWhen(true)] out VBArrayValue? array, [NotNullWhen(false)] out IVBRaisableError? error)
+    {
+        var value = Unwrapped(sourceArray);
+        array = value as VBArrayValue;
+        error = value switch
+        {
+            VBArrayValue { Rank: 1 } => null,
+            VBArrayValue { Rank: 0 } => Failure(VBRuntimeErrorId.TypeMismatch, member, "SourceArray is an array with no dimensions yet"),
+            VBArrayValue { Rank: var rank } => Failure(VBRuntimeErrorId.TypeMismatch, member, $"SourceArray is a one-dimensional array, not one of {rank} dimensions"),
+            _ => Failure(VBRuntimeErrorId.TypeMismatch, member, $"SourceArray is a one-dimensional array, not a value of type {value.TypeInfo.Name}"),
+        };
+        return error is null;
+    }
+
+    // an array's elements in index order (MS-VBAL 5.4.2.4.1), each read as a String parameter would Let-coerce it: Null is 94, and
+    // Nothing 91, an element of an Object() never assigned included. A cell with no value to read is, in a Variant(), Empty, a
+    // zero-length string; in an array of any other type (a record's) it is no value with a String form, 13.
+    private bool TryReadElements(VBArrayValue array, string member, [NotNullWhen(true)] out List<VBStringValue>? elements, [NotNullWhen(false)] out IVBRaisableError? error)
+    {
+        var lower = array.Dimensions[0].LowerBound;
+        elements = new List<VBStringValue>(array.Length);
+        for (var index = 0; index < array.Length; index++)
+        {
+            var parameter = $"element {lower + index} of SourceArray";
+            if (array.GetElementHandle(lower + index) is not { } cell || !cell.BindingCapabilities.HasFlag(BindingCapabilities.GetValue))
+            {
+                if (array.ItemType is not VBVariantType)
+                {
+                    error = Failure(VBRuntimeErrorId.TypeMismatch, member, $"{parameter} cannot be a value of type {array.ItemType.Name}");
+                    elements = null;
+                    return false;
+                }
+
+                elements.Add(VBStringValue.ZeroLengthString);
+                continue;
+            }
+
+            if (!TryReadString(array.ElementAt(index)!, member, parameter, out var text, out error))
+            {
+                elements = null;
+                return false;
+            }
+
+            if (text is null)
+            {
+                error = Failure(VBRuntimeErrorId.InvalidUseOfNull, member, $"{parameter} is Null");
+                elements = null;
+                return false;
+            }
+
+            elements.Add(text);
+        }
+
+        error = null;
+        return true;
+    }
+
+    // what Split and Filter return: a String() from 0, whatever the calling module's Option Base, which is (0 To -1) when it has no
+    // elements - an array with one dimension and nothing in it, which For Each walks no times, rather than one with no dimensions.
+    private static RuntimeSemanticsEvaluationResult<VBVariantValue> InArray(IReadOnlyList<VBStringValue> elements)
+    {
+        var array = new VBResizableArrayValue([(0, elements.Count - 1)], VBStringType.TypeInfo);
+        for (var index = 0; index < elements.Count; index++)
+        {
+            array.TrySetElement(BindingKnowledge.NewCell(elements[index]), index);
+        }
+
+        return InVariant(array);
+    }
 
     /// <inheritdoc/>
     /// <remarks>
