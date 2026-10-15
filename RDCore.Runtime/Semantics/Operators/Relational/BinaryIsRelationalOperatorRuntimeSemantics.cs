@@ -2,6 +2,7 @@
 using RDCore.SDK.Model.Values.Runtime;
 using RDCore.Runtime.Semantics.LetCoercion;
 using RDCore.SDK;
+using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.AST.Expressions;
 using RDCore.SDK.Model.Types;
@@ -28,14 +29,17 @@ public record class BinaryIsRelationalOperatorRuntimeSemantics(
     IVerboseMessageBuilder FormatterService)
     : BinaryRelationalOperatorRuntimeSemantics(LetCoercionSemanticsProvider, FormatterService)
 {
+    protected override string Operator => Tokens.CompareIsOp;
+
     protected override bool ComparisonOp(VBStringValue lhs, VBStringValue rhs, StringComparisonRules rules) => throw new NotSupportedException();
     protected override bool ComparisonOp<T>(T lhs, T rhs) => throw new NotSupportedException();
 
+    // two object references are compared as they are, whatever a Variant holds: the plan of the operation is the whole answer.
     protected override DetermineOperatorEffectiveTypeResult DetermineBinaryOperatorEffectiveType(
         ISymbolResolver resolver,
         BinaryOperatorSemanticContext<ComparisonOperatorSemanticFlags> context,
         ExpressionNode expression,
-        OperatorEvaluationFrame frame) => DetermineOperatorEffectiveTypeResult.Success(VBBooleanType.TypeInfo);
+        OperatorEvaluationFrame frame) => PlannedEffectiveType(expression, frame);
 
     // the operands are object references compared as they are (MS-VBAL 5.6.9.7): the Boolean effective type of the result is
     // not a type to let-coerce them to - which would coerce an object to a Boolean, and fail.
@@ -64,13 +68,13 @@ public record class BinaryIsRelationalOperatorRuntimeSemantics(
         var lhs = Held(frame[InputIndex.BinaryLeftOperand]);
         var rhs = Held(frame[InputIndex.BinaryRightOperand]);
 
-        // an operand is comparable by reference identity when it is currently bound to one — true of
-        // VBObjectValue/VBNothingValue always, and of a VBVariantValue currently holding an object.
-        if (lhs.RuntimeValue is not VBRuntimeValue<VBRuntimeObjectId> lhsReference)
+        // an operand is comparable by reference identity when it is an object reference — VBObjectValue/VBNothingValue, which a
+        // Variant may hold. Nothing else is one, and the value of an array is its elements, with no reference to read.
+        if (lhs is not VBObjectValue || lhs.RuntimeValue is not VBRuntimeValue<VBRuntimeObjectId> lhsReference)
         {
             return OnObjectRequired(expression, Exceptions.VBIsOp_ObjectRequired);
         }
-        if (rhs.RuntimeValue is not VBRuntimeValue<VBRuntimeObjectId> rhsReference)
+        if (rhs is not VBObjectValue || rhs.RuntimeValue is not VBRuntimeValue<VBRuntimeObjectId> rhsReference)
         {
             return OnObjectRequired(expression, Exceptions.VBIsOp_ObjectRequired);
         }

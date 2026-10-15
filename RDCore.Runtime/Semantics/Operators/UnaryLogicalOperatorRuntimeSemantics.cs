@@ -18,6 +18,7 @@ using RDCore.SDK.Semantics.Builders;
 using RDCore.SDK.Semantics.Context;
 using RDCore.SDK.Semantics.Facts;
 using RDCore.SDK.Semantics.Flags;
+using RDCore.SDK.Semantics.Plans;
 using RDCore.SDK.Services.VerboseMessages;
 using System.Numerics;
 
@@ -57,14 +58,19 @@ public abstract record class UnaryLogicalOperatorRuntimeSemantics(
         StringComparisonRules comparison, bool isValueKnown, VBErrorInfo? error)
         => new LogicalOperatorFact(expression.Identity, expression.Location, token, effectiveType, isValueKnown, error, flags);
 
+    /// <summary>
+    /// The operator: one of the <c>Tokens</c> logical operators, which is what its <see cref="OperationPlan"/> is made for.
+    /// </summary>
+    protected abstract string Operator { get; }
+
+    /// <remarks>
+    /// The effective type is the operation's plan (<see cref="OperationPlanner"/>), made once for each value type and kept.
+    /// </remarks>
     protected sealed override DetermineOperatorEffectiveTypeResult DetermineOperatorEffectiveType(
         ISymbolResolver resolver, 
         ExpressionNode expression, 
         OperatorEvaluationFrame frame)
-        // MS-VBAL 5.6.9.8.1 negates the bits of an integral value: a non-integral operand is a Long, as the binary logical operators take it.
-        => frame[InputIndex.UnaryOperand].TypeInfo is IFloatingPointNumericType or IFixedPointNumericType or VBStringType or VBDateType
-            ? DetermineOperatorEffectiveTypeResult.Success(VBLongType.TypeInfo)
-            : DetermineOperatorEffectiveTypeResult.NotApplicable(); // lets the base semantics handle this.
+        => EffectiveTypeOf(OperationPlanner.ForValue(Operator, frame[InputIndex.UnaryOperand].TypeInfo), expression);
 
     /// <summary>
     /// Evaluates the runtime semantics of a unary logical operator and returns a value of the effective numeric data type.
@@ -90,7 +96,4 @@ public abstract record class UnaryLogicalOperatorRuntimeSemantics(
     /// <returns><c>null</c> if no return value can be evaluated, which would throw a <em>type mismatch</em> error.</returns>
     protected virtual VBTypedValue EvaluateRuntimeSemantics(VBDateType effectiveType, VBNumericTypedValue operand) =>
         new VBDateValue(EvaluateBitwiseOp((int)operand.AsDouble));
-
-    protected virtual VBTypedValue EvaluateRuntimeSemantics(VBNullType effectiveType, VBNullValue operand) =>
-        effectiveType.DefaultValue;
 }

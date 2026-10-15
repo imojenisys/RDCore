@@ -1,5 +1,6 @@
 ﻿using RDCore.Runtime.Execution.Frames;
 using RDCore.Runtime.Semantics.LetCoercion;
+using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.AST.Expressions;
 using RDCore.SDK.Model.Types;
@@ -24,6 +25,8 @@ public record class BinaryImpLogicalOperatorRuntimeSemantics(
     IVerboseMessageBuilder FormatterService)
     : BinaryLogicalOperatorRuntimeSemantics(LetCoercionSemanticsProvider, FormatterService)
 {
+    protected override string Operator => Tokens.LogicalImpOp;
+
     protected override T EvaluateBitwiseOp<T>(T lhs, T rhs) => ~lhs | rhs;
 
     /// <summary>
@@ -31,7 +34,7 @@ public record class BinaryImpLogicalOperatorRuntimeSemantics(
     /// </summary>
     /// <remarks>
     /// Operands are <strong>explicitly specified</strong> as being evaluated bitwise only given specific operand data types.
-    /// Base implementation has already handled the case where both operands are <see cref="IIntegralNumericType"/>, and the case where they're both <see cref="VBNullValue"/>.
+    /// Base implementation has already handled the case where both operands are <see cref="IIntegralNumericType"/>, and the case where they're both <c>Null</c>.
     /// </remarks>
     protected override RuntimeSemanticsEvaluationResult EvaluateSemanticallly(
         ISymbolResolver resolver, 
