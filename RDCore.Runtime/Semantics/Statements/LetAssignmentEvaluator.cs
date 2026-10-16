@@ -98,9 +98,12 @@ public sealed class LetAssignmentEvaluator(
                 ? AssignObjectMember(session, context, statement, target, source, value, isSet: false)
                 : target is IndexExpressionNode element
                     ? AssignArrayElement(session, context, element.Callee, element.Arguments, source, value, isSet: false)
-                    : TryResolveTarget(session, context, target, out var symbol)
-                        ? Assign(session, context, statement, symbol!, target, source, value)
-                        : RuntimeExecutionOutcome.InternalError;
+                    // a variable is assigned through the slot it is bound to, by the plan of its coercion, when it can be (IR lowering S0.8c).
+                    : expressions.TryAssignBound(session, target, value, context) is { } assigned
+                        ? assigned.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Next
+                        : TryResolveTarget(session, context, target, out var symbol)
+                            ? Assign(session, context, statement, symbol!, target, source, value)
+                            : RuntimeExecutionOutcome.InternalError;
 
     // `owner.Property(index) = value`: an index expression whose callee is a member access.
     private static bool IsMemberOfObject(ExpressionNode target) => target is IndexExpressionNode { Callee: MemberAccessExpressionNode };
@@ -604,7 +607,13 @@ public sealed class LetAssignmentEvaluator(
             // result variable isn't a real addressable Symbol, so this can't go through the same
             // "__let_op" operator every other target does (it needs a real IBindingHandle) - Let-coerce
             // directly instead, the same lower-level call ByVal/ByRef-fallback parameter passing already
-            // makes for the identical reason.
+            // makes for the identical reason - by its plan, when it can be (IR lowering S0.9).
+            if (expressions.TryConvertUnobserved(value, ((ITypedSymbol)symbol).ResolvedType, out var planned))
+            {
+                ((CallStackFrame)enclosing).ReturnValue = planned;
+                return RuntimeExecutionOutcome.Next;
+            }
+
             var returnCoercionFrame = new LetCoercionStackFrame(statement.Identity, InputIndex.CoercionSourceValue,
                 value, new VBTypeDescValue(((ITypedSymbol)symbol).ResolvedType), ConversionSite.Return);
             var returnCoercionResult = coercions.EvaluateLetCoercionSemantics(session.Symbols.Resolver, source, returnCoercionFrame);

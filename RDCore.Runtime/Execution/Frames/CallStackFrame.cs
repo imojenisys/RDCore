@@ -8,6 +8,7 @@ using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
+using RDCore.SDK.Semantics.Binding;
 using RDCore.SDK.Semantics.Instructions;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -27,12 +28,14 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
 {
     private readonly SymbolAddressTable _addresses = new(Storage);
     private readonly HashSet<SemanticId> _declared = [];
-    private readonly Dictionary<SemanticId, MemoryAddress> _byRefAliases = [];
-    private readonly Dictionary<SemanticId, VBType> _referencedTypes = [];
-    private readonly Dictionary<int, VBTypedValue> _blockState = [];
-    private readonly Dictionary<int, ForLoopState> _forLoopState = [];
-    private readonly Dictionary<int, ForEachState> _forEachState = [];
-    private readonly Stack<int> _goSubReturns = new();
+    // made when the activation first needs one (IR lowering S0.9): most activations have no ByRef alias, no block, no loop and no GoSub, and one that has
+    // none does not hash a symbol's identity to find out.
+    private Dictionary<SemanticId, MemoryAddress>? _byRefAliases;
+    private Dictionary<SemanticId, VBType>? _referencedTypes;
+    private Dictionary<int, VBTypedValue>? _blockState;
+    private Dictionary<int, ForLoopState>? _forLoopState;
+    private Dictionary<int, ForEachState>? _forEachState;
+    private Stack<int>? _goSubReturns;
 
     /// <inheritdoc/>
     public int Pc { get; set; }
@@ -90,46 +93,55 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
     /// instruction at <paramref name="openerOffset"/> — a <c>With</c>'s target, a <c>Select Case</c>'s
     /// selector.
     /// </summary>
-    public void SetBlockState(int openerOffset, VBTypedValue value) => _blockState[openerOffset] = value;
+    public void SetBlockState(int openerOffset, VBTypedValue value) => (_blockState ??= [])[openerOffset] = value;
 
     /// <inheritdoc/>
     public bool TryGetBlockState(int openerOffset, [NotNullWhen(true)][MaybeNullWhen(false)] out VBTypedValue? value)
-        => _blockState.TryGetValue(openerOffset, out value);
+    {
+        value = null;
+        return _blockState is not null && _blockState.TryGetValue(openerOffset, out value);
+    }
 
     /// <summary>
     /// Stashes <paramref name="state"/> as this activation's hidden state for the <c>ForOpener</c>
     /// instruction at <paramref name="openerOffset"/>.
     /// </summary>
-    public void SetForLoopState(int openerOffset, ForLoopState state) => _forLoopState[openerOffset] = state;
+    public void SetForLoopState(int openerOffset, ForLoopState state) => (_forLoopState ??= [])[openerOffset] = state;
 
     /// <inheritdoc/>
     public bool TryGetForLoopState(int openerOffset, out ForLoopState state)
-        => _forLoopState.TryGetValue(openerOffset, out state);
+    {
+        state = default;
+        return _forLoopState is not null && _forLoopState.TryGetValue(openerOffset, out state);
+    }
 
     /// <summary>
     /// Stashes <paramref name="state"/> as this activation's hidden state for the <c>ForEachOpener</c>
     /// instruction at <paramref name="openerOffset"/>.
     /// </summary>
-    public void SetForEachState(int openerOffset, ForEachState state) => _forEachState[openerOffset] = state;
+    public void SetForEachState(int openerOffset, ForEachState state) => (_forEachState ??= [])[openerOffset] = state;
 
     /// <inheritdoc/>
     public bool TryGetForEachState(int openerOffset, out ForEachState state)
-        => _forEachState.TryGetValue(openerOffset, out state);
+    {
+        state = default;
+        return _forEachState is not null && _forEachState.TryGetValue(openerOffset, out state);
+    }
 
     /// <inheritdoc/>
-    public int GoSubDepth => _goSubReturns.Count;
+    public int GoSubDepth => _goSubReturns?.Count ?? 0;
 
     /// <summary>
     /// Pushes <paramref name="returnOffset"/> onto this activation's own GoSub Resumption List — a
     /// <c>GoSub</c> or a successful <c>On…GoSub</c> branch adds the offset right after itself, for a
     /// later <c>Return</c> to pop back to.
     /// </summary>
-    public void PushGoSubReturn(int returnOffset) => _goSubReturns.Push(returnOffset);
+    public void PushGoSubReturn(int returnOffset) => (_goSubReturns ??= new()).Push(returnOffset);
 
     /// <summary>
     /// The offsets this activation returns to, innermost first: the instruction after each <c>GoSub</c> that has not been <c>Return</c>ed from yet (its GoSub Resumption List).
     /// </summary>
-    public IReadOnlyCollection<int> GoSubReturns => _goSubReturns;
+    public IReadOnlyCollection<int> GoSubReturns => (IReadOnlyCollection<int>?)_goSubReturns ?? [];
 
     /// <summary>
     /// Pops this activation's own GoSub Resumption List and returns the offset a <c>Return</c> statement
@@ -139,7 +151,7 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
     /// <returns><c>false</c> if the list is empty — error 3, "Return without GoSub".</returns>
     public bool TryPopGoSubReturn(out int returnOffset)
     {
-        if (_goSubReturns.Count == 0)
+        if (_goSubReturns is not { Count: > 0 })
         {
             returnOffset = 0;
             return false;
@@ -191,38 +203,103 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
             throw new InvalidOperationException($"'{symbol.Uri}' is already declared on this frame.");
         }
 
-        _byRefAliases[symbol.SemanticId] = address;
+        (_byRefAliases ??= [])[symbol.SemanticId] = address;
         if (referencedType is not null)
         {
-            _referencedTypes[symbol.SemanticId] = referencedType;
+            (_referencedTypes ??= [])[symbol.SemanticId] = referencedType;
         }
     }
 
     /// <inheritdoc/>
     public bool TryGetReferencedType(Symbol symbol, [NotNullWhen(true)] out VBType? declaredType)
-        => _referencedTypes.TryGetValue(symbol.SemanticId, out declaredType);
+    {
+        declaredType = null;
+        return _referencedTypes is not null && _referencedTypes.TryGetValue(symbol.SemanticId, out declaredType);
+    }
+
+    // the address a ByRef parameter is an alias of, if the symbol is one.
+    private bool TryGetAlias(Symbol symbol, out MemoryAddress address)
+    {
+        address = default;
+        return _byRefAliases is not null && _byRefAliases.TryGetValue(symbol.SemanticId, out address);
+    }
 
     /// <inheritdoc/>
     public IBindingHandle GetValue(Symbol symbol)
-        => _byRefAliases.TryGetValue(symbol.SemanticId, out var aliased)
+        => TryGetAlias(symbol, out var aliased)
             ? Storage.TryRead(aliased, out var handle) ? handle : throw new KeyNotFoundException($"No runtime binding exists yet for '{symbol.Uri}'.")
             : _addresses.GetValue(symbol);
 
     /// <inheritdoc/>
     public bool TryResolve(Symbol symbol, [NotNullWhen(true)][MaybeNullWhen(false)] out IBindingHandle? value)
-        => _byRefAliases.TryGetValue(symbol.SemanticId, out var aliased)
+        => TryGetAlias(symbol, out var aliased)
             ? Storage.TryRead(aliased, out value)
             : _addresses.TryRead(symbol, out value);
 
     /// <inheritdoc/>
     public bool TryGetAddress(Symbol symbol, out MemoryAddress address)
-        => _byRefAliases.TryGetValue(symbol.SemanticId, out address) || _addresses.TryGetAddress(symbol, out address);
+        => TryGetAlias(symbol, out address) || _addresses.TryGetAddress(symbol, out address);
+
+    // the slots of the activation (IR lowering D2), filled as they are read: each holds the address of its variable - this activation's own, or the one a
+    // ByRef parameter is an alias of - and the type a Variant reference parameter reads its variable as. A variable's address does not change while the
+    // activation runs (Push and PushByRef declare each variable once); the binding at the address does (a POKE rebinds it), which is why it is read there
+    // every time rather than kept.
+    private readonly record struct Slot(bool IsFilled, MemoryAddress Address, VBType? ReferencedType);
+
+    private FrameLayout? _layout;
+    private Slot[] _slots = [];
+
+    /// <summary>
+    /// Reads the binding of a variable through its slot (<see cref="FrameSlot"/>), filling the slot the first time it is read.
+    /// </summary>
+    /// <param name="slot">The slot the variable was bound to.</param>
+    /// <param name="variable">The variable.</param>
+    /// <param name="handle">Its binding.</param>
+    /// <param name="referencedType">The declared type of the variable a Variant reference parameter is bound to, if the variable is such a parameter.</param>
+    /// <returns>
+    /// <see langword="false"/> when the slot is not this activation's to read - its layout is not the one of the definition of the procedure this is an
+    /// activation of, or the variable is not declared yet - and the variable is to be read the way it always is.
+    /// </returns>
+    /// <remarks>
+    /// An activation is of one definition of one procedure, which is what the layout of the first slot read in it is: a slot of any other layout is not
+    /// read here.
+    /// </remarks>
+    public bool TryReadSlot(FrameSlot slot, Symbol variable, [NotNullWhen(true)] out IBindingHandle? handle, out VBType? referencedType)
+    {
+        handle = null;
+        referencedType = null;
+
+        _layout ??= slot.Layout;
+        if (!ReferenceEquals(_layout, slot.Layout))
+        {
+            return false;
+        }
+
+        if (_slots.Length == 0)
+        {
+            _slots = new Slot[slot.Layout.Count];
+        }
+
+        ref var held = ref _slots[slot.Index];
+        if (!held.IsFilled)
+        {
+            if (!TryGetAddress(variable, out var address))
+            {
+                return false;
+            }
+
+            held = new Slot(true, address, TryGetReferencedType(variable, out var referenced) ? referenced : null);
+        }
+
+        referencedType = held.ReferencedType;
+        return Storage.TryRead(held.Address, out handle);
+    }
 
     /// <inheritdoc/>
-    public bool IsByRefParameter(Symbol symbol) => _byRefAliases.ContainsKey(symbol.SemanticId);
+    public bool IsByRefParameter(Symbol symbol) => _byRefAliases is not null && _byRefAliases.ContainsKey(symbol.SemanticId);
 
     /// <inheritdoc/>
-    public bool LocksAddress(MemoryAddress address) => _byRefAliases.ContainsValue(address);
+    public bool LocksAddress(MemoryAddress address) => _byRefAliases is not null && _byRefAliases.ContainsValue(address);
 
     /// <summary>
     /// Frees every local this frame allocated. Called when the frame is popped off the

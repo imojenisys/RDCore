@@ -1,15 +1,20 @@
+using RDCore.Runtime.Execution.Frames;
 using RDCore.Runtime.Semantics.Literals;
 using RDCore.SDK.Model.AST.Abstract;
+using RDCore.SDK.Model.AST.Expressions;
 using RDCore.SDK.Model.Source;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
+using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
 using RDCore.SDK.Semantics.Binding;
 using RDCore.SDK.Semantics.Static.Abstract;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace RDCore.Runtime.Semantics;
@@ -22,8 +27,10 @@ public sealed partial class RuntimeExpressionEvaluator
     // a bound tree, and the scopes it was bound in: what a name is bound to is true of these scopes, and of no other.
     private sealed record class BoundRoot(ScopeTree Scopes, BoundNode Node);
 
-    // keyed by the expression itself, which a module that is loaded again parses anew: the tree of a module that is gone goes with it.
-    private readonly ConditionalWeakTable<ExpressionNode, BoundRoot> _boundRoots = [];
+    // keyed by the very expression - a node is a record, whose equality would compare trees - which a module that is loaded again parses anew. The table
+    // holds what it binds for as long as the evaluator lives, which is one execution: a pipeline is composed for each run, evaluation and load, and goes
+    // with it. That is also why it is not a ConditionalWeakTable, whose lookup costs as much as what binding saves a read.
+    private readonly ConcurrentDictionary<ExpressionNode, BoundRoot> _boundRoots = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
     /// Whether every expression that has no effect of its own is evaluated twice - from its bound tree and from its syntax tree - and the two results
@@ -45,16 +52,100 @@ public sealed partial class RuntimeExpressionEvaluator
         }
 
         var node = Bind(session, scopes, expression, context);
-        _boundRoots.AddOrUpdate(expression, new BoundRoot(scopes, node));
+        _boundRoots[expression] = new BoundRoot(scopes, node);
         return node;
     }
 
+    // the layout of the activations of each definition of a procedure, made once for it: a procedure defined again is another symbol, with a layout of its own.
+    private readonly ConditionalWeakTable<Symbol, FrameLayout> _layouts = [];
+
     // the binding is the static evaluation of the expression, in the scope the evaluation resolves its names from. An expression with no such scope - one
-    // that is not written in code the session defines - is not bound.
-    private static BoundNode Bind(IRuntimeSession session, ScopeTree scopes, ExpressionNode expression, RuntimeEvaluationContext context)
-        => scopes.TryGetScope(context.Scope, out var scope)
-            ? ExpressionBinder.Bind(new StaticEvaluationContext(session.Symbols.Resolver, scope), expression).NodeOf(expression) ?? new BoundFallback(expression)
-            : new BoundFallback(expression);
+    // that is not written in code the session defines - is not bound. Its variables are bound to the slots of the procedure it is written in, when that is
+    // the procedure the current activation is of (a Uri's equality ignores its fragment, which is what tells two procedures of a module apart).
+    private BoundNode Bind(IRuntimeSession session, ScopeTree scopes, ExpressionNode expression, RuntimeEvaluationContext context)
+    {
+        if (!scopes.TryGetScope(context.Scope, out var scope))
+        {
+            return new BoundFallback(expression);
+        }
+
+        var frame = session.CallStack.Current is CallStackFrame { Procedure: { } procedure } && procedure.Uri.AbsoluteUri == context.Scope.AbsoluteUri
+            ? _layouts.GetValue(procedure, FrameLayout.Of)
+            : null;
+
+        return ExpressionBinder.Bind(new StaticEvaluationContext(session.Symbols.Resolver, scope), expression, frame).NodeOf(expression)
+            ?? new BoundFallback(expression);
+    }
+
+    // a variable of the current activation is read through its slot; any other - a Static variable, a field, a variable of an activation the slot is not
+    // of - is looked up, as a name that is not bound is.
+    private RuntimeSemanticsEvaluationResult ReadBoundVariable(IRuntimeSession session, BoundVariable variable)
+    {
+        var (handle, referenced) = BindingOf(session, variable);
+        return ReadVariable(session, (ITypedSymbol)variable.Variable, handle, referenced, variable.IsAutoInstantiated);
+    }
+
+    // the binding of a variable in the current activation, and the declared type of the variable a Variant reference parameter is bound to, if it is one.
+    private static (IBindingHandle Handle, VBType? ReferencedType) BindingOf(IRuntimeSession session, BoundVariable variable)
+        => variable.Slot is { } slot && session.CallStack.Current is CallStackFrame frame
+            && frame.TryReadSlot(slot, variable.Variable, out var handle, out var referenced)
+                ? (handle, referenced)
+                : (session.Symbols.Resolver.GetValue(variable.Variable),
+                    session.CallStack.Current is { } current && current.TryGetReferencedType(variable.Variable, out var type) ? type : null);
+
+    /// <summary>
+    /// Let-coerces a value by the plan of its coercion (<see cref="Plans.PlanExecutor.TryConvert"/>), when nothing observes the evaluation and the value and
+    /// the destination are ones the plan can be executed for: what an argument passed to a <c>ByVal</c> parameter, and the value assigned to a function's
+    /// result, are let-coerced by (IR lowering S0.9).
+    /// </summary>
+    /// <param name="value">The value.</param>
+    /// <param name="destination">The declared type it is let-coerced to.</param>
+    /// <param name="converted">The let-coerced value.</param>
+    /// <returns><see langword="false"/> when the coercion is to be evaluated by its strategy: an analysis observes it, the plan does not take the value, or
+    /// the coercion fails - which the strategy raises.</returns>
+    internal bool TryConvertUnobserved(VBTypedValue value, VBType destination, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out VBTypedValue? converted)
+    {
+        converted = null;
+        return Observation is null && !AssumesVariables && Plans.PlanExecutor.IsPlannedDestination(destination)
+            && Plans.PlanExecutor.TryConvert(value, destination, out converted);
+    }
+
+    /// <summary>
+    /// Let-assigns a value to the variable a name is bound to (IR lowering S0.8c): through its slot, by the plan of its let-coercion
+    /// (<see cref="Plans.PlanExecutor.TryConvert"/>), if the target and the value are ones the plan can be executed for.
+    /// </summary>
+    /// <param name="session">The session the assignment is evaluated in.</param>
+    /// <param name="target">The expression assigned to.</param>
+    /// <param name="value">The value assigned.</param>
+    /// <param name="context">The scope the target is written in.</param>
+    /// <returns>
+    /// The value as it was let-coerced and stored; or <see langword="null"/> when the assignment is to be evaluated the way it always is - which is also how
+    /// a coercion that fails raises its error, and what an analysis observes. A target that is not a variable (a function's result, a property, a member,
+    /// an element), a variable of an object type (whose default member is assigned), and a Variant reference parameter bound to a variable of another type
+    /// (which is assigned as that type) are not assigned here.
+    /// </returns>
+    internal RuntimeSemanticsEvaluationResult? TryAssignBound(IRuntimeSession session, ExpressionNode target, VBTypedValue value, RuntimeEvaluationContext context)
+    {
+        // a target whose type no plan converts to - a Variant, an object, an array, a user-defined type, a fixed-length string - is declined before anything
+        // is looked up for it, which the assignment that is evaluated instead would look up again.
+        if (Observation is not null || AssumesVariables || target is not SimpleNameExpressionNode
+            || BoundTreeOf(session, target, context) is not BoundVariable { Variable: ITypedSymbol { ResolvedType: var declared } typed } variable
+            || !Plans.PlanExecutor.IsPlannedDestination(declared)
+            || !Plans.PlanExecutor.TryConvert(value, declared, out var coerced))
+        {
+            return null;
+        }
+
+        var (handle, referenced) = BindingOf(session, variable);
+        if (referenced is not null || !handle.BindingCapabilities.HasFlag(BindingCapabilities.SetValue))
+        {
+            return null;
+        }
+
+        // what the plan converts to is a number, a Boolean, a date or a String, known: no array to store boxed, and nothing assumed.
+        handle.Store(session.Symbols.Resolver, coerced.RuntimeValue, isKnown: true);
+        return RuntimeSemanticsEvaluationResult.Success(coerced);
+    }
 
     private RuntimeSemanticsEvaluationResult EvaluateBound(IRuntimeSession session, BoundNode node, RuntimeEvaluationContext context)
     {
@@ -75,9 +166,11 @@ public sealed partial class RuntimeExpressionEvaluator
     private RuntimeSemanticsEvaluationResult EvaluateBoundNode(IRuntimeSession session, BoundNode node, RuntimeEvaluationContext context) => node switch
     {
         BoundLiteral literal => LiteralExpressionRuntimeSemantics.Instance.Evaluate(session, new(), literal.Literal),
+        BoundVariable variable => ReadBoundVariable(session, variable),
         BoundName name => ReadSymbol(session, context, name.Symbol, nameOfEnclosingFunctionIsItsResult: true),
         BoundBinary binary => EvaluateBoundBinary(session, binary, context),
         BoundUnary unary => EvaluateBoundUnary(session, unary, context),
+        BoundCall call => EvaluateBoundCall(session, call, context),
         _ => EvaluateSyntax(session, node.Expression, context),
     };
 
@@ -98,6 +191,13 @@ public sealed partial class RuntimeExpressionEvaluator
         return OperatorProvider.EvaluateBinaryOperator(session, binary.Operation, leftResult.Result!, rightResult.Result!);
     }
 
+    // what EvaluateIndex does with a callee that resolves to a procedure, its callee resolved once: a function that declares no parameter is not given what
+    // follows it in parentheses, which indexes what it returns - and that is evaluated from the syntax tree.
+    private RuntimeSemanticsEvaluationResult EvaluateBoundCall(IRuntimeSession session, BoundCall call, RuntimeEvaluationContext context)
+        => call.Procedure is VBTypeMemberSymbol procedure && !ReturnsToBeIndexed(procedure, null, call.Call.Arguments)
+            ? InvokeProcedure(session, context, procedure, call.Call.Arguments)
+            : EvaluateSyntax(session, call.Expression, context);
+
     private RuntimeSemanticsEvaluationResult EvaluateBoundUnary(IRuntimeSession session, BoundUnary unary, RuntimeEvaluationContext context)
     {
         var operandResult = EvaluateBoundNode(session, unary.Operand, context);
@@ -111,6 +211,7 @@ public sealed partial class RuntimeExpressionEvaluator
     private static bool HasNoEffect(BoundNode node) => node switch
     {
         BoundLiteral => true,
+        BoundVariable { IsAutoInstantiated: false, Variable: ITypedSymbol { ResolvedType: VBNumericType or VBStringType or VBBooleanType or VBDateType } } => true,
         BoundName { Symbol: ITypedSymbol { ResolvedType: VBNumericType or VBStringType or VBBooleanType or VBDateType } and not VBTypeMemberSymbol } => true,
         BoundName { Symbol: VBTypeMemberSymbol { Kind: SymbolKindExt.Field or SymbolKindExt.Variable or SymbolKindExt.Constant } member }
             => member is ITypedSymbol { ResolvedType: VBNumericType or VBStringType or VBBooleanType or VBDateType },
