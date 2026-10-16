@@ -58,6 +58,14 @@ public sealed class OperationPlannerTests
     }
 
     [TestMethod]
+    public void ThePlan_OfALateBoundOperand_IsDeferred()
+    {
+        // an operand whose type is not known statically is known when the operation is evaluated.
+        Assert.IsTrue(OperationPlanner.ForDeclared(Tokens.AdditionOp, VBUnknownType.TypeInfo, VBLongType.TypeInfo).IsDeferred);
+        Assert.IsTrue(OperationPlanner.ForDeclared(Tokens.LogicalNotOp, VBUnknownType.TypeInfo).IsDeferred);
+    }
+
+    [TestMethod]
     public void ThePlan_OfOtherDeclaredTypes_IsThePlanOfTheirValues()
     {
         Assert.AreSame(
@@ -113,6 +121,27 @@ public sealed class OperationPlannerTests
         Assert.AreEqual(VBDoubleType.TypeInfo, OperationPlanner.ForValues(Tokens.PowerOp, VBIntegerType.TypeInfo, VBIntegerType.TypeInfo).EffectiveType);
         Assert.AreEqual(VBDoubleType.TypeInfo, OperationPlanner.ForValues(Tokens.MultiplicationOp, VBDateType.TypeInfo, VBIntegerType.TypeInfo).EffectiveType);
         Assert.AreEqual(VBDateType.TypeInfo, OperationPlanner.ForValues(Tokens.SubtractionOp, VBDateType.TypeInfo, VBIntegerType.TypeInfo).EffectiveType);
+        Assert.AreEqual(VBDoubleType.TypeInfo, OperationPlanner.ForValues(Tokens.SubtractionOp, VBDateType.TypeInfo, VBDateType.TypeInfo).EffectiveType, "the days between two dates");
+    }
+
+    [TestMethod]
+    public void ABoolean_IsAnOperand_OfEveryRowAnIntegralValueIsAnOperandOf()
+    {
+        // MS-VBAL's tables list Boolean beside Byte and Integer: True + 2.5 is a Double, True = 2.5 compares Doubles, True And 7& is a Long.
+        Assert.AreEqual(VBDoubleType.TypeInfo, OperationPlanner.ForValues(Tokens.AdditionOp, VBBooleanType.TypeInfo, VBDoubleType.TypeInfo).EffectiveType);
+        Assert.AreEqual(VBLongLongType.TypeInfo, OperationPlanner.ForValues(Tokens.SubtractionOp, VBLongLongType.TypeInfo, VBBooleanType.TypeInfo).EffectiveType);
+        Assert.AreEqual(VBNullType.TypeInfo, OperationPlanner.ForValues(Tokens.MultiplicationOp, VBBooleanType.TypeInfo, VBNullType.TypeInfo).EffectiveType);
+        Assert.AreEqual(VBDoubleType.TypeInfo, OperationPlanner.ForValues(Tokens.CompareEqualOp, VBBooleanType.TypeInfo, VBDoubleType.TypeInfo).EffectiveType);
+        Assert.AreEqual(VBDateType.TypeInfo, OperationPlanner.ForValues(Tokens.CompareLessThanOp, VBDateType.TypeInfo, VBBooleanType.TypeInfo).EffectiveType);
+        Assert.AreEqual(VBLongType.TypeInfo, OperationPlanner.ForValues(Tokens.LogicalAndOp, VBBooleanType.TypeInfo, VBLongType.TypeInfo).EffectiveType);
+        Assert.AreEqual(VBLongType.TypeInfo, OperationPlanner.ForValues(Tokens.LogicalOrOp, VBStringType.TypeInfo, VBBooleanType.TypeInfo).EffectiveType);
+    }
+
+    [TestMethod]
+    public void ASingle_AndALongLong_AreComparedAsDoubles()
+    {
+        Assert.AreEqual(VBDoubleType.TypeInfo, OperationPlanner.ForValues(Tokens.CompareEqualOp, VBSingleType.TypeInfo, VBLongLongType.TypeInfo).EffectiveType);
+        Assert.AreEqual(VBDoubleType.TypeInfo, OperationPlanner.ForValues(Tokens.CompareLessThanOp, VBLongLongType.TypeInfo, VBSingleType.TypeInfo).EffectiveType);
     }
 
     [TestMethod]
