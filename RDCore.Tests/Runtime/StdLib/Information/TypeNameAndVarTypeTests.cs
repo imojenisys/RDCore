@@ -79,7 +79,6 @@ public sealed class TypeNameAndVarTypeTests
         => AssertTypeOf(string.Empty, string.Empty, expression, typeName, varType);
 
     [TestMethod]
-    [Ignore("CLngPtr is not implemented: StdConversion.CLngPtr returns NotImplemented (nothing in the runtime models a LongPtr value yet).")]
     public Task OfCLngPtr_IsTheLongLongItIsOnA64BitPlatform()
         => AssertTypeOf(string.Empty, string.Empty, "CLngPtr(1)", "LongLong", "20");
 
@@ -118,22 +117,18 @@ public sealed class TypeNameAndVarTypeTests
         => AssertTypeOf(string.Empty, string.Empty, expression, typeName, varType);
 
     [TestMethod]
-    [Ignore("Not of a Boolean evaluates to an Integer: the Not operator's effective type for a Boolean operand is wrong (MS-VBAL 5.6.9.8.1 keeps it Boolean).")]
     public Task OfNotTrue_IsABoolean()
         => AssertTypeOf(string.Empty, string.Empty, "Not True", "Boolean", "11");
 
     [TestMethod]
-    [Ignore("Date - Date evaluates to a Date: the subtraction operator's effective type for two Date operands is wrong (MS-VBAL 5.6.9.3.3 makes it a Double).")]
     public Task OfADateLessADate_IsADouble()
         => AssertTypeOf(string.Empty, string.Empty, "#1/2/2000# - #1/1/2000#", "Double", "5");
 
     [TestMethod]
-    [Ignore("Null + 1 does not load: the static semantics of + reject a Null literal operand (MS-VBAL 5.6.9.3 gives it the declared type Variant).")]
     public Task OfNullPlusOne_IsNull()
         => AssertTypeOf(string.Empty, string.Empty, "Null + 1", "Null", "1");
 
     [TestMethod]
-    [Ignore("Empty + 1 does not load: the static semantics of + reject an Empty literal operand (MS-VBAL 5.6.9.3 gives it the declared type Variant).")]
     [DataRow("Empty + 1", "Integer", "2")]
     [DataRow("Empty + Empty", "Integer", "2")]
     [DataRow("Empty + 1.5", "Double", "5")]
@@ -153,7 +148,6 @@ public sealed class TypeNameAndVarTypeTests
         => AssertTypeOf(declaration, string.Empty, "C", typeName, varType);
 
     [TestMethod]
-    [Ignore("A Const declared As a type keeps the type of its value: the fold does not Let-coerce the value to the declared type (MS-VBAL 5.2.3.2).")]
     public Task OfATypedConstant_IsItsDeclaredType()
         => AssertTypeOf("Private Const C As Long = 1", string.Empty, "C", "Long", "3");
 
@@ -164,7 +158,6 @@ public sealed class TypeNameAndVarTypeTests
         => AssertTypeOf(string.Empty, string.Empty, expression, typeName, varType);
 
     [TestMethod]
-    [Ignore("vbNullString and vbCrLf are not defined: the standard library's Constants module has no symbols yet.")]
     [DataRow("vbNullString", "String", "8")]
     [DataRow("vbCrLf", "String", "8")]
     public Task OfALibraryConstant(string expression, string typeName, string varType)
@@ -215,8 +208,6 @@ public sealed class TypeNameAndVarTypeTests
         => AssertTypeOf("Public Enum Colour\r\n    Red = 1\r\nEnd Enum\r\nPrivate x As Colour", string.Empty, "x", "Long", "3");
 
     [TestMethod]
-    [Ignore("A workspace Enum's members have no value on the host: the descriptor carries no value expression for them, and reading one throws " +
-        "'No runtime binding exists yet' out of SymbolAddressTable (MS-VBAL 5.2.3.4).")]
     [DataRow("Red")]
     [DataRow("Colour.Red")]
     public Task OfAWorkspaceEnumMember_IsLong(string expression)
@@ -331,7 +322,6 @@ public sealed class TypeNameAndVarTypeTests
         => AssertTypeOf("Private v As Variant\r\nPrivate a(1) As Long", "v = a", "v", "Long()", "8195");
 
     [TestMethod]
-    [Ignore("ReDim of a Variant ignores its As clause: the array it makes is a Variant() whatever type the statement names (MS-VBAL 5.4.3.3).")]
     public Task OfAVariantReDimmedAsLong_IsALongArray()
         => AssertTypeOf("Private v As Variant", "ReDim v(1) As Long", "v", "Long()", "8195");
 
