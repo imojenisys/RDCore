@@ -19,6 +19,10 @@ namespace RDCore.Runtime.Semantics;
 /// bound is the module's <c>Option Base</c>. A resizable array has none until a <c>ReDim</c> gives it some, but it is an array of
 /// the element type it was declared with all the same.
 /// <para>
+/// A field of a user-defined type is declared as a variable is (<strong>MS-VBAL §5.2.3.3</strong>), so a record starts with each of its
+/// fields as this gives it, a nested record's own included: a type's default value has no bounds to give a fixed-size array field.
+/// </para>
+/// <para>
 /// An optional parameter a call omits starts as its declared default, a constant expression (<strong>MS-VBAL §5.3.1.5</strong>) reduced
 /// by the same fold a <c>Const</c>'s is; one that declares none starts as Missing when it is a <c>Variant</c>.
 /// </para>
@@ -44,6 +48,12 @@ public sealed class DeclaredVariableDefaults(IRuntimeSession session, ArrayBound
         }
 
         var type = ((ITypedSymbol)variable).ResolvedType;
+        if (type is VBUserDefinedType record)
+        {
+            // each field starts as a variable declared as it is: a fixed-size array field with the dimensions its declaration gives it.
+            return new VBUserDefinedTypeValue(record, this);
+        }
+
         if (type is not VBArrayType array || array is VBResizableByteArrayType)
         {
             return type.DefaultValue;
@@ -57,7 +67,7 @@ public sealed class DeclaredVariableDefaults(IRuntimeSession session, ArrayBound
         return variable.TryGetProperty(SymbolProperties.ArrayBounds, out var declared)
             && !declared.IsDefaultOrEmpty
             && TryReduce(variable, declared) is { } dimensions
-                ? new VBFixedSizeArrayValue(dimensions, array.ItemType)
+                ? new VBFixedSizeArrayValue(dimensions, array.ItemType, ((IVariableDefaults)this).ElementDefaultOf(array.ItemType))
                 : new VBFixedSizeArrayValue([], array.ItemType);
     }
 
@@ -93,8 +103,17 @@ public sealed class DeclaredVariableDefaults(IRuntimeSession session, ArrayBound
     // MS-VBAL §5.2.1.2: an omitted lower bound is the Option Base of the module the variable is declared in. A local's is on the
     // frame of the activation allocating it; a module's own variable is read off the module symbol, whose name is the first segment
     // of the variable's identity.
+    //
+    // A field of a user-defined type is the exception: MS-VBA gives its arrays a lower bound of 0 whatever the module's Option Base, where the
+    // section reads as covering every array dimension of the module. RD-VBA does what MS-VBA does (recorded in Excel, 2026-10-17: under
+    // `Option Base 1`, `Values(4) As Long` in a Type is 0 To 4 while a Dim beside it is 1 To 4).
     private int OptionBaseOf(Symbol variable)
     {
+        if (variable is VBUserDefinedTypeFieldSymbol)
+        {
+            return 0;
+        }
+
         if (variable.ScopeKind is ScopeKind.Local && session.CallStack.Current is { } frame)
         {
             return frame.Directives.Base;
