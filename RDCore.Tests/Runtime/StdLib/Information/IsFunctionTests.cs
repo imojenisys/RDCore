@@ -161,12 +161,16 @@ public sealed class IsFunctionTests
     public async Task IsNumeric_OfAStringThatIsNotANumber_IsFalse(string text)
         => CollectionAssert.AreEqual(new[] { "False" }, await Run(string.Empty, $"Debug.Print IsNumeric(\"{text}\")"));
 
+    // MS-VBA reads a hexadecimal or octal literal in a string as the number it is, which MS-VBAL 5.5.1.2.4's grammar has no room for (recorded in Excel).
     [TestMethod]
-    [Ignore("The numeric Let-coercion grammar (ValueConversions.StringToNumeric) reads neither &H/&O literals, thousands separators, a currency " +
-        "symbol, parentheses nor a trailing sign, all of which MS-VBA's (the host's regional number format, MS-VBAL 5.5.1.2.4) does.")]
     [DataRow("&H10")]
     [DataRow("&HFFFF")]
     [DataRow("&O7")]
+    public async Task IsNumeric_OfAHexadecimalOrOctalLiteral_IsTrue(string text)
+        => CollectionAssert.AreEqual(new[] { "True" }, await Run(string.Empty, $"Debug.Print IsNumeric(\"{text}\")"));
+
+    // MS-VBAL 5.5.1.2.4: a number "according to the active host-defined regional settings" - the platform's, en-US unless it is told otherwise.
+    [TestMethod]
     [DataRow("1,000")]
     [DataRow("1,0,0")]
     [DataRow("1-")]
@@ -216,17 +220,15 @@ public sealed class IsFunctionTests
     public async Task IsDate_OfAStringThatIsNotADate_IsFalse(string text)
         => CollectionAssert.AreEqual(new[] { "False" }, await Run(string.Empty, $"Debug.Print IsDate(\"{text}\")"));
 
+    // MS-VBAL §3.3.3: a day and a month are told apart by which can be a month, and a comma is a date separator - 1,000 is January 1, 2000.
     [TestMethod]
-    [Ignore("Date strings are read by .NET's invariant DateTime.TryParse (ValueConversions.TryInterpretDate), not by MS-VBA's own grammar, " +
-        "which swaps day and month when the month is out of range and reads a comma as a date separator.")]
     [DataRow("31/12/2000")]
     [DataRow("1,000")]
     public async Task IsDate_OfADateStringOnlyMSVBAReads_IsTrue(string text)
         => CollectionAssert.AreEqual(new[] { "True" }, await Run(string.Empty, $"Debug.Print IsDate(\"{text}\")"));
 
+    // a literal's # delimiters, a weekday name, and dots as date separators are not of the grammar: a dot is a time separator, and 2000 no second.
     [TestMethod]
-    [Ignore("Date strings are read by .NET's invariant DateTime.TryParse (ValueConversions.TryInterpretDate), which accepts forms MS-VBA's " +
-        "own grammar refuses: a literal's # delimiters, a weekday name, dots as date separators.")]
     [DataRow("#1/2/2000#")]
     [DataRow("Mon, Jan 3 2000")]
     [DataRow("1.1.2000")]

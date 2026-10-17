@@ -1620,8 +1620,8 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
     /// handler starts with, and the one the raiser finds afterwards. An error a handler leaves unhandled stops the
     /// invocations and is the error of the <c>RaiseEvent</c>.
     /// <para>
-    /// 🚧 TODO a <c>ByRef</c> parameter whose argument is not a variable is a fresh local for each handler, so the
-    /// value one leaves in it is not the next one's argument.
+    /// A <c>ByRef</c> parameter whose argument is not a variable is given a location of its own for the handlers of the one event, so the value one
+    /// leaves in it is the next one's argument too.
     /// </para>
     /// </remarks>
     /// <param name="session">The session the event is raised in.</param>
@@ -2055,7 +2055,9 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
         }
 
         var named = qualified ?? session.Symbols.Resolver.ResolveValue((SimpleNameExpressionNode)argument, ScopeKind.Local, context.Scope).Symbol;
-        if (named is not { } argumentSymbol || argumentSymbol is not ITypedSymbol typed
+        // a ParamArray is never passed by reference: MS-VBA refuses it as an argument of a ByRef parameter ("Invalid ParamArray use"), and passes it to the
+        // library as a value - IsMissing of one that collected nothing is True (recorded in Excel).
+        if (named is not { } argumentSymbol || argumentSymbol is ParamArrayParameterSymbol || argumentSymbol is not ITypedSymbol typed
             || (!IsOfDeclaredType(parameter, typed.ResolvedType) && parameter.ResolvedType is not VBVariantType))
         {
             return false;
