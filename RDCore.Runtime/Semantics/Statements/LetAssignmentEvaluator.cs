@@ -92,12 +92,15 @@ public sealed class LetAssignmentEvaluator(
         ExpressionNode target,
         ExpressionNode source,
         VBTypedValue value)
-        // `Module1.Count = 5` is a variable of the module, assigned as its bare name is (MS-VBAL §5.6.12): not a member of a value.
-        => target is MemberAccessExpressionNode qualifiedAccess && expressions.ResolveNamespaceQualified(session, context, qualifiedAccess) is { } qualified
+        // an array that is locked is not assigned another (MS-VBA, recorded in Excel): error 10, as a ReDim of it is.
+        => IsALockedArray(session, context, target, value)
+            ? RuntimeExecutionOutcome.Error(VBRuntimeErrorInfo.For(VBRuntimeErrorId.ThisArrayIsFixedOrTemporarilyLocked, target.Location, $"{target} is locked"))
+            // `Module1.Count = 5` is a variable of the module, assigned as its bare name is (MS-VBAL §5.6.12): not a member of a value.
+            : target is MemberAccessExpressionNode qualifiedAccess && expressions.ResolveNamespaceQualified(session, context, qualifiedAccess) is { } qualified
             ? Assign(session, context, statement, qualified, target, source, value)
             : target is MemberAccessExpressionNode memberAccess
             ? AssignField(session, context, statement, memberAccess, source, value)
-            : IsMemberOfObject(target)
+            : IsMemberOfObject(target) && !IsElementOfAQualifiedArray(session, context, target)
                 ? AssignObjectMember(session, context, statement, target, source, value, isSet: false)
                 : target is IndexExpressionNode element
                     ? AssignArrayElement(session, context, element.Callee, element.Arguments, source, value, isSet: false)
@@ -108,8 +111,44 @@ public sealed class LetAssignmentEvaluator(
                             ? Assign(session, context, statement, symbol!, target, source, value)
                             : RuntimeExecutionOutcome.InternalError;
 
+    // a variable, named or named through its module, that holds an array some activation locks (ICallStackFrame.LocksArray), assigned an array. Only
+    // asked when what is assigned is an array: anything else is a type mismatch, or the coercion's to say.
+    private bool IsALockedArray(IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode target, VBTypedValue value)
+    {
+        if (Held(value) is not VBArrayValue)
+        {
+            return false;
+        }
+
+        var symbol = target switch
+        {
+            SimpleNameExpressionNode name => session.Symbols.Resolver.ResolveValue(name, ScopeKind.Local, context.Scope).Symbol,
+            MemberAccessExpressionNode access => expressions.ResolveNamespaceQualified(session, context, access),
+            _ => null,
+        };
+
+        return symbol is ITypedSymbol { ResolvedType: var declared }
+            && session.Symbols.Resolver.TryGetAddress(symbol, out _)
+            && Held(declared.CreateValue(session.Symbols.Resolver.GetValue(symbol).ForReading())) is VBArrayValue array
+            && session.CallStack.Frames.Any(frame => frame.LocksArray(array));
+    }
+
+    private static VBTypedValue? Held(VBTypedValue? value)
+    {
+        while (value is VBVariantValue { TypedValue: var wrapped })
+        {
+            value = wrapped;
+        }
+
+        return value;
+    }
+
     // `owner.Property(index) = value`: an index expression whose callee is a member access.
     private static bool IsMemberOfObject(ExpressionNode target) => target is IndexExpressionNode { Callee: MemberAccessExpressionNode };
+
+    // `Module1.Items(1) = value` is an element of the module's array, which the bare name's element is (MS-VBAL §5.6.12): not a member of a value.
+    private bool IsElementOfAQualifiedArray(IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode target)
+        => target is IndexExpressionNode { Callee: MemberAccessExpressionNode callee } && expressions.ResolveNamespaceQualified(session, context, callee) is not null;
 
     /// <summary>
     /// Assigns <paramref name="value"/> to an element of an array: <c>a(1, 2) = value</c>, or <c>owner.Items(1) = value</c> when the
