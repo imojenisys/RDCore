@@ -16,6 +16,7 @@ using RDCore.SDK.Runtime.Shared;
 using RDCore.SDK.Services.VerboseMessages;
 using RDCore.SDK.Workspace;
 using RDCore.Symbols;
+using RDCore.Tests.Platform;
 
 namespace RDCore.Tests.Cli;
 
@@ -52,7 +53,7 @@ internal sealed class ShellHost
         var fs = new MockFileSystem(new Dictionary<string, MockFileData> { [Path.Combine(Root, ProjectFile.FileName)] = new(JsonSerializer.Serialize(project)) });
         var provider = new EnvironmentSessionProvider(
             new RuntimeEnvironmentProfile(Is64Bit: true, 0, 1252, false, SourceLanguage: SupportedLanguages.BASIC), fs, NullLogger<EnvironmentSessionProvider>.Instance);
-        var workspaceRoot = new Uri(Root);
+        var workspaceRoot = Wire.FileUri(Root);
         provider.Compose(project.ProjectInfo, workspaceRoot);
 
         return new ShellHost(provider, workspaceRoot);
@@ -108,7 +109,7 @@ internal sealed class ShellHost
 
     private async Task<ExecuteSessionResult> ExecuteAsync(string source, string entryPoint, bool debug = false, bool immediate = false, bool streamOutput = false)
     {
-        var parse = new ModuleParser().Parse(new Uri(Path.Combine(Root, $"{ModuleName}.bas")), source);
+        var parse = new ModuleParser().Parse(Wire.FileUri(Path.Combine(Root, $"{ModuleName}.bas")), source);
         Assert.IsTrue(parse.IsSuccess, string.Join("; ", parse.SyntaxErrors.Select(error => error.Verbose)));
 
         var language = SupportedLanguages.BASIC.ImplicitDeclarationScope;
@@ -118,7 +119,7 @@ internal sealed class ShellHost
             _workspaceRoot, _moduleUri, ModuleType.StdModule, parse, resolver, withImplicitDeclarations: true, language).ProvideSymbols();
 
         await new DefineSymbolsHandler(_provider, Substitute.For<IVerboseMessageBuilder>(), NullLogger<DefineSymbolsHandler>.Instance)
-            .Handle(new DefineSymbolsParams
+            .Handle(Wire.RoundTrip(new DefineSymbolsParams
             {
                 WorkspaceRoot = _workspaceRoot,
                 ModuleUri = _moduleUri,
@@ -126,7 +127,7 @@ internal sealed class ShellHost
                 Symbols = SymbolDescriptorProjector.Project(symbols, _moduleUri),
                 Directives = parse.SyntaxTree.GetModuleDirectives(),
                 Replace = true,
-            }, CancellationToken.None);
+            }), CancellationToken.None);
 
         return await new HostExecuteHandler(_provider, Substitute.For<IVerboseMessageBuilder>(), NullLogger<HostExecuteHandler>.Instance)
             .Handle(new HostExecuteParams

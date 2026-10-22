@@ -13,6 +13,7 @@ using RDCore.SDK.Workspace;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 using RDCore.Symbols;
+using RDCore.Tests.Platform;
 
 namespace RDCore.Tests.Cli;
 
@@ -199,12 +200,12 @@ internal static class ModuleWorkspace
             new MockFileSystem(files), NullLogger<EnvironmentSessionProvider>.Instance, libraries?.Source,
             // a test that brings its own servers brings no libraries of its own: those are the machine's still.
             libraries?.Outside ?? (libraries?.Automation is { } automation ? MachineExternal.World with { Automation = automation } : null));
-        var workspaceRoot = new Uri(Root);
+        var workspaceRoot = Wire.FileUri(Root);
         sessionProvider.Compose(project.ProjectInfo, workspaceRoot);
 
         var parsed = allModules.Select(module =>
         {
-            var parse = new ModuleParser().Parse(new Uri(Path.Combine(Root, $"{module.Name}.{module.Extension}")), module.Source);
+            var parse = new ModuleParser().Parse(Wire.FileUri(Path.Combine(Root, $"{module.Name}.{module.Extension}")), module.Source);
             Assert.IsTrue(parse.IsSuccess, $"{module.Name}: {string.Join("; ", parse.SyntaxErrors.Select(error => error.Verbose))}");
             return (Module: module, Uri: new UriBuilder(workspaceRoot) { Fragment = module.Name }.Uri, Parse: parse);
         }).ToArray();
@@ -222,7 +223,7 @@ internal static class ModuleWorkspace
         {
             var symbols = new SyntaxTreeSymbolProvider(workspaceRoot, module.Uri, module.Module.Type, module.Parse, resolver, withImplicitDeclarations: true).ProvideSymbols();
             await new DefineSymbolsHandler(sessionProvider, Substitute.For<IVerboseMessageBuilder>(), NullLogger<DefineSymbolsHandler>.Instance)
-                .Handle(new DefineSymbolsParams
+                .Handle(Wire.RoundTrip(new DefineSymbolsParams
                 {
                     WorkspaceRoot = workspaceRoot,
                     ModuleUri = module.Uri,
@@ -232,7 +233,7 @@ internal static class ModuleWorkspace
                     ImplementedInterfaceNames = module.Parse.SyntaxTree!.GetImplementedInterfaceNames(),
                     ImplementedInterfaceRanges = module.Parse.SyntaxTree!.GetImplementedInterfaceRanges(),
                     Replace = true,
-                }, CancellationToken.None);
+                }), CancellationToken.None);
         }
 
         foreach (var module in parsed)

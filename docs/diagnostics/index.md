@@ -32,6 +32,17 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |---|---|
 |[VBC00001](vbc00001.md)|Syntax error — a token the grammar cannot place|
 |[VBC00042](vbc00042.md)|Numeric literal overflow — a literal outside the range of its type|
+|[VBC00043](vbc00043.md)|Next without For — a `Next` statement ends no `For` loop|
+|[VBC00044](vbc00044.md)|For without Next — a `For` loop is not ended before its procedure is|
+|[VBC00045](vbc00045.md)|Loop without Do — a `Loop` statement ends no `Do` loop|
+|[VBC00046](vbc00046.md)|Do without Loop — a `Do` loop is not ended before its procedure is|
+|[VBC00047](vbc00047.md)|End If without block If — an `End If` statement ends no block `If`|
+|[VBC00048](vbc00048.md)|Block If without End If — a block `If` is not ended before its procedure is|
+|[VBC00049](vbc00049.md)|Else without If — an `Else` statement belongs to no block `If`|
+|[VBC00050](vbc00050.md)|Case without Select Case — a `Case` clause belongs to no `Select Case` statement|
+|[VBC00051](vbc00051.md)|Select Case without End Select — a `Select Case` statement is not ended before its procedure is|
+|[VBC00052](vbc00052.md)|End With without With — an `End With` statement ends no `With` block|
+|[VBC00053](vbc00053.md)|Expected End With — a `With` block is not ended before its procedure is|
 
 ### Semantic compilation errors
 
@@ -43,6 +54,7 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[VBC09304](vbc09304.md)|Invalid use of object — an object is used where a value of another kind is required|
 |[VBC09305](vbc09305.md)|Invalid ParamArray use — a ParamArray passed to a ByRef parameter of your own code|
 |[VBC09306](vbc09306.md)|Invalid ReDim — a ReDim re-dimensions a member of an object declared As Object|
+|[VBC09307](vbc09307.md)|Expected array — LBound or UBound is asked the bounds of a variable that can never hold an array|
 |[VBC09309](vbc09309.md)|Label not defined — a jump names a line label or line number the procedure does not define|
 |[VBC09310](vbc09310.md)|Type mismatch — a value is of a type that cannot be let-coerced to the type it is used as|
 |[VBC09311](vbc09311.md)|User-defined type not defined — a declared type is a name that does not resolve to a type|
@@ -74,6 +86,33 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[VBC09337](vbc09337.md)|Not allowed as a Public member of an object module — a class exposes a constant, fixed-length string, array, user-defined type or Declare|
 |[VBC09338](vbc09338.md)|Cannot define a Public user-defined type within an object module — a class module declares a public Type|
 |[VBC09339](vbc09339.md)|Argument not optional — an object whose default member takes an argument is where a value is expected|
+|[VBC09340](vbc09340.md)|Expected Function or variable — a subroutine is used where a value is expected|
+|[VBC09341](vbc09341.md)|Can't assign to read-only property — a property that can only be read is assigned with `Let`|
+|[VBC09342](vbc09342.md)|Wrong number of arguments or invalid property assignment — a procedure is called with arguments it does not declare|
+|[VBC09343](vbc09343.md)|LSet allowed only on strings and user-defined types — the target of an `LSet` statement is neither a `String` nor a user-defined type|
+|[VBC09344](vbc09344.md)|RSet allowed only on strings — the target of an `RSet` statement is not a `String`|
+|[VBC09345](vbc09345.md)|Invalid use of property — a property that can only be read is assigned with `Set`|
+|[VBC09346](vbc09346.md)|Assignment to constant not permitted — a constant is assigned|
+|[VBC09347](vbc09347.md)|Object required — a `Set` statement assigns to a variable that cannot hold an object|
+|[VBC09348](vbc09348.md)|Named argument already specified — a call gives the same parameter two arguments|
+|[VBC09349](vbc09349.md)|Named argument not found — a call names a parameter the procedure does not declare|
+|[VBC09350](vbc09350.md)|Constant expression required — the value of a constant reads something that has no value until the code runs|
+|[VBC09351](vbc09351.md)|Invalid data type for constant — the value of a constant is an object|
+|[VBC09352](vbc09352.md)|Overflow — the value of a constant does not fit its type|
+|[VBC09353](vbc09353.md)|Division by zero — the value of a constant divides by zero|
+|[VBC09354](vbc09354.md)|Invalid qualifier — a member is accessed on a value that has no members|
+|[VBC09355](vbc09355.md)|Function call on left-hand side of assignment must return Variant or Object — a call of a function is assigned|
+|[VBC09356](vbc09356.md)|Wrong number of dimensions — an element of an array is selected by the wrong number of subscripts|
+|[VBC09357](vbc09357.md)|Array already dimensioned — an array declared with fixed dimensions is given others|
+|[VBC09358](vbc09358.md)|For control variable already in use — a loop is controlled by the variable of a loop it is nested in|
+|[VBC09359](vbc09359.md)|Invalid Next control variable reference — a `Next` statement names a variable that is not the control variable of its loop|
+|[VBC09360](vbc09360.md)|Can't assign to array — an array declared with fixed dimensions is assigned an array|
+|[VBC09361](vbc09361.md)|ByRef argument type mismatch — a variable is passed to a `ByRef` parameter of another type|
+|[VBC09362](vbc09362.md)|Type mismatch: array or user-defined type expected — an array is passed to a parameter declared as an array of another type|
+|[VBC09363](vbc09363.md)|Expected variable or procedure, not module — the name of a standard module is used by itself, as a value or a procedure|
+|[VBC09364](vbc09364.md)|Expected Sub, Function, or Property — a `Call` statement names a variable or a constant, not a procedure|
+|[VBC09365](vbc09365.md)|Range has no values — an array is declared with an upper bound less than its lower bound|
+|[VBC09366](vbc09366.md)|A module is not a valid type — a declaration is typed with the name of a standard module|
 
 ### Runtime errors
 

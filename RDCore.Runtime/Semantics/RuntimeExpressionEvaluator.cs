@@ -128,89 +128,38 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
     /// tree evaluates successfully.
     /// </returns>
     public RuntimeSemanticsEvaluationResult Evaluate(IRuntimeSession session, ExpressionNode expression, RuntimeEvaluationContext context)
-        => BoundTreeOf(session, expression, context) is { } bound and not BoundFallback
-            ? EvaluateBound(session, bound, context)
-            : EvaluateSyntax(session, expression, context);
+        => EvaluateBoundNode(session, BoundTreeOf(session, expression, context), context);
 
-    // the evaluation of the syntax tree, which is what an expression the binder does not bind yet is evaluated by (IR lowering D3).
-    private RuntimeSemanticsEvaluationResult EvaluateSyntax(IRuntimeSession session, ExpressionNode expression, RuntimeEvaluationContext context)
+    // what a late-bound expression (BoundLate) evaluates to: its names and types resolved now, as MS-VBAL's run-time semantics resolve them. Its parts are
+    // evaluated as expressions of their own, bound in their turn. Every other shape is always bound.
+    private RuntimeSemanticsEvaluationResult EvaluateLate(IRuntimeSession session, ExpressionNode expression, RuntimeEvaluationContext context)
         => expression switch
         {
-            LiteralExpressionNode => LiteralExpressionRuntimeSemantics.Instance.Evaluate(session, new(), expression),
             SimpleNameExpressionNode simpleName => EvaluateSimpleName(session, context, simpleName),
-            PrecompilerNameExpressionNode precompilerName => EvaluatePrecompilerConstant(session, context, precompilerName),
             InstanceExpressionNode => EvaluateInstance(session, context, expression),
             NewExpressionNode newExpression => EvaluateNew(session, context, expression, newExpression),
             MemberAccessExpressionNode memberAccess => EvaluateMemberAccess(session, context, expression, memberAccess),
             IndexExpressionNode indexExpression => EvaluateIndex(session, context, expression, indexExpression),
-            DictionaryAccessExpressionNode dictionaryAccess => EvaluateDictionaryAccess(session, context, expression, dictionaryAccess),
             TypeOfIsExpressionNode typeOfIs => EvaluateTypeOfIs(session, context, expression, typeOfIs),
-            ArrayBoundExpressionNode arrayBound => EvaluateArrayBound(session, context, arrayBound),
-            ArrayExpressionNode array => EvaluateArray(session, context, array),
-            VBBinaryOperatorExpressionNode binaryOperator => EvaluateBinaryOperator(session, context, binaryOperator),
-            VBUnaryOperatorExpressionNode unaryOperator => EvaluateUnaryOperator(session, context, unaryOperator),
-            // ByVal flags how the argument is passed, which is what a node that is not a variable is: a value, never
-            // aliased to a ByRef parameter (see TryResolveByRefArgument).
-            ByValArgumentExpressionNode byVal => Evaluate(session, byVal.Operand, context),
             _ => RuntimeSemanticsEvaluationResult.InternalError(),
         };
 
-    // The Array keyword: a Variant holding a resizable array of Variant, with an element for each argument. Its lower bound is the
-    // Option Base of the module the expression is written in, which rides on the executing frame; the library's own member of the
-    // same name is always zero-based, and is what a qualified call reaches instead.
-    private RuntimeSemanticsEvaluationResult EvaluateArray(
-        IRuntimeSession session, RuntimeEvaluationContext context, ArrayExpressionNode arrayExpression)
+    // an element of what the Array keyword makes is a Variant holding a copy of what the argument came to - not a view of the variable it was read from,
+    // which would be whatever that variable holds next. The array is a value the expression is, not a variable: an object in it is held by whatever the array
+    // is assigned to, which is given a copy in cells of its own (ObjectReferences), and not by these.
+    private static void SetArrayElement(VBResizableArrayValue array, int index, VBTypedValue element)
     {
-        var lower = session.CallStack.Current?.Directives.Base ?? 0;
-        var array = new VBResizableArrayValue([(lower, lower + arrayExpression.Elements.Length - 1)], VBVariantType.TypeInfo);
-
-        for (var index = 0; index < arrayExpression.Elements.Length; index++)
-        {
-            var element = Evaluate(session, arrayExpression.Elements[index], context);
-            if (!element.IsSuccess)
-            {
-                return element;
-            }
-
-            // an element is a Variant holding a copy of what the argument came to - not a view of the variable it was read from, which would be
-            // whatever that variable holds next. The array is a value the expression is, not a variable: an object in it is held by whatever the
-            // array is assigned to, which is given a copy in cells of its own (ObjectReferences), and not by these.
-            var value = DataValues.Copy(element.Result is VBVariantValue variant ? variant : new VBVariantValue(element.Result!));
-            array.TrySetElement(BindingKnowledge.NewCell(value), lower + index);
-        }
-
-        return RuntimeSemanticsEvaluationResult.Success(new VBVariantValue(array));
+        var value = DataValues.Copy(element is VBVariantValue variant ? variant : new VBVariantValue(element));
+        array.TrySetElement(BindingKnowledge.NewCell(value), index);
     }
 
-    // MS-VBAL 3.3.5.2: the array operand is evaluated as the expression it is - for a variable, that is the array it
-    // holds (VBArrayType.CreateValue hands back the stored instance, not a copy) - and only its bounds are read.
-    private RuntimeSemanticsEvaluationResult EvaluateArrayBound(
-        IRuntimeSession session, RuntimeEvaluationContext context, ArrayBoundExpressionNode arrayBound)
-    {
-        var array = Evaluate(session, arrayBound.Array, context);
-        if (!array.IsSuccess)
-        {
-            return array;
-        }
-
-        VBTypedValue? dimension = null;
-        if (arrayBound.Dimension is { } dimensionExpression)
-        {
-            var evaluated = Evaluate(session, dimensionExpression, context);
-            if (!evaluated.IsSuccess)
-            {
-                return evaluated;
-            }
-
-            dimension = evaluated.Result;
-        }
-
-        // an array that is not known has bounds that are not known, and is not known to be no array: the error it would raise is the assumed value's, which is
-        // not stated. The same goes for a dimension that is not known.
-        return array.Result!.IsIndeterminate || dimension is { IsIndeterminate: true }
+    // MS-VBAL 3.3.5.2: the array operand is evaluated as the expression it is - for a variable, that is the array it holds (VBArrayType.CreateValue hands
+    // back the stored instance, not a copy) - and only its bounds are read. An array that is not known has bounds that are not known, and is not known to be
+    // no array: the error it would raise is the assumed value's, which is not stated. The same goes for a dimension that is not known.
+    private static RuntimeSemanticsEvaluationResult ArrayBoundOf(ArrayBoundExpressionNode arrayBound, VBTypedValue array, VBTypedValue? dimension)
+        => array.IsIndeterminate || dimension is { IsIndeterminate: true }
             ? RuntimeSemanticsEvaluationResult.Success(VBLongType.TypeInfo.CreateIndeterminateValue())
-            : ArrayBoundRuntimeSemantics.Evaluate(arrayBound, array.Result!, dimension);
-    }
+            : ArrayBoundRuntimeSemantics.Evaluate(arrayBound, array, dimension);
 
     private RuntimeSemanticsEvaluationResult EvaluateSimpleName(IRuntimeSession session, RuntimeEvaluationContext context, SimpleNameExpressionNode simpleName)
         => ReadSymbol(
@@ -709,18 +658,44 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
     /// </remarks>
     /// <param name="session">The session the constant expressions resolve their own names against.</param>
     /// <param name="constants">The constant symbols to fold. Anything else is ignored.</param>
-    public void FoldConstants(IRuntimeSession session, IEnumerable<Symbol> constants)
+    /// <returns>
+    /// What folding a constant raised, as the compile error MS-VBA reports for it (Excel-verified): a value that does not fit is
+    /// <see cref="VBCompileErrorId.Overflow"/>, a division by zero <see cref="VBCompileErrorId.DivisionByZero"/>, a value of the wrong type
+    /// <see cref="VBCompileErrorId.TypeMismatch"/>. A value that is no constant expression is not folded: the declaration pass reports it.
+    /// </returns>
+    public ImmutableArray<VBCompileErrorInfo> FoldConstants(IRuntimeSession session, IEnumerable<Symbol> constants)
     {
+        var errors = ImmutableArray.CreateBuilder<VBCompileErrorInfo>();
         foreach (var constant in constants)
         {
-            if (ConstantValueOf(constant) is { } value)
+            if (ConstantValueOf(constant) is not { } value || ReadsWhatRuns(session, constant, value))
             {
-                // the declaring scope, not the run's: a constant's expression is written where the
-                // constant is, and a name in it binds from there.
-                FoldConstant(session, new RuntimeEvaluationContext(constant.ParentUri), constant, value);
+                continue;
+            }
+
+            // the declaring scope, not the run's: a constant's expression is written where the
+            // constant is, and a name in it binds from there.
+            var folded = FoldConstant(session, new RuntimeEvaluationContext(constant.ParentUri), constant, value);
+            if (!folded.IsSuccess && folded.ErrorInfo?.ErrorId switch
+                {
+                    (int)VBRuntimeErrorId.Overflow => VBCompileErrorId.Overflow,
+                    (int)VBRuntimeErrorId.DivisionByZero => VBCompileErrorId.DivisionByZero,
+                    (int)VBRuntimeErrorId.TypeMismatch => VBCompileErrorId.TypeMismatch,
+                    _ => (VBCompileErrorId?)null,
+                } is { } compileError)
+            {
+                errors.Add(VBCompileErrorInfo.For(compileError, value.Location, constant.Name));
             }
         }
+
+        return errors.ToImmutable();
     }
+
+    // whether the value of a Const reads what has no value until the code runs - a variable, a function - which is no constant expression (MS-VBAL
+    // §5.6.16.1) and cannot be folded. A parameter's default is another declaration's, and Nothing is a value that folds.
+    private static bool ReadsWhatRuns(IRuntimeSession session, Symbol constant, ExpressionNode value)
+        => constant is VBConstantMemberSymbol or VBLocalConstantSymbol
+            && ConstantExpressionStaticSemantics.ValueError(session.Symbols.Resolver, constant.ParentUri, value) is { VBCompileErrorId: VBCompileErrorId.ConstantExpressionRequired };
 
     // MS-VBAL 5.2.3.2: "the constant binding of a constant ... is the data value of the <constant-expression> Let-coerced to the declared
     // type of the constant" - which, without an As clause or a type character, is the expression's own, so there is nothing to coerce to.
@@ -790,6 +765,14 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
         // 🚧 TODO: report circular constant declarations as a compile-time diagnostic instead.
         if (!_foldingConstants.Add(id))
         {
+            return RuntimeSemanticsEvaluationResult.InternalError();
+        }
+
+        // a value that is no constant expression reads what has no value until the code runs, and is the compile error of its module (the declaration
+        // pass's): only another module, read while that one did not load, asks for it.
+        if (ReadsWhatRuns(session, constant, value))
+        {
+            _foldingConstants.Remove(id);
             return RuntimeSemanticsEvaluationResult.InternalError();
         }
 
@@ -935,7 +918,7 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
 
         if (TryResolveInvocableMember(session, context, qualified.Owner, owner, qualified.Member.IdentifierName) is not { } found)
         {
-            return (EvaluateInstanceField(session, owner, qualified.Member.IdentifierName), false);
+            return (EvaluateInstanceField(session, qualified, owner, qualified.Member.IdentifierName), false);
         }
 
         return ReturnsToBeIndexed(found.Member, found.Receiver, indexExpression.Arguments)
@@ -954,7 +937,7 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
         // a Property Get, Function or Sub of the object is an invocation with no arguments of its own; a field is a read.
         return TryResolveInvocableMember(session, context, memberAccess.Owner, owner, memberName) is { } found
             ? InvokeProcedure(session, context, found.Member, [], found.Receiver)
-            : EvaluateInstanceField(session, owner, memberName);
+            : EvaluateInstanceField(session, memberAccess, owner, memberName);
     }
 
     // a member of an object variable that holds no object - never set, or set to Nothing - is error 91: there is no
@@ -1316,7 +1299,7 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
 
     // A late-bound Variant/Object member, and a call through a Property/Function/Sub member, are both
     // invocations, not reads - only a Field/Variable-kind member is readable this way.
-    private RuntimeSemanticsEvaluationResult EvaluateInstanceField(IRuntimeSession session, VBTypedValue owner, string memberName)
+    private RuntimeSemanticsEvaluationResult EvaluateInstanceField(IRuntimeSession session, MemberAccessExpressionNode memberAccess, VBTypedValue owner, string memberName)
     {
         // a UDT field is not reached through an instance the session knows about: a UDT has location identity
         // but no instance record, and its fields live on the value itself (MS-VBAL §2.1 - a UDT data value is
@@ -1339,9 +1322,13 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
         var member = instance.ClassModule.DefaultInterfaceMembers
             .FirstOrDefault(candidate => string.Equals(candidate.Name, memberName, StringComparison.OrdinalIgnoreCase));
 
+        // an object whose class has no member of the name - late-bound, or reached through a Variant - does not support it: error 438 (MS-VBA).
         return member is { Kind: SymbolKindExt.Field or SymbolKindExt.Variable }
             ? Assumed(RuntimeSemanticsEvaluationResult.Success(member.ResolvedType.CreateValue(instance.GetValue(member).ForReading())))
-            : RuntimeSemanticsEvaluationResult.InternalError();
+            : member is null
+                ? RuntimeSemanticsEvaluationResult.Error(VBRuntimeErrorInfo.For(VBRuntimeErrorId.ObjectDoesntSupportThisPropertyOrMethod, memberAccess.Member.Location,
+                    string.Format(Exceptions.VBMemberAccess_NoSuchMember_Verbose, memberName)))
+                : RuntimeSemanticsEvaluationResult.InternalError();
     }
 
     // a Variant's own TypeInfo mirrors what it wraps while the instance stays a VBVariantValue, so a member
@@ -1386,15 +1373,25 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
             && TryClassifyNamespace(session, context, namespaceExpression) is { } qualifier)
         {
             // MS-VBAL §5.6.12: a call of a member of a project or a procedural module - Strings.LenB("42"),
-            // VBA.LenB("42") - is a call of the procedure it names, with no object to evaluate and no receiver.
-            // Anything else it names is a value, which the arguments then index.
+            // VBA.LenB("42") - is a call of the procedure it names, with no object to evaluate and no receiver - and,
+            // as by its bare name, a function that declares no parameters is called with none, and what it returns is
+            // indexed (MS-VBA: `Module1.Letters(1)`, Excel-verified). Anything else it names is a value, which the
+            // arguments then index.
             var member = ResolveNamespaceMember(session, context, qualifier, namespaced);
             if (member is VBProcedureMemberSymbol or VBFunctionMemberSymbol or VBPropertyGetMemberSymbol)
             {
-                return InvokeProcedure(session, context, (VBTypeMemberSymbol)member, indexExpression.Arguments);
-            }
+                var procedure = (VBTypeMemberSymbol)member;
+                if (!ReturnsToBeIndexed(procedure, null, indexExpression.Arguments))
+                {
+                    return InvokeProcedure(session, context, procedure, indexExpression.Arguments);
+                }
 
-            calleeResult = ReadSymbol(session, context, member, nameOfEnclosingFunctionIsItsResult: false);
+                calleeResult = InvokeProcedure(session, context, procedure, []);
+            }
+            else
+            {
+                calleeResult = ReadSymbol(session, context, member, nameOfEnclosingFunctionIsItsResult: false);
+            }
         }
         else if (indexExpression.Callee is MemberAccessExpressionNode qualified)
         {
@@ -1479,8 +1476,9 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
 
         if (calleeValue is not VBArrayValue array)
         {
-            // any other Callee shape is a function/property call, not an element read.
-            return RuntimeSemanticsEvaluationResult.InternalError();
+            // a value that is neither an array nor an object - what a Variant holds when it holds a number - has nothing to index: a type mismatch (MS-VBA).
+            return RuntimeSemanticsEvaluationResult.Error(VBRuntimeErrorInfo.For(VBRuntimeErrorId.TypeMismatch, expression.Location,
+                string.Format(Exceptions.VBIndex_NothingToIndex_Verbose, calleeValue?.TypeInfo.Name)));
         }
 
         if (EvaluateSubscripts(session, context, indexExpression.Arguments, out var subscripts, out var subscriptsKnown) is { } subscriptFailure)
@@ -2283,22 +2281,13 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
         }
     }
 
-    private RuntimeSemanticsEvaluationResult EvaluateDictionaryAccess(IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode expression, DictionaryAccessExpressionNode dictionaryAccess)
+    // the default member of the owner, called with the name after the bang, and the access stated as one.
+    private RuntimeSemanticsEvaluationResult AccessThroughDictionary(
+        IRuntimeSession session, RuntimeEvaluationContext context, DictionaryAccessExpressionNode dictionaryAccess, VBTypedValue owner)
     {
-        // the object the member is looked up in: the expression written before the bang, or the enclosing With block's target.
-        var ownerResult = dictionaryAccess.Owner is { } ownerExpression
-            ? Evaluate(session, ownerExpression, context)
-            : context.EnclosingWithTarget is { } withTarget
-                ? RuntimeSemanticsEvaluationResult.Success(withTarget)
-                : RuntimeSemanticsEvaluationResult.InternalError();
-        if (!ownerResult.IsSuccess)
-        {
-            return ownerResult;
-        }
-
         var assumedBefore = AssumedSoFar;
-        var result = CallThroughDictionary(session, context, expression, dictionaryAccess, ownerResult.Result!);
-        ObserveMemberAccess(session, context, expression, Tokens.DictionaryAccess, dictionaryAccess.Owner, ownerResult.Result, null,
+        var result = CallThroughDictionary(session, context, dictionaryAccess, dictionaryAccess, owner);
+        ObserveMemberAccess(session, context, dictionaryAccess, Tokens.DictionaryAccess, dictionaryAccess.Owner, owner, null,
             MemberAccessOperationSemanticFlags.Implicit | MemberAccessOperationSemanticFlags.DefaultMember | MemberAccessOperationSemanticFlags.DictionaryAccess,
             assumedBefore, result);
         return result;
@@ -2411,31 +2400,4 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
             MemberAccessExpressionNode { Owner: SimpleNameExpressionNode owner, Member: { } member } => (owner.IdentifierName, member.IdentifierName),
             _ => (null, null),
         };
-
-    private RuntimeSemanticsEvaluationResult EvaluateBinaryOperator(IRuntimeSession session, RuntimeEvaluationContext context, VBBinaryOperatorExpressionNode binaryOperator)
-    {
-        var leftResult = Evaluate(session, binaryOperator.Left, context);
-        if (!leftResult.IsSuccess)
-        {
-            return leftResult;
-        }
-        var rightResult = Evaluate(session, binaryOperator.Right, context);
-        if (!rightResult.IsSuccess)
-        {
-            return rightResult;
-        }
-
-        return OperatorProvider.EvaluateBinaryOperator(session, binaryOperator, leftResult.Result!, rightResult.Result!);
-    }
-
-    private RuntimeSemanticsEvaluationResult EvaluateUnaryOperator(IRuntimeSession session, RuntimeEvaluationContext context, VBUnaryOperatorExpressionNode unaryOperator)
-    {
-        var operandResult = Evaluate(session, unaryOperator.Operand, context);
-        if (!operandResult.IsSuccess)
-        {
-            return operandResult;
-        }
-
-        return OperatorProvider.EvaluateUnaryOperator(session, unaryOperator, operandResult.Result!);
-    }
 }

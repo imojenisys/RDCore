@@ -55,8 +55,12 @@ public sealed class NamespaceMemberAccessStaticSemanticsTests
 
         public World()
         {
+            // LenB(Expression): the one parameter the library declares, which a call gives its argument to.
             LenB = InLibrary(new VBFunctionMemberSymbol(
-                Root, Strings.Uri, "LenB", ScopeKind.Module, SymbolKindExt.Function, VBLongType.TypeInfo, R, R, AccessModifier.Public));
+                Root, Strings.Uri, "LenB", ScopeKind.Module, SymbolKindExt.Function, VBLongType.TypeInfo, R, R, AccessModifier.Public)
+            {
+                Parameters = [new VBParameterSymbol(Root, Strings.Uri, "Expression", R, R, ParameterKind.ImplicitByRef, VBVariantType.TypeInfo)],
+            });
             Counter = new VBModuleFieldVariableMemberSymbol(
                 Root, Util.Uri, "Counter", ScopeKind.Module, VBStringType.TypeInfo, R, R, AccessModifier.Public);
             Reset = new VBFunctionMemberSymbol(
@@ -190,7 +194,9 @@ public sealed class NamespaceMemberAccessStaticSemanticsTests
         // a name it does not declare is a late-bound call to resolve at run time - never a compile-time error.
         var excel = (VBProjectSymbol)new VBProjectSymbol(Root, "Excel").With(SymbolProperties.Library, "Excel");
         var globals = (VBStandardModuleSymbol)new VBStandardModuleSymbol(Root, Root, "Globals").With(SymbolProperties.Library, "Excel");
-        var application = new VBClassModuleSymbol(Root, Root, "Application");
+        // as the library reader declares a library's class: extensible.
+        var application = (VBClassModuleSymbol)new VBClassModuleSymbol(Root, Root, "Application")
+            .With(SymbolProperties.Library, "Excel").With(SymbolProperties.Extensible, true);
         var applicationType = new VBClassType(application, application.DefaultInterfaceMembers);
         var applicationProperty = new VBFunctionMemberSymbol(
             Root, globals.Uri, "Application", ScopeKind.Module, SymbolKindExt.Property, applicationType, R, R, AccessModifier.Public)
