@@ -1,10 +1,17 @@
+using RDCore.Runtime.Execution;
 using RDCore.Runtime.Execution.Frames;
+using System.Buffers;
+using System.Collections.Immutable;
 using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST.Abstract;
+using RDCore.SDK.Model.AST.Expressions;
 using RDCore.SDK.Model.Symbols.Abstract;
+using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Bindings;
+using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
 using RDCore.SDK.Semantics.Binding;
@@ -25,8 +32,26 @@ public sealed partial class RuntimeExpressionEvaluator
     /// <returns><see langword="false"/> when the assignment is not done here, and is to be done the way it always is.</returns>
     internal bool TryAssignUnboxed(IRuntimeSession session, ExpressionNode target, ExpressionNode value, RuntimeEvaluationContext context)
     {
-        if (!UnboxedEvaluation.IsEnabled || Observation is not null || AssumesVariables
-            || BoundVariableOf(session, target, context) is not { } variable
+        if (!UnboxedEvaluation.IsEnabled || Observation is not null || AssumesVariables || target is not SimpleNameExpressionNode)
+        {
+            return false;
+        }
+
+        // MS-VBAL §5.3.1: the name of a function in its own body is its function result variable, which holds a payload of its scalar type (S1.3).
+        var bound = BoundTreeOf(session, target, context);
+        if (bound is BoundName { Symbol: var function } && ResultFrameOf(session, function, context) is { } frame)
+        {
+            if (!TryEvaluatePayload(session, BoundTreeOf(session, value, context), out var result)
+                || !TryConvertPayload(result, ((ITypedSymbol)function).ResolvedType, out var assigned))
+            {
+                return false;
+            }
+
+            frame.AssignResult(assigned);
+            return true;
+        }
+
+        if (bound is not BoundVariable variable
             || BindingOf(session, variable) is not (ScalarCell cell, null)
             || !TryEvaluatePayload(session, BoundTreeOf(session, value, context), out var payload)
             || !TryConvertPayload(payload, cell.Type, out var converted))
@@ -37,6 +62,36 @@ public sealed partial class RuntimeExpressionEvaluator
         cell.Write(converted);
         return true;
     }
+
+    /// <summary>
+    /// Let-assigns <paramref name="value"/>, already evaluated, to <paramref name="target"/> on payloads, when the target is a variable that holds a payload
+    /// and the value is a scalar that converts to its type exactly: what a call returned (IR lowering S1.3).
+    /// </summary>
+    /// <returns><see langword="false"/> when the assignment is not done here, and is to be done the way it always is.</returns>
+    internal bool TryAssignValueUnboxed(IRuntimeSession session, ExpressionNode target, VBTypedValue value, RuntimeEvaluationContext context)
+    {
+        if (!UnboxedEvaluation.IsEnabled || Observation is not null || AssumesVariables
+            || !ScalarPayload.IsScalar(value.TypeInfo) || value is not { IsIndeterminate: false, Handle: ValueBindingHandle boxed }
+            || BoundVariableOf(session, target, context) is not { } variable
+            || BindingOf(session, variable) is not (ScalarCell cell, null)
+            || !ScalarPayload.TryOf(value.TypeInfo, boxed.Value, out var payload)
+            || !TryConvertPayload(payload, cell.Type, out var converted))
+        {
+            return false;
+        }
+
+        cell.Write(converted);
+        return true;
+    }
+
+    // the activation whose function result variable a name in the body of a function is (LetAssignmentEvaluator.Assign has the same test): a function of a
+    // scalar type, whose body this is.
+    private static CallStackFrame? ResultFrameOf(IRuntimeSession session, Symbol symbol, RuntimeEvaluationContext context)
+        => symbol is (VBFunctionMemberSymbol or VBPropertyGetMemberSymbol) and ITypedSymbol { ResolvedType: var type } && ScalarPayload.IsScalar(type)
+            && (ReferenceEquals(symbol.Uri, context.Scope) || symbol.Uri.AbsoluteUri == context.Scope.AbsoluteUri)
+            && session.CallStack.Current is CallStackFrame frame
+                ? frame
+                : null;
 
     /// <summary>
     /// Steps a For loop whose counter holds a payload (MS-VBAL §5.4.2.3): the counter is given its value plus the step, and compared with the end - in
@@ -96,6 +151,95 @@ public sealed partial class RuntimeExpressionEvaluator
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// Calls <paramref name="procedure"/>, a procedure of the workspace every parameter of which is a scalar passed by value, with its arguments evaluated
+    /// on payloads and let-coerced to the parameters' types (IR lowering S1.3): each is what the parameter's cell is made of, and no value is made of any.
+    /// </summary>
+    /// <returns>
+    /// <see langword="false"/> when the call is not made here - before any argument is evaluated with an effect, so it is to be made the way it always is.
+    /// <see langword="true"/> when it was made: <paramref name="result"/> is what it returned, or the error it raised.
+    /// </returns>
+    internal bool TryInvokeScalars(IRuntimeSession session, RuntimeEvaluationContext context, VBTypeMemberSymbol procedure,
+        ImmutableArray<VBParameterSymbol> parameters, ImmutableArray<ExpressionNode> argumentNodes, out RuntimeSemanticsEvaluationResult result)
+    {
+        result = default;
+        if (!UnboxedEvaluation.IsEnabled || Observation is not null || AssumesVariables
+            || parameters.IsDefaultOrEmpty || argumentNodes.IsDefault || argumentNodes.Length != parameters.Length
+            || InvokerOf(procedure) is not { } invoker)
+        {
+            return false;
+        }
+
+        var arguments = ArrayPool<ScalarPayload>.Shared.Rent(parameters.Length);
+        try
+        {
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                if (RuntimeProcedureInvoker.IsByRef(parameter.ParameterKind) || parameter is ParamArrayParameterSymbol || !ScalarPayload.IsScalar(parameter.ResolvedType)
+                    || argumentNodes[i] is NamedArgumentNode or MissingArgumentNode
+                    || !TryEvaluatePayload(session, BoundTreeOf(session, argumentNodes[i], context), out var payload)
+                    || !TryConvertPayload(payload, parameter.ResolvedType, out arguments[i]))
+                {
+                    return false;
+                }
+            }
+
+            result = invoker.InvokeScalars(procedure, arguments.AsSpan(0, parameters.Length));
+            return true;
+        }
+        finally
+        {
+            ArrayPool<ScalarPayload>.Shared.Return(arguments);
+        }
+    }
+
+    // the invoker that runs a procedure of the workspace, called on nothing: the one the binding factory binds it to (a member of anything else is bound
+    // to something else, which is the factory's decision), or the evaluator's own when there is no factory.
+    private RuntimeProcedureInvoker? InvokerOf(VBTypeMemberSymbol procedure)
+        => Bindings is { } bindings
+            ? bindings.ForMember(procedure) is CallableBindingHandle { Invoker: RuntimeProcedureInvoker invoker, Receiver: null } ? invoker : null
+            : ProcedureInvoker as RuntimeProcedureInvoker;
+
+    /// <summary>
+    /// The argument of a <c>ByRef</c> parameter of a scalar type that is a variable of the caller held in a cell of its activation, of the parameter's very
+    /// type: the cell, which the parameter's slot is to hold too (IR lowering S1.3, <see cref="CellReference"/>).
+    /// </summary>
+    /// <returns><see langword="false"/> when the argument is not passed this way, and is to be passed the way it always is.</returns>
+    internal bool TryReferenceCell(IRuntimeSession session, ExpressionNode argument, VBParameterSymbol parameter, RuntimeEvaluationContext context, out IRuntimeValue reference)
+    {
+        reference = null!;
+        if (!UnboxedEvaluation.IsEnabled || Observation is not null || AssumesVariables || parameter is ParamArrayParameterSymbol
+            || BoundVariableOf(session, argument, context) is not { } variable
+            || BindingOf(session, variable) is not (ScalarCell cell, null)
+            || !cell.Type.Equals(parameter.ResolvedType))
+        {
+            return false;
+        }
+
+        reference = new CellReference(cell);
+        return true;
+    }
+
+    /// <summary>
+    /// Evaluates the argument a parameter of a scalar type is passed by value on payloads (MS-VBAL §5.3.1.11), let-coerced to the parameter's type: what the
+    /// parameter's cell is made of, with no value made of it before (IR lowering S1.3).
+    /// </summary>
+    /// <returns><see langword="false"/> when the argument is not evaluated here, and is to be evaluated the way it always is.</returns>
+    internal bool TryEvaluateArgumentUnboxed(IRuntimeSession session, ExpressionNode argument, VBType parameterType, RuntimeEvaluationContext context, out IRuntimeValue value)
+    {
+        value = null!;
+        if (!UnboxedEvaluation.IsEnabled || Observation is not null || AssumesVariables || !ScalarPayload.IsScalar(parameterType)
+            || !TryEvaluatePayload(session, BoundTreeOf(session, argument, context), out var payload)
+            || !TryConvertPayload(payload, parameterType, out var converted))
+        {
+            return false;
+        }
+
+        value = converted.Box();
+        return true;
     }
 
     /// <summary>
