@@ -11,7 +11,9 @@ using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
+using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Model.Values.Runtime;
+using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
 using RDCore.SDK.Semantics.Binding;
@@ -51,16 +53,107 @@ public sealed partial class RuntimeExpressionEvaluator
             return true;
         }
 
-        if (bound is not BoundVariable variable
-            || BindingOf(session, variable) is not (ScalarCell cell, null)
-            || !TryEvaluatePayload(session, BoundTreeOf(session, value, context), out var payload)
-            || !TryConvertPayload(payload, cell.Type, out var converted))
+        if (bound is not BoundVariable variable)
         {
             return false;
         }
 
-        cell.Write(converted);
-        return true;
+        // a String variable - not a fixed-length one, which pads or truncates what it is assigned - is assigned the text as it is (S1.4b).
+        if (variable.Variable is ITypedSymbol { ResolvedType: VBStringType and not VBFixedStringType }
+            && BindingOf(session, variable) is (ValueBindingHandle text, null))
+        {
+            if (!TryEvaluateText(session, BoundTreeOf(session, value, context), out var assigned))
+            {
+                return false;
+            }
+
+            text.Store(assigned, isKnown: true);
+            return true;
+        }
+
+        return BindingOf(session, variable) is (ScalarCell or VariantCell, null) and var (cell, _)
+            && TryEvaluatePayload(session, BoundTreeOf(session, value, context), out var payload)
+            && TryWritePayload(cell, payload);
+    }
+
+    // MS-VBAL §5.6.9.4, §5.6.5: an expression of Strings evaluated to the runtime value of the String it is, with no value made of it (S1.4b): a String
+    // literal, a String variable, parentheses, and two of them joined by & (or by +, of two Strings). A String that ends with a lone byte is the boxed
+    // evaluation's, which joins it byte by byte.
+    private bool TryEvaluateText(IRuntimeSession session, BoundNode node, out VBRuntimeValue<string> text)
+    {
+        text = default;
+        switch (node)
+        {
+            case BoundLiteral { Literal.StaticValue: VBStringValue { RuntimeValue: VBRuntimeValue<string> literal } }:
+                text = literal;
+                return true;
+            case BoundVariable variable:
+                if (BindingOf(session, variable) is (IKnowledgeBinding { IsKnown: true, Value: VBRuntimeValue<string> held }, null))
+                {
+                    text = held;
+                    return true;
+                }
+
+                return false;
+            case BoundUnary { Operation.Token: SDK.Model.Symbols.Operators.OperatorSymbolNames.UnaryArithmeticPrecedenceOp
+                or SDK.Model.Symbols.Operators.OperatorSymbolNames.UnaryLetCoerceOp, Operand: var enclosed }:
+                return TryEvaluateText(session, enclosed, out text);
+            case BoundBinary { Plan: { IsDeferred: false, EffectiveType: VBStringType } plan, Left: var left, Right: var right }
+                when plan.Operator is Tokens.ConcatOp or Tokens.AdditionOp:
+                if (!TryEvaluateText(session, left, out var lhs) || !TryEvaluateText(session, right, out var rhs))
+                {
+                    return false;
+                }
+
+                // vbNullString joins as the zero-length string it reads as: what is joined is never vbNullString (VBStringValue.Concat).
+                text = new VBRuntimeValue<string>(string.Concat(lhs.Value, rhs.Value));
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // MS-VBAL §5.6.9.5: two Strings compared under the comparison mode of the module, as the boxed relational operators compare them
+    // (StringComparisonRules), to a Boolean.
+    private bool TryCompareText(IRuntimeSession session, OperationPlan plan, BoundNode left, BoundNode right, out ScalarPayload result)
+    {
+        result = default;
+        if (!TryEvaluateText(session, left, out var lhs) || !TryEvaluateText(session, right, out var rhs))
+        {
+            return false;
+        }
+
+        var order = session.CurrentStringComparison().Compare(lhs.Value.AsSpan(), rhs.Value.AsSpan());
+        bool? isTrue = plan.Operator switch
+        {
+            Tokens.CompareEqualOp => order == 0,
+            Tokens.CompareNotEqualOp => order != 0,
+            Tokens.CompareLessThanOp => order < 0,
+            Tokens.CompareLessThanOrEqualOp => order <= 0,
+            Tokens.CompareGreaterThanOp => order > 0,
+            Tokens.CompareGreaterThanOrEqualOp => order >= 0,
+            _ => null,
+        };
+
+        result = isTrue is { } value ? ScalarPayload.OfBoolean(value) : default;
+        return isTrue is not null;
+    }
+
+    // a payload written to a cell that holds one: let-coerced exactly to the type of a scalar variable, and as it is to a Variant, which takes the value's
+    // type (MS-VBAL §5.5.1.2.12, S1.4).
+    private static bool TryWritePayload(IBindingHandle cell, ScalarPayload payload)
+    {
+        switch (cell)
+        {
+            case ScalarCell scalar when TryConvertPayload(payload, scalar.Type, out var converted):
+                scalar.Write(converted);
+                return true;
+            case VariantCell { HoldsNoObject: true } variant:
+                variant.Write(payload);
+                return true;
+            default:
+                return false;
+        }
     }
 
     /// <summary>
@@ -73,15 +166,12 @@ public sealed partial class RuntimeExpressionEvaluator
         if (!UnboxedEvaluation.IsEnabled || Observation is not null || AssumesVariables
             || !ScalarPayload.IsScalar(value.TypeInfo) || value is not { IsIndeterminate: false, Handle: ValueBindingHandle boxed }
             || BoundVariableOf(session, target, context) is not { } variable
-            || BindingOf(session, variable) is not (ScalarCell cell, null)
-            || !ScalarPayload.TryOf(value.TypeInfo, boxed.Value, out var payload)
-            || !TryConvertPayload(payload, cell.Type, out var converted))
+            || !ScalarPayload.TryOf(value.TypeInfo, boxed.Value, out var payload))
         {
             return false;
         }
 
-        cell.Write(converted);
-        return true;
+        return BindingOf(session, variable) is (ScalarCell or VariantCell, null) and var (cell, _) && TryWritePayload(cell, payload);
     }
 
     // the activation whose function result variable a name in the body of a function is (LetAssignmentEvaluator.Assign has the same test): a function of a
@@ -106,8 +196,17 @@ public sealed partial class RuntimeExpressionEvaluator
     {
         isOutOfRange = false;
         if (!UnboxedEvaluation.IsEnabled || Observation is not null || AssumesVariables
-            || BoundVariableOf(session, state.ControlExpression, context) is not { } counter
-            || BindingOf(session, counter) is not (ScalarCell cell, null)
+            || BoundVariableOf(session, state.ControlExpression, context) is not { } counter)
+        {
+            return false;
+        }
+
+        if (BindingOf(session, counter) is (VariantCell variant, null))
+        {
+            return TryStepVariantFor(variant, state, out isOutOfRange);
+        }
+
+        if (BindingOf(session, counter) is not (ScalarCell cell, null)
             || !cell.TryRead(out var value)
             || state.Step.IsIndeterminate || state.End.IsIndeterminate
             || !ScalarPayload.TryOf(cell.Type, state.Step.RuntimeValue, out var step) || !ScalarPayload.TryOf(cell.Type, state.End.RuntimeValue, out var end)
@@ -123,6 +222,28 @@ public sealed partial class RuntimeExpressionEvaluator
         return true;
     }
 
+    // a Variant counter (S1.4), which the loop gave a value of the type it counts in (ForLoopEvaluator.Operands): counter + step and the comparison with
+    // the end are Variant operations, planned for what the counter holds - a sum that overflows declines, and the boxed loop widens the counter as MS-VBA
+    // does.
+    private static bool TryStepVariantFor(VariantCell cell, ForLoopState state, out bool isOutOfRange)
+    {
+        isOutOfRange = false;
+        if (!cell.HoldsNoObject || !cell.TryRead(out var value) || state.Step.IsIndeterminate || state.End.IsIndeterminate
+            || !ScalarPayload.IsScalar(state.Step.TypeInfo) || !ScalarPayload.IsScalar(state.End.TypeInfo)
+            || !ScalarPayload.TryOf(state.Step.TypeInfo, state.Step.RuntimeValue, out var step)
+            || !ScalarPayload.TryOf(state.End.TypeInfo, state.End.RuntimeValue, out var end)
+            || !TryOperateBinary(OperationPlanner.ForValues(Tokens.AdditionOp, value.Type, step.Type), value, step, out var sum)
+            || !TryOperateBinary(OperationPlanner.ForValues(state.CountsDown ? Tokens.CompareLessThanOp : Tokens.CompareGreaterThanOp, sum.Type, end.Type),
+                sum, end, out var past))
+        {
+            return false;
+        }
+
+        cell.Write(sum);
+        isOutOfRange = past.IsTrue;
+        return true;
+    }
+
     private bool TryEvaluatePayload(IRuntimeSession session, BoundNode node, out ScalarPayload payload)
     {
         payload = default;
@@ -131,26 +252,53 @@ public sealed partial class RuntimeExpressionEvaluator
             case BoundLiteral literal:
                 return ScalarPayload.TryOf(literal.Literal.StaticValue.TypeInfo, literal.Literal.StaticValue.RuntimeValue, out payload);
             case BoundVariable variable:
-                return BindingOf(session, variable) is (ScalarCell cell, null) && cell.TryRead(out payload);
+                return BindingOf(session, variable) switch
+                {
+                    (ScalarCell cell, null) => cell.TryRead(out payload),
+                    // a Variant's payload is of its subtype (S1.4).
+                    (VariantCell cell, null) => cell.TryRead(out payload),
+                    _ => false,
+                };
             // MS-VBAL §5.6.6: what is in parentheses is a value - of a payload, the payload, whether the parentheses group an operand (the precedence
             // operator) or coerce what they enclose (the let-coercion operator, which converts nothing of a scalar).
             case BoundUnary { Operation.Token: SDK.Model.Symbols.Operators.OperatorSymbolNames.UnaryArithmeticPrecedenceOp
                 or SDK.Model.Symbols.Operators.OperatorSymbolNames.UnaryLetCoerceOp, Operand: var enclosed }:
                 return TryEvaluatePayload(session, enclosed, out payload);
-            case BoundUnary { Plan: { IsDeferred: false, EffectiveType: { } effective } plan, Operand: var operand } when plan.Operator == Tokens.NegationOp:
-                return TryEvaluatePayload(session, operand, out var negated) && TryConvertPayload(negated, effective, out var operandValue)
-                    && TryNegate(operandValue, out payload);
-            case BoundUnary { Plan: { IsDeferred: false, EffectiveType: { } effective } plan, Operand: var operand } when plan.Operator == Tokens.LogicalNotOp:
-                return TryEvaluatePayload(session, operand, out var inverted) && TryConvertPayload(inverted, effective, out var bits)
-                    && TryNot(bits, out payload);
-            case BoundBinary { Plan: { IsDeferred: false, OperandDestination: { } destination } plan, Left: var left, Right: var right }:
+            case BoundUnary { Plan: { } plan, Operand: var operand } when plan.Operator is Tokens.NegationOp or Tokens.LogicalNotOp:
+                return TryEvaluatePayload(session, operand, out var value) && TryOperateUnary(PlanFor(plan, value), value, out payload);
+            // two Strings compared (S1.4b).
+            case BoundBinary { Plan: { IsDeferred: false, EffectiveType: VBStringType } plan, Left: var left, Right: var right }:
+                return TryCompareText(session, plan, left, right, out payload);
+            case BoundBinary { Plan: { } plan, Left: var left, Right: var right }:
                 return TryEvaluatePayload(session, left, out var lhs) && TryEvaluatePayload(session, right, out var rhs)
-                    && TryConvertPayload(lhs, destination, out var l) && TryConvertPayload(rhs, destination, out var r)
-                    && (TryOperate(plan.Operator, plan.EffectiveType!, l, r, out payload) || TryCompare(plan.Operator, l, r, out payload)
-                        || TryLogical(plan.Operator, plan.EffectiveType!, l, r, out payload));
+                    && TryOperateBinary(PlanFor(plan, lhs, rhs), lhs, rhs, out payload);
             default:
                 return false;
         }
+    }
+
+    // MS-VBAL §5.6.9: a plan that depends on what a Variant operand holds is made again for the types of the payloads (S1.4) - the value types the
+    // boxed evaluation makes it for (PlanExecutor); any other plan is final.
+    private static OperationPlan PlanFor(OperationPlan plan, ScalarPayload operand)
+        => plan.IsDeferred ? OperationPlanner.ForValue(plan.Operator, operand.Type) : plan;
+
+    private static OperationPlan PlanFor(OperationPlan plan, ScalarPayload left, ScalarPayload right)
+        => plan.IsDeferred ? OperationPlanner.ForValues(plan.Operator, left.Type, right.Type) : plan;
+
+    private static bool TryOperateUnary(OperationPlan plan, ScalarPayload operand, out ScalarPayload result)
+    {
+        result = default;
+        return plan.EffectiveType is { } effective && TryConvertPayload(operand, effective, out var converted)
+            && (plan.Operator == Tokens.NegationOp ? TryNegate(converted, out result) : TryNot(converted, out result));
+    }
+
+    private static bool TryOperateBinary(OperationPlan plan, ScalarPayload lhs, ScalarPayload rhs, out ScalarPayload result)
+    {
+        result = default;
+        return plan.OperandDestination is { } destination
+            && TryConvertPayload(lhs, destination, out var l) && TryConvertPayload(rhs, destination, out var r)
+            && (TryOperate(plan.Operator, plan.EffectiveType!, l, r, out result) || TryCompare(plan.Operator, l, r, out result)
+                || TryLogical(plan.Operator, plan.EffectiveType!, l, r, out result));
     }
 
     /// <summary>
