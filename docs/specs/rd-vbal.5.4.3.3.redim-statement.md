@@ -63,8 +63,8 @@ dial rather than something the statement wrote.
 |A `Variant` holding nothing yet|Becomes an array. The static rule admits a `Variant` target so that it can become an array, so the `Empty` a `Variant` starts as is not the error below.|
 |A `Variant` holding anything else|Runtime error 13, `Type mismatch`.|
 
-Each bound is Let-coerced to `Integer`, as any other subscript is. An upper bound below its lower bound is
-runtime error 9, `Subscript out of range`.
+Each bound is Let-coerced to `Long`, as any other subscript is ([**RD-VBAL §5.6.13**](rd-vbal.5.6.13.index-expressions.md#subscripts)). An upper bound below its
+lower bound is runtime error 9, `Subscript out of range`.
 
 Without `Preserve`, every element of the re-dimensioned array is its element type's default value.
 
@@ -88,6 +88,10 @@ formal parameter"). An array is locked, as MS-VBA has it, while an activation on
 while a `For Each` over it runs; the lock is gone once the call returns, or the loop is over
 ([ICallStackFrame](../api/RDCore.SDK.Runtime.Abstract.Execution.ICallStackFrame.html)`.LocksArray`). A locked array is not erased either, nor assigned another
 array (`arr = other`): error 10 too.
+
+A fixed-size array can't be re-dimensioned either. A `ReDim` of one is a compile error where it is declared, but a
+resizable array parameter can be bound to one ([**RD-VBAL §5.3.1.11**](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)):
+a `ReDim` of that parameter, with `Preserve` or without, is runtime error 10, and the array keeps its bounds.
 
 > [!IMPORTANT]
 > The whole array passed by reference does **not** lock it, which is what MS-VBA does (recorded in Excel) and not how §5.4.3.3 reads: the parameter is another

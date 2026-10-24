@@ -1525,6 +1525,12 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
     /// <param name="arguments">The subscript expressions, one per dimension.</param>
     /// <param name="subscripts">What each evaluated to; empty when evaluating failed.</param>
     /// <returns>The error or internal error that stopped it, or <see langword="null"/> when every subscript has a value.</returns>
+    /// <remarks>
+    /// Each subscript is let-coerced to <c>Long</c>, as a bound is (<see cref="Statements.ArrayBoundEvaluator"/>): MS-VBAL §5.6.13 only says it selects
+    /// the element when it is within its dimension, and MS-VBA rounds a <c>Double</c> to even, reads a <c>String</c> as a number, a <c>Boolean</c> as
+    /// <c>0</c>/<c>-1</c>, <c>Empty</c> as <c>0</c>, and raises 6 past the range of a <c>Long</c>, 13 for text that is no number and 94 for <c>Null</c>
+    /// (recorded in Excel, grid <c>oracle\s16</c>).
+    /// </remarks>
     public RuntimeSemanticsEvaluationResult? EvaluateSubscripts(
         IRuntimeSession session, RuntimeEvaluationContext context, ImmutableArray<ExpressionNode> arguments, out int[] subscripts)
         => EvaluateSubscripts(session, context, arguments, out subscripts, out _);
@@ -1548,12 +1554,41 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
                 return failed;
             }
 
-            if (argumentResult is null || !TryGetIntegralSubscript(argumentResult.Value.Result, out var subscript))
+            if (argumentResult is null)
             {
                 return RuntimeSemanticsEvaluationResult.InternalError();
             }
 
-            isKnown &= !argumentResult.Value.Result!.IsIndeterminate;
+            var value = argumentResult.Value.Result!;
+            if (!TryGetIntegralSubscript(value, out var subscript))
+            {
+                if (LetCoercionProvider is null)
+                {
+                    return RuntimeSemanticsEvaluationResult.InternalError();
+                }
+
+                var frame = new LetCoercionStackFrame(arguments[i].Identity, InputIndex.CoercionSourceValue,
+                    value, new VBTypeDescValue(VBLongType.TypeInfo), ConversionSite.Subscript);
+                var coerced = LetCoercionProvider.EvaluateLetCoercionSemantics(session.Symbols.Resolver, arguments[i], frame);
+                if (!coerced.IsApplicable)
+                {
+                    return RuntimeSemanticsEvaluationResult.InternalError();
+                }
+
+                if (!coerced.IsSuccess)
+                {
+                    return RuntimeSemanticsEvaluationResult.Error(coerced.ErrorInfo!);
+                }
+
+                if (!TryGetIntegralSubscript(coerced.Result, out subscript))
+                {
+                    return RuntimeSemanticsEvaluationResult.InternalError();
+                }
+
+                value = coerced.Result!;
+            }
+
+            isKnown &= !value.IsIndeterminate;
             evaluated[i] = subscript;
         }
 
@@ -2280,9 +2315,13 @@ public sealed partial class RuntimeExpressionEvaluator(IOperatorRuntimeSemantics
     }
 
     // whether a variable of this declared type is one a ByRef parameter can be bound to without a copy: one of the parameter's own declared type, an
-    // enumeration being the declared type Long (MS-VBAL §5.2.3.4), so a variable of one and a Long parameter, or two enumerations, are the same type.
+    // enumeration being the declared type Long (MS-VBAL §5.2.3.4), so a variable of one and a Long parameter, or two enumerations, are the same type. An
+    // array's declared type is an array of its element type, whether it has fixed bounds or none (§5.2.3.1.3): a fixed-size array is passed to an
+    // `A() As Long` parameter by reference, as a resizable one is. The element types match as they are: an array of an Enum is no array of Long.
     private static bool IsOfDeclaredType(VBParameterSymbol parameter, VBType variableType)
-        => VBEnumType.AsDeclaredType(parameter.ResolvedType).Equals(VBEnumType.AsDeclaredType(variableType));
+        => (parameter.ResolvedType, variableType) is (VBArrayType parameterArray, VBArrayType variableArray)
+            ? parameterArray.ItemType.Equals(variableArray.ItemType)
+            : VBEnumType.AsDeclaredType(parameter.ResolvedType).Equals(VBEnumType.AsDeclaredType(variableType));
 
     // MS-VBAL §5.3.1.11: a Variant parameter given a variable of another type is bound to it, and the binding knows what the variable is declared to be - the
     // binding reads as a Variant, and is assigned as that type. A parameter of the variable's own type needs nothing more than the address.

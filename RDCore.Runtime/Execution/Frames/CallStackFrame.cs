@@ -37,6 +37,7 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
     private Dictionary<SemanticId, MemoryAddress>? _byRefAliases;
     private Dictionary<SemanticId, VBType>? _referencedTypes;
     private Dictionary<int, VBTypedValue>? _blockState;
+    private Dictionary<int, ScalarPayload>? _selectorPayloads;
     private Dictionary<int, ForLoopState>? _forLoopState;
     private Dictionary<int, ForEachState>? _forEachState;
     private Stack<int>? _goSubReturns;
@@ -140,7 +141,7 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
     }
 
     private ValueBindingHandle? _resultCell;
-    private Dictionary<int, (int End, ValueBindingHandle Cell)>? _blockHolders;
+    private Dictionary<int, (int? End, ValueBindingHandle Cell)>? _blockHolders;
 
     /// <summary>
     /// The cell of the function result variable, which holds the objects the result does while the activation runs
@@ -154,10 +155,11 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
     public bool HasResultCell => _resultCell is not null;
 
     /// <summary>
-    /// The cell that holds what the block opened at <paramref name="openerOffset"/> holds for as long as it runs - a <c>With</c>'s target, a
-    /// <c>For Each</c>'s enumerator - which ends at <paramref name="end"/>, the offset right past the block.
+    /// The cell that holds what the block opened at <paramref name="openerOffset"/> holds for as long as it runs - a <c>For Each</c>'s enumerator,
+    /// which ends at <paramref name="end"/>, the offset right past the block; a <c>With</c>'s target, which is held until its <c>End With</c> lets go of it
+    /// (<see cref="TakeBlockHolder"/>), wherever the program jumps meanwhile: <paramref name="end"/> is <see langword="null"/>.
     /// </summary>
-    public ValueBindingHandle BlockHolder(int openerOffset, int end)
+    public ValueBindingHandle BlockHolder(int openerOffset, int? end)
     {
         _blockHolders ??= [];
         if (!_blockHolders.TryGetValue(openerOffset, out var holder))
@@ -183,7 +185,7 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
         List<ValueBindingHandle>? left = null;
         foreach (var (opener, (end, cell)) in _blockHolders)
         {
-            if (pc is not { } at || at < opener || at >= end)
+            if (pc is not { } at || (end is { } blockEnd && (at < opener || at >= blockEnd)))
             {
                 (left ??= []).Add(cell);
                 _blockHolders.Remove(opener);
@@ -194,17 +196,54 @@ public sealed record class CallStackFrame(SyntaxNodeId NodeId, StaticSymbol Stat
     }
 
     /// <summary>
+    /// Takes away the holder of the block opened at <paramref name="openerOffset"/>, for what it holds to be let go of: a <c>With</c>'s, at its
+    /// <c>End With</c>.
+    /// </summary>
+    /// <returns>The holder; <see langword="null"/> when the block holds nothing.</returns>
+    public ValueBindingHandle? TakeBlockHolder(int openerOffset)
+        => _blockHolders is not null && _blockHolders.Remove(openerOffset, out var holder) ? holder.Cell : null;
+
+    /// <summary>
+    /// Forgets the hidden state of the block opened at <paramref name="openerOffset"/>: a <c>With</c>'s target, after its <c>End With</c>.
+    /// </summary>
+    public void ClearBlockState(int openerOffset)
+    {
+        _ = _blockState?.Remove(openerOffset);
+        _ = _selectorPayloads?.Remove(openerOffset);
+    }
+
+    /// <summary>
     /// Stashes <paramref name="value"/> as this activation's hidden state for the block-opening
     /// instruction at <paramref name="openerOffset"/> — a <c>With</c>'s target, a <c>Select Case</c>'s
     /// selector.
     /// </summary>
-    public void SetBlockState(int openerOffset, VBTypedValue value) => (_blockState ??= [])[openerOffset] = value;
+    public void SetBlockState(int openerOffset, VBTypedValue value)
+    {
+        (_blockState ??= [])[openerOffset] = value;
+        _ = _selectorPayloads?.Remove(openerOffset);
+    }
 
     /// <inheritdoc/>
     public bool TryGetBlockState(int openerOffset, [NotNullWhen(true)][MaybeNullWhen(false)] out VBTypedValue? value)
     {
         value = null;
         return _blockState is not null && _blockState.TryGetValue(openerOffset, out value);
+    }
+
+    /// <summary>
+    /// Stashes a <c>Select Case</c>'s selector evaluated on payloads (IR lowering S1.6), in place of the value <see cref="SetBlockState"/> would stash: the
+    /// <c>Case</c> headers compare it as it is, and make a value of it only for a clause compared boxed.
+    /// </summary>
+    internal void SetSelectorPayload(int openerOffset, ScalarPayload selector)
+    {
+        (_selectorPayloads ??= [])[openerOffset] = selector;
+        _ = _blockState?.Remove(openerOffset);
+    }
+
+    internal bool TryGetSelectorPayload(int openerOffset, out ScalarPayload selector)
+    {
+        selector = default;
+        return _selectorPayloads is not null && _selectorPayloads.TryGetValue(openerOffset, out selector);
     }
 
     /// <summary>

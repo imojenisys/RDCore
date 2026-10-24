@@ -73,6 +73,13 @@ public sealed record class ArrayStatementRuntimeSemantics(
             return Failed(redim, VBRuntimeErrorId.ThisArrayIsFixedOrTemporarilyLocked, $"{redim.Name} is locked");
         }
 
+        // a resizable array parameter bound to a fixed-size array (a ReDim of the array itself is a compile error) can't resize it: MS-VBA raises 10, the
+        // array keeping its bounds - with Preserve too (recorded in Excel, grid oracle\s16 B02, B08). A Variant that holds a copy of one is resized.
+        if (target.Current is VBFixedSizeArrayValue)
+        {
+            return Failed(redim, VBRuntimeErrorId.ThisArrayIsFixedOrTemporarilyLocked, $"{redim.Name} is fixed");
+        }
+
         if (!TryEvaluateBounds(session, context, redim, out var bounds, out var boundsKnown, out var failure))
         {
             return failure;
@@ -103,9 +110,10 @@ public sealed record class ArrayStatementRuntimeSemantics(
                 Resized(session, bounds, stated ?? (array.IsInitialized ? array.ItemType : DeclaredItemType(target, array.ItemType)))));
     }
 
-    // an array of the new bounds, each element its default data value: a record's as a declared variable of it starts (IVariableDefaults).
+    // an array of the new bounds, each element its default data value: a record's as a declared variable of it starts, in the cell the runtime keeps an
+    // element of its type in (IVariableDefaults).
     private static VBResizableArrayValue Resized(IRuntimeSession session, (int LBound, int UBound)[] bounds, VBType itemType)
-        => new(bounds, itemType, session.Symbols.Defaults?.ElementDefaultOf(itemType));
+        => new(bounds, itemType, session.Symbols.Defaults?.ElementDefaultOf(itemType), session.Symbols.Defaults?.ElementCellOf(itemType));
 
     // MS-VBAL 5.4.3.3: a <redim-untyped-dcl> "has the same static semantics as if the text of its elements were parsed as an <untyped-variable-dcl>",
     // and a <redim-typed-variable-dcl> as a <typed-variable-dcl>: the As clause, or the type character, is the type of the elements. A variable declared
@@ -260,9 +268,11 @@ public sealed record class ArrayStatementRuntimeSemantics(
         // caller shares, and an element written in place through its handle would write the default of every other.
         var held = ObjectReferences.HeldBy(InvalidBindingHandle.Default, array);
         var initial = array.ItemType.DefaultValue;
+        var elementCell = session.Symbols.Defaults?.ElementCellOf(array.ItemType);
         foreach (var subscripts in Subscripts(array))
         {
-            array.TrySetElement(initial.Handle is ValueBindingHandle ? BindingKnowledge.NewCell(initial.RuntimeValue, isKnown: true) : initial.Handle, subscripts);
+            array.TrySetElement(elementCell?.Invoke()
+                ?? (initial.Handle is ValueBindingHandle ? BindingKnowledge.NewCell(initial.RuntimeValue, isKnown: true) : initial.Handle), subscripts);
         }
 
         ObjectReferences.Release(session, held);
