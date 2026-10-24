@@ -15,6 +15,7 @@ using RDCore.SDK.Runtime.Abstract.StdLib;
 using RDCore.SDK.Runtime.StdLib;
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace RDCore.Runtime.StdLib;
 
@@ -36,8 +37,27 @@ namespace RDCore.Runtime.StdLib;
 /// </remarks>
 public sealed class StdLibDispatcher : IExternalCallProvider
 {
-    private readonly ImmutableDictionary<string, MethodInfo> _methods;
+    private readonly ImmutableDictionary<string, MemberDescriptor> _methods;
+    private readonly ConditionalWeakTable<VBTypeMemberSymbol, CallDescriptor> _calls = new();
     private readonly ImmutableDictionary<Type, object> _implementations;
+
+    private enum MarshallerKind { Typed, Variant, Enum }
+
+    private sealed record ParameterDescriptor(
+        Type ParameterType, bool IsOptional, bool HasDefaultValue, object? DefaultValue,
+        bool IsParamArray, Type? ElementType, bool ElementsAreVariants, MarshallerKind Marshaller)
+    {
+        public static ParameterDescriptor Create(ParameterInfo parameter)
+        {
+            var type = parameter.ParameterType;
+            return new(type, parameter.IsOptional, parameter.HasDefaultValue, parameter.DefaultValue,
+                parameter.GetCustomAttribute<ParamArrayAttribute>() is not null, type.GetElementType(), type.GetElementType() == typeof(VBVariantValue),
+                type.IsEnum ? MarshallerKind.Enum : type == typeof(VBVariantValue) ? MarshallerKind.Variant : MarshallerKind.Typed);
+        }
+    }
+
+    private sealed record MemberDescriptor(MethodInfo Method, ImmutableArray<ParameterDescriptor> Parameters);
+    private sealed record CallDescriptor(MemberDescriptor Member, bool HasReceiver);
 
     /// <summary>
     /// The dispatcher for <paramref name="session"/>, over every standard-library implementation there is.
@@ -94,7 +114,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     {
         _implementations = implementations.ToImmutableDictionary();
 
-        var methods = ImmutableDictionary.CreateBuilder<string, MethodInfo>(StringComparer.Ordinal);
+        var methods = ImmutableDictionary.CreateBuilder<string, MemberDescriptor>(StringComparer.Ordinal);
         foreach (var (declaringType, _) in implementations)
         {
             foreach (var method in declaringType.GetMethods())
@@ -107,7 +127,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
                         "member is identified by its name and arity, so these two cannot be told apart.");
                 }
 
-                methods.Add(key, method);
+                methods.Add(key, new MemberDescriptor(method, [.. method.GetParameters().Select(ParameterDescriptor.Create)]));
             }
         }
 
@@ -129,13 +149,20 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     public RuntimeSemanticsEvaluationResult Dispatch(ExternalCallRequest request, ISymbolResolver resolver)
     {
         var target = request.Member.GetProperty(SymbolProperties.ExternalTarget)!;
-        if (!_methods.TryGetValue(target, out var method)
-            || !_implementations.TryGetValue(method.DeclaringType!, out var implementation))
+        if (!_methods.TryGetValue(target, out var member)
+            || !_implementations.TryGetValue(member.Method.DeclaringType!, out var implementation))
         {
             return NotImplemented(request, "nothing implements it yet");
         }
 
-        if (!TryMarshalArguments(method, request, resolver, out var arguments))
+        // The target identifies the declaration; the receiver belongs to the symbol supplied by the caller.
+        // Keep that part per symbol so direct callers with different parameter lists do not share it.
+        if (!_calls.TryGetValue(request.Member, out var call))
+        {
+            call = DescribeCall(request.Member, member);
+        }
+
+        if (!TryMarshalArguments(call, request, resolver, out var arguments))
         {
             return RuntimeSemanticsEvaluationResult.Error(VBRuntimeErrorInfo.For(
                 VBRuntimeErrorId.InvalidProcedureCallOrArgument, request.CallSite,
@@ -146,17 +173,20 @@ public sealed class StdLibDispatcher : IExternalCallProvider
         // whole class, and what is in a collection is the collection's.
         if (implementation is IStdLibReceiverBound bound)
         {
-            bound.Receiver = HasReceiver(request.Member) && TypedValue(request.Arguments[0]) is VBObjectValue receiver ? receiver.Value : null;
+            bound.Receiver = call.HasReceiver && TypedValue(request.Arguments[0]) is VBObjectValue receiver ? receiver.Value : null;
         }
 
         // an implementation returns the outcome rather than throwing, the same as the rest of the semantics
         // layer - so an exception escaping one is a bug in it, not a program error, and must not be dressed
         // up as one.
-        var returned = method.Invoke(implementation, arguments);
+        var returned = call.Member.Method.Invoke(implementation, arguments);
         return returned is IRuntimeSemanticsEvaluationResult result
             ? new RuntimeSemanticsEvaluationResult(result.Result, result.ErrorInfo)
             : RuntimeSemanticsEvaluationResult.InternalError();
     }
+
+    private CallDescriptor DescribeCall(VBTypeMemberSymbol symbol, MemberDescriptor member)
+        => _calls.GetValue(symbol, key => new CallDescriptor(member, HasReceiver(key)));
 
     // MS-VBAL 6.1.3.2.1.2's "Application-defined or object-defined error" is what VBA says about a member it
     // has no answer for, and it is the honest answer here too: the symbol resolves, the call is well-formed,
@@ -169,7 +199,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     // a variable passed to a ByRef parameter (StdLibByRefAttribute) arrives as its address: what the member is given is the value the variable holds, read
     // as the variable is declared - a Variant, or what a Variant parameter was given instead (VBRuntimeReference.DeclaredType), which it is told of.
     private static bool TryDereference(
-        IRuntimeValue argument, ParameterInfo parameter, VBParameterSymbol? symbol, ISymbolResolver resolver, out object? marshalled)
+        IRuntimeValue argument, ParameterDescriptor parameter, VBParameterSymbol? symbol, ISymbolResolver resolver, out object? marshalled)
     {
         marshalled = null;
         if (argument is not VBRuntimeReference reference || symbol is null || !resolver.TryRead(reference.Value, out var handle))
@@ -178,7 +208,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
         }
 
         var value = (reference.DeclaredType ?? symbol.ResolvedType).CreateValue(handle);
-        marshalled = parameter.ParameterType == typeof(VBVariantValue)
+        marshalled = parameter.Marshaller == MarshallerKind.Variant
             ? (value as VBVariantValue ?? new VBVariantValue(value)) with { ReferencedType = reference.DeclaredType }
             : value;
         return parameter.ParameterType.IsInstanceOfType(marshalled);
@@ -186,15 +216,15 @@ public sealed class StdLibDispatcher : IExternalCallProvider
 
     // the reader built each parameter's declared type from the method's own, so this runs that backwards: a
     // VBTypedValue parameter takes the argument as it is, and a CLR enum parameter takes its numeric value.
-    private static bool TryMarshalArguments(MethodInfo method, ExternalCallRequest request, ISymbolResolver resolver, out object?[] arguments)
+    private static bool TryMarshalArguments(CallDescriptor call, ExternalCallRequest request, ISymbolResolver resolver, out object?[] arguments)
     {
-        var parameters = method.GetParameters();
+        var parameters = call.Member.Parameters;
         arguments = new object?[parameters.Length];
 
         // a member of a class is called on an object, which arrives as the implicit Me at parameter 0. The
         // library's classes keep no state in the receiver - the error object is a view of the session's - so the
         // implementation is written without it, and it is the arguments after it that marshal.
-        var hasReceiver = HasReceiver(request.Member);
+        var hasReceiver = call.HasReceiver;
         var supplied = hasReceiver ? request.Arguments[1..] : request.Arguments;
         var symbols = RuntimeProcedureInvoker.GetParameters(request.Member);
         symbols = hasReceiver ? symbols.RemoveAt(0) : symbols;
@@ -250,12 +280,12 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     // called. An optional one takes the default its symbol states as a literal - an enumeration constant, or a StdLibDefaultAttribute's
     // value, so that Split told nothing is told Limit -1, as it would be from source - and otherwise the implementation's own default:
     // null, the "Missing" its signature declares.
-    private static bool TryOmit(ParameterInfo parameter, VBParameterSymbol? symbol, out object? omitted)
+    private static bool TryOmit(ParameterDescriptor parameter, VBParameterSymbol? symbol, out object? omitted)
     {
         omitted = null;
-        if (parameter.GetCustomAttribute<ParamArrayAttribute>() is not null)
+        if (parameter.IsParamArray)
         {
-            omitted = System.Array.CreateInstance(parameter.ParameterType.GetElementType()!, 0);
+            omitted = System.Array.CreateInstance(parameter.ElementType!, 0);
             return true;
         }
 
@@ -266,7 +296,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
 
         if (parameter.DefaultValue is null && symbol?.DefaultValue is LiteralExpressionNode { StaticValue: { } stated })
         {
-            return TryMarshal(stated.RuntimeValue, parameter.ParameterType, out omitted);
+            return TryMarshalValue(stated.RuntimeValue, parameter, out omitted);
         }
 
         omitted = parameter.HasDefaultValue ? parameter.DefaultValue : null;
@@ -275,11 +305,11 @@ public sealed class StdLibDispatcher : IExternalCallProvider
 
     // a ParamArray arrives as the one array the caller collected the rest of its arguments into, and is declared as `params`:
     // what the implementation takes is an array of the element type, each element a Variant.
-    private static bool TryMarshal(IRuntimeValue argument, ParameterInfo parameter, out object? marshalled)
+    private static bool TryMarshal(IRuntimeValue argument, ParameterDescriptor parameter, out object? marshalled)
     {
-        if (parameter.GetCustomAttribute<ParamArrayAttribute>() is null)
+        if (!parameter.IsParamArray)
         {
-            return TryMarshal(argument, parameter.ParameterType, out marshalled);
+            return TryMarshalValue(argument, parameter, out marshalled);
         }
 
         marshalled = null;
@@ -288,12 +318,12 @@ public sealed class StdLibDispatcher : IExternalCallProvider
             return false;
         }
 
-        var elementType = parameter.ParameterType.GetElementType()!;
+        var elementType = parameter.ElementType!;
         var elements = System.Array.CreateInstance(elementType, collected.Length);
         for (var index = 0; index < collected.Length; index++)
         {
             if (collected.ElementAt(index) is not { } element
-                || (elementType == typeof(VBVariantValue) ? element as VBVariantValue ?? new VBVariantValue(element) : element) is not { } converted
+                || (parameter.ElementsAreVariants ? element as VBVariantValue ?? new VBVariantValue(element) : element) is not { } converted
                 || !elementType.IsInstanceOfType(converted))
             {
                 return false;
@@ -310,11 +340,12 @@ public sealed class StdLibDispatcher : IExternalCallProvider
     private static bool HasReceiver(VBTypeMemberSymbol member)
         => RuntimeProcedureInvoker.GetParameters(member) is [{ Name: "Me", ParameterKind: ParameterKind.ImplicitByRef }, ..];
 
-    private static bool TryMarshal(IRuntimeValue argument, Type parameterType, out object? marshalled)
+    private static bool TryMarshalValue(IRuntimeValue argument, ParameterDescriptor parameter, out object? marshalled)
     {
+        var parameterType = parameter.ParameterType;
         marshalled = null;
 
-        if (parameterType.IsEnum)
+        if (parameter.Marshaller == MarshallerKind.Enum)
         {
             marshalled = Enum.ToObject(parameterType, Convert.ToInt64(argument.BoxedValue));
             return true;
@@ -324,7 +355,7 @@ public sealed class StdLibDispatcher : IExternalCallProvider
         // storage - a boxed double for a Double, a boxed short for an Integer - and the typed value it is the
         // storage of is all there is left to recover. One that is still the wrong type is a coercion the
         // caller was supposed to have done, not something to do quietly here.
-        marshalled = parameterType == typeof(VBVariantValue) ? Variant(argument) : TypedValue(argument);
+        marshalled = parameter.Marshaller == MarshallerKind.Variant ? Variant(argument) : TypedValue(argument);
         return marshalled is not null && parameterType.IsInstanceOfType(marshalled);
     }
 

@@ -508,6 +508,33 @@ public sealed class StdLibDispatchTests
     }
 
     [TestMethod]
+    public void AReceiverIsDeterminedByTheCallingSymbol_ForTheSameTarget()
+    {
+        var (dispatcher, implementation, total) = Omittable("Total");
+        var instance = total with
+        {
+            Parameters = [new VBParameterSymbol(Root, total.Uri, "Me", SourceRange.Empty, SourceRange.Empty,
+                ParameterKind.ImplicitByRef, VBObjectType.TypeInfo), .. total.Parameters],
+        };
+        var one = new VBLongValue(1).RuntimeValue;
+        var resolver = Substitute.For<ISymbolResolver>();
+
+        foreach (var request in new[]
+        {
+            new ExternalCallRequest(total, [one]),
+            new ExternalCallRequest(instance, [one, one]),
+            new ExternalCallRequest(total, [one]),
+            new ExternalCallRequest(instance, [one, one]),
+        })
+        {
+            var result = dispatcher.Dispatch(request, resolver);
+            Assert.IsTrue(result.IsSuccess, result.ErrorInfo?.Verbose);
+        }
+
+        implementation.Received(4).Total(Arg.Is<VBLongValue>(first => first.Value == 1), Arg.Is<VBVariantValue[]>(rest => rest.Length == 0));
+    }
+
+    [TestMethod]
     public void AnOptionCompareLeftOutByADirectCaller_IsTheDeclaredDefault()
     {
         // a direct caller has no calling module, so there is no Option Compare to take: the declaration's own vbBinaryCompare stands.
