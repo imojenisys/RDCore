@@ -94,6 +94,7 @@ This catalogue is intended to document every platform capability the SDK defines
 |[`CliCommand`](../api/RDCore.SDK.Client.CliCommand.html)|_(none: in-process CLI dispatch)_|`ClientApp`, `Extension`|Advertises that the declaring component contributes `rdc.exe` command-mode verbs. The CLI (`rdc.exe`) declares it for its native verbs. An extension declares it so that `rdc.exe describe-ext` records the capability in the extension's manifest (see [**RD-VBAL §1.1.5** Extension Manifest](rd-vbal.1.1.5.extension-manifest.md)).|
 |[`DiagnoseDocument`](../api/RDCore.SDK.Client.DiagnoseDocument.html)|`rdcore/diagnostics/document`|`Extension`|Advertised by a _diagnostics provider_: a platform extension whose manifest advertises this capability. A provider declares it with `[assembly: ProvidesCorePlatformClientCapability<DiagnoseDocument>]` (see [below](#rdcorediagnosticsdocument)).|
 |[`SessionInteraction`](../api/RDCore.SDK.Client.SessionInteraction.html)|`rdcore/session/interaction/msgBox`, `.../inputBox`|`LanguageServer`|Relays the dialogs a program opens (`MsgBox`, `InputBox`) to a client that expects this capability, which answers them. The interactive shell expects it, and asks at its console (see [below](#rdcoresessioninteraction)).|
+|[`SessionCompletion`](../api/RDCore.SDK.Client.SessionCompletion.html)|`rdcore/session/completion`|`LanguageServer`|Lists what can be written at a position of a module the client supplies, with the list `textDocument/completion` answers with. For a line typed at a prompt, which is in no document (see [below](#textdocumentcompletion-and-rdcoresessioncompletion)).|
 
 > [!NOTE]
 > The handshake for every capability listed is _informational_ (see [**RD-VBAL §2.0.2.1** The `rdcore/platform/initialize` handshake](#2021-the-rdcoreplatforminitialize-handshake)).
@@ -126,6 +127,26 @@ The interactive shell renders a run-time error from this result, as:
 - `Err.Source`;
 - the stack trace.
 
+### `textDocument/completion` and `rdcore/session/completion`
+
+The language server answers `textDocument/completion` (**LSP 3.17** §Completion Request) for the documents it holds, a `.rdc` program included. Its trigger characters are `.` and `!`. The list is complete (`isIncomplete = false`): a client narrows it by what is typed after it. Items are not resolved (`resolveProvider = false`).
+
+What the list offers depends on the text of the line before the cursor ([`CompletionSite`](../api/RDCore.SDK.Model.Symbols.Completion.CompletionSite.html)):
+
+|Written|Offered|
+|---|---|
+|A name|The names visible from the procedure the cursor is in, nearest first: its locals and parameters, the module's members, the project's, the libraries', the standard library's. A name declared nearer shadows one declared farther. Then the expression keywords, and the statement keywords where a statement starts.|
+|A member, after `.` or `!`|The members of the type of the expression before it (`w.Grow(2).Parts.`), or the members of the project or module it names (`VBA.`, `Module1.`). After a `.` with nothing before it, the members of the object of the enclosing `With` block.|
+|A type, after `As`|The intrinsic types, and the classes, user-defined types and Enums the project and the libraries declare.|
+|A class, after `New`|The classes that can be created.|
+|In a comment or a string literal|Nothing.|
+
+A `Private` member is offered only in its own module. A member a library hides (`VB_MemberFlags`) is never offered.
+
+The line being typed seldom parses. The language server takes it out of the module before the module is parsed. For a member access, it puts it back as an assignment of the expression the member is accessed on, whose type comes from the static semantics. The module is composed with the rest of the workspace and the referenced libraries. Nothing of it is sent to the environment host.
+
+`rdcore/session/completion` ([`SessionCompletionParams`](../api/RDCore.SDK.Platform.Protocol.SessionCompletionParams.html)) answers the same list for a module the client supplies with its source. The module stands for the workspace module of the same name. The interactive shell asks it for the line at its prompt, which is not in the program until it is entered.
+
 ### `rdcore/session/interaction`
 
 A program runs in the environment host; the person it asks is at a client. A `MsgBox` or an `InputBox` travels in two hops, and the program waits for the answer as it waits for a dialog:
@@ -135,7 +156,7 @@ A program runs in the environment host; the person it asks is at a client. A `Ms
 
 The request carries the lines the program completed before it opened the dialog (`Output`), so that the client shows them first; they are not repeated in the answer to `rdcore/session/execute`. An `InputBox` that was cancelled answers `Cancelled = true`, which the program is told with `vbNullString`.
 
-The interactive shell draws a `MsgBox` as its message and a row of buttons, chosen with the arrow keys, <kbd>Tab</kbd>, <kbd>Enter</kbd>, or a button's key. An `InputBox` is its message and a line to type on, which starts with the default text selected. <kbd>Esc</kbd> closes either at window level.
+The interactive shell draws a dialog as a box with a border, centred on the console, with its title in the top edge and its message wrapped inside. A `MsgBox` ends with a row of buttons, chosen with the arrow keys, <kbd>Tab</kbd>, <kbd>Enter</kbd>, or a button's key. Its icon has a column of its own, and the lines of the message hang under it. An `InputBox` ends with a line to type on, which starts with the default text selected and scrolls inside the box. <kbd>Esc</kbd> closes either at window level.
 
 ---
 > ⏮️ [**RD-VBAL §2.0.1** Supported Languages](rd-vbal.2.0.1.supported-languages.md) | ⏭️ [**RD-VBAL §2.1** Implicit Storage](rd-vbal.2.1.implicit-storage.md)
