@@ -135,9 +135,8 @@ public sealed class RegExpTests
         => Assert.AreEqual("12|True|13|True|0|", await RunInWorkspace(
             """Dim r As New RegExp ;; r.Pattern = 12 ;; P r.Pattern ;; P r.Test(12) ;; Err.Clear ;; r.Global = "yes" ;; P Err.Number ;; r.Global = 2 ;; P r.Global ;; P r.Execute(Empty).Count"""));
 
-    // 🚧 late-bound, MS-VBA's IDispatch coerces an argument and reports 13 for Null (R19, T06); RD-VBA binds the member and coerces as an early-bound call does.
+    // late-bound, MS-VBA's IDispatch converts an argument to the type of its parameter, and Null is a type mismatch (R19, T06): early-bound it is 94.
     [TestMethod]
-    [Ignore("a late-bound call of a member of the standard library coerces its arguments as an early-bound one does: 94 for Null, where MS-VBA's IDispatch reports 13")]
     public void LateBound_NullIsATypeMismatch()
         => Assert.AreEqual("13|13|", Run(New + """Err.Clear ;; P r.Test(Null) ;; P Err.Number ;; Err.Clear ;; r.Global = Null ;; P Err.Number"""));
 
@@ -147,9 +146,8 @@ public sealed class RegExpTests
         => Assert.AreEqual("438|450|450|", Run(New +
             """Dim m As Object ;; r.Pattern = "a" ;; Set m = r.Execute("a") ;; Err.Clear ;; P CStr(r) ;; P Err.Number ;; Err.Clear ;; P CStr(m) ;; P Err.Number ;; Err.Clear ;; P CStr(m(0).SubMatches) ;; P Err.Number"""));
 
-    // 🚧 R17: late-bound, MS-VBA's IDispatch reports 450 for a property a library's object cannot assign; RD-VBA raises the 451 of a workspace's class.
+    // R17: late-bound, MS-VBA's IDispatch reports 450 for a property a library's object cannot assign, where a workspace's class raises 451.
     [TestMethod]
-    [Ignore("a read-only property of a standard library object is error 451 when assigned late-bound, as for a workspace's class, where MS-VBA's IDispatch reports 450")]
     public void AReadOnlyProperty_AssignedLateBound_IsError450()
         => Assert.AreEqual("450|450|450|", Run(New +
             """Dim m As Object ;; r.Pattern = "a" ;; Set m = r.Execute("a") ;; Err.Clear ;; m(0).Value = "x" ;; P Err.Number ;; Err.Clear ;; m.Count = 3 ;; P Err.Number ;; Err.Clear ;; m(0).FirstIndex = 3 ;; P Err.Number"""));
