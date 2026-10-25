@@ -172,6 +172,10 @@
   href: vbc09371.md
 - name: VBC09372 — Member already exists in an object module from which this object module derives
   href: vbc09372.md
+- name: VBC09373 — Automation type not supported in Visual Basic
+  href: vbc09373.md
+- name: "VBC09374 — Expected user-defined type, not project"
+  href: vbc09374.md
 - name: VBR-0001 — Application-defined or object-defined error
   href: vbr-0001.md
 - name: VBR00003 — Return without GoSub
