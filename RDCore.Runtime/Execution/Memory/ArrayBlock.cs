@@ -131,12 +131,36 @@ internal sealed class ArrayBlock
         if (array.ItemType is VBUserDefinedType)
         {
             return array.ElementAt(index) is VBUserDefinedTypeValue record
-                && StringHolders.TryFindField(record, within, _pointerWidth, out var owner, out var field)
-                && StringHolders.TryStringOf(owner.FieldAt(field), out text);
+                && StringHolders.TryFindField(record, within, _pointerWidth, out var field)
+                && StringHolders.TryStringOf(field, out text);
         }
 
         return within == 0 && array.CellAt(index) is { } cell && cell.BindingCapabilities.HasFlag(BindingCapabilities.GetValue)
             && StringHolders.TryStringOf(cell.Value, out text);
+    }
+
+    /// <summary>
+    /// Where the pointer that is a variable-length <c>String</c> element begins that <paramref name="offset"/> falls in - or a field of a record element;
+    /// <c>-1</c> when the offset falls in no such pointer.
+    /// </summary>
+    public int SlotOfStringAt(int offset)
+    {
+        var index = offset / ElementWidth;
+        if (!TryGetArray(out var array) || index >= array.Length)
+        {
+            return -1;
+        }
+
+        var start = index * ElementWidth;
+        if (array.ItemType is VBUserDefinedType)
+        {
+            return array.ElementAt(index) is VBUserDefinedTypeValue record && StringHolders.SlotOfStringAt(record, offset - start, _pointerWidth) is >= 0 and var slot
+                ? start + slot
+                : -1;
+        }
+
+        // the order matters: a fixed-length String is a VBStringType, and is its characters.
+        return array.ItemType is VBStringType and not VBFixedStringType ? start : -1;
     }
 
     /// <summary>
@@ -154,9 +178,8 @@ internal sealed class ArrayBlock
         if (array.ItemType is VBUserDefinedType)
         {
             return array.ElementAt(index) is VBUserDefinedTypeValue record
-                && StringHolders.TryFindField(record, within, _pointerWidth, out var owner, out var field)
-                && owner.FieldAt(field) is { } held
-                && owner.TrySetFieldAt(field, StringHolders.Replacing(held, text));
+                && StringHolders.TryFindField(record, within, _pointerWidth, out var field)
+                && StringHolders.TryWrite(field, text);
         }
 
         return within == 0 && array.CellAt(index) is { } cell

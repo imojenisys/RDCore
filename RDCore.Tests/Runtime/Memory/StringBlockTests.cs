@@ -128,23 +128,162 @@ public sealed class StringBlockTests
         Assert.AreEqual(characters, PointerOf(storage, address), "the characters are where they were");
     }
 
+    private static void PokePointer(SessionStorage storage, MemoryAddress at, long pointer)
+    {
+        var bytes = BitConverter.GetBytes(pointer);
+        for (var index = 0; index < bytes.Length; index++)
+        {
+            Assert.IsTrue(storage.TryPoke(new MemoryAddress(at.Value + index), bytes[index]), $"byte {index}");
+        }
+    }
+
+    // grid-p3 L01: the length says how much of the data the String is, and the characters past it stay where they are.
     [TestMethod]
-    public void APokeIntoTheLength_ChangesNothing()
+    public void APokeIntoTheLength_IsTheLengthOfTheString_AndTheCharactersPastItStay()
+    {
+        var (storage, cell, address) = StringVariable(new VBRuntimeValue<string>("abcdef"));
+        var characters = PointerOf(storage, address);
+
+        Assert.IsTrue(storage.TryPoke(new MemoryAddress((int)characters - 4), 4));
+        Assert.AreEqual("ab", cell.Value.BoxedValue);
+        Assert.AreEqual(characters, PointerOf(storage, address), "the characters are where they were");
+        CollectionAssert.AreEqual(new byte[] { 99, 0 }, Peek(storage, characters + 4, 2), "the third character is still there");
+
+        Assert.IsTrue(storage.TryPoke(new MemoryAddress((int)characters - 4), 12));
+        Assert.AreEqual("abcdef", cell.Value.BoxedValue);
+    }
+
+    // grid-p3 L04: a length of 0 is a zero-length String, which is not vbNullString: its characters are where they were.
+    [TestMethod]
+    public void ALengthOfZero_IsAZeroLengthString()
+    {
+        var (storage, cell, address) = StringVariable(new VBRuntimeValue<string>("abc"));
+        var characters = PointerOf(storage, address);
+
+        Assert.IsTrue(storage.TryPoke(new MemoryAddress((int)characters - 4), 0));
+
+        Assert.AreEqual(string.Empty, cell.Value.BoxedValue);
+        Assert.AreEqual(characters, PointerOf(storage, address));
+    }
+
+    [TestMethod]
+    public void ALengthPastTheBlock_IsRefused()
     {
         var (storage, cell, address) = StringVariable(new VBRuntimeValue<string>("abc"));
 
-        Assert.IsFalse(storage.TryPoke(new MemoryAddress((int)PointerOf(storage, address) - 4), 1));
+        Assert.IsFalse(storage.TryPoke(new MemoryAddress((int)PointerOf(storage, address) - 4), 200));
         Assert.AreEqual("abc", cell.Value.BoxedValue);
     }
 
-    // 🚧 *Ptr phase B: an address written into a String variable would make it another String, which nothing here does yet.
+    // grid-p3 Q01: a String given the address of another's characters holds the same String, and a change to the characters through either is the other's.
     [TestMethod]
-    public void APokeIntoAStringVariablesBytes_IsRefused()
+    public void AStringGivenAnothersCharacters_HoldsTheSameString()
+    {
+        var storage = Storage();
+        var s = new ValueBindingHandle(new VBRuntimeValue<string>("abc"));
+        var t = new ValueBindingHandle(new VBRuntimeValue<string>(null!));
+        Assert.IsTrue(storage.TryAllocate(0, s, out var sAddress));
+        Assert.IsTrue(storage.TryAllocate(0, t, out var tAddress));
+        storage.HoldsString(sAddress);
+        storage.HoldsString(tAddress);
+        var characters = PointerOf(storage, sAddress);
+
+        PokePointer(storage, tAddress, characters);
+        Assert.AreEqual("abc", t.Value.BoxedValue);
+        Assert.AreEqual(characters, PointerOf(storage, tAddress));
+
+        Assert.IsTrue(storage.TryPoke(new MemoryAddress((int)characters), 122));
+        Assert.AreEqual("zbc", t.Value.BoxedValue, "through s");
+        Assert.IsTrue(storage.TryPoke(new MemoryAddress((int)characters + 4), 113));
+        Assert.AreEqual("zbq", s.Value.BoxedValue, "through t");
+
+        PokePointer(storage, tAddress, 0);
+        Assert.IsNull(t.Value.BoxedValue, "vbNullString");
+        Assert.AreEqual("zbq", s.Value.BoxedValue);
+        Assert.AreEqual(characters, PointerOf(storage, sAddress));
+    }
+
+    // grid-p3 Q01: the Mid statement through one is the other's too.
+    [TestMethod]
+    public void WritingInPlaceThroughOne_IsTheOthers()
+    {
+        var storage = Storage();
+        var s = new ValueBindingHandle(new VBRuntimeValue<string>("abc"));
+        var t = new ValueBindingHandle(new VBRuntimeValue<string>(null!));
+        Assert.IsTrue(storage.TryAllocate(0, s, out var sAddress));
+        Assert.IsTrue(storage.TryAllocate(0, t, out var tAddress));
+        storage.HoldsString(tAddress);
+        PokePointer(storage, tAddress, PointerOf(storage, sAddress));
+
+        var block = storage.BlockOf(t.Value)!;
+        t.Store(new VBRuntimeValue<string>("abq"), isKnown: true);
+        storage.KeepInPlace(block);
+
+        Assert.AreEqual("abq", s.Value.BoxedValue);
+        Assert.AreEqual(PointerOf(storage, sAddress), PointerOf(storage, tAddress));
+    }
+
+    // grid-p3 Q03: a pointer of 0 is vbNullString, and the BSTR it pointed at is where it was: pointing at it again is the String again.
+    [TestMethod]
+    public void APointerOfZero_IsvbNullString_AndTheBSTRIsWhereItWas()
     {
         var (storage, cell, address) = StringVariable(new VBRuntimeValue<string>("abc"));
+        var characters = PointerOf(storage, address);
 
-        Assert.IsFalse(storage.TryPoke(address, 1));
+        PokePointer(storage, address, 0);
+        Assert.IsNull(cell.Value.BoxedValue);
+        Assert.AreEqual(0, PointerOf(storage, address));
+
+        PokePointer(storage, address, characters);
         Assert.AreEqual("abc", cell.Value.BoxedValue);
+    }
+
+    // a pointer is written a byte at a time: until it points at a BSTR, the String is what it was, and its bytes are what was written.
+    [TestMethod]
+    public void APointerHalfWritten_LeavesTheString_AndReadsAsWritten()
+    {
+        var (storage, cell, address) = StringVariable(new VBRuntimeValue<string>("abc"));
+        var characters = PointerOf(storage, address);
+
+        Assert.IsTrue(storage.TryPoke(address, 0xFF));
+
+        Assert.AreEqual("abc", cell.Value.BoxedValue);
+        Assert.AreEqual(0xFF, Peek(storage, address.Value, 1)[0]);
+        Assert.IsTrue(storage.TryPoke(address, (byte)(characters & 0xFF)));
+        Assert.AreEqual(characters, BitConverter.ToInt64(Peek(storage, address.Value, 8)));
+    }
+
+    // grid-p3 Q05: an element given another's characters.
+    [TestMethod]
+    public void AnElementGivenAnothersCharacters_HoldsTheSameString()
+    {
+        var (storage, s, sAddress) = StringVariable(new VBRuntimeValue<string>("hey"));
+        var array = new VBFixedSizeArrayValue([(0, 1)], VBStringType.TypeInfo);
+        Assert.IsTrue(storage.TryAddressOfElement(array, 1, out var element));
+
+        PokePointer(storage, element, PointerOf(storage, sAddress));
+
+        Assert.AreEqual("hey", ((VBStringValue)array.ElementAt(1)!).Value);
+        Assert.AreEqual(PointerOf(storage, sAddress), PointerOf(storage, element));
+        PokePointer(storage, element, 0);
+        Assert.AreEqual(0, PointerOf(storage, element));
+        Assert.AreEqual("hey", s.Value.BoxedValue);
+    }
+
+    // grid-p3 Q04: a field given another's characters.
+    [TestMethod]
+    public void AFieldGivenAnothersCharacters_HoldsTheSameString()
+    {
+        var (storage, _, sAddress) = StringVariable(new VBRuntimeValue<string>("hey"));
+        var record = new VBUserDefinedTypeValue(Named());
+        var handle = new ValueBindingHandle(new VBRuntimeValue<VBRuntimeUserDefinedTypeValue>(new VBRuntimeUserDefinedTypeValue(record)));
+        Assert.IsTrue(storage.TryAllocate(record.Size, handle, out var address));
+        var field = new MemoryAddress(address.Value + 8);
+
+        PokePointer(storage, field, PointerOf(storage, sAddress));
+
+        Assert.AreEqual("hey", ((VBStringValue)record.FieldAt(1)!).Value);
+        Assert.AreEqual(PointerOf(storage, sAddress), PointerOf(storage, field));
     }
 
     [TestMethod]
@@ -209,6 +348,49 @@ public sealed class StringBlockTests
         Assert.IsTrue(storage.TryPoke(new MemoryAddress((int)PointerOf(storage, element)), 121));
 
         Assert.AreEqual("y", ((VBStringValue)array.ElementAt(0)!).Value);
+    }
+
+    private static (SessionStorage Storage, VBUserDefinedTypeValue Record, VBFixedSizeArrayValue Field, MemoryAddress Address) WithArrayField(VBType itemType)
+    {
+        var uri = TestUri.TestModuleUserDefinedTypeUri("TInline");
+        var symbol = new VBUserDefinedTypeMemberSymbol(uri, uri, "TInline", ScopeKind.Module, SourceRange.Empty, SourceRange.Empty, AccessModifier.Public);
+        var record = new VBUserDefinedTypeValue(new VBUserDefinedType(symbol, [Field("B", VBByteType.TypeInfo), Field("N", new VBFixedSizeArrayType(itemType))]));
+        var field = new VBFixedSizeArrayValue([(0, 2)], itemType);
+        Assert.IsTrue(record.TrySetFieldAt(1, field));
+        field = (VBFixedSizeArrayValue)record.FieldAt(1)!;
+
+        var storage = Storage();
+        var handle = new ValueBindingHandle(new VBRuntimeValue<VBRuntimeUserDefinedTypeValue>(new VBRuntimeUserDefinedTypeValue(record)));
+        Assert.IsTrue(storage.TryAllocate(record.Size, handle, out var address));
+        return (storage, record, field, address);
+    }
+
+    // oracle\s24 P04: a fixed-size array field is in the record, its elements side by side - and its bytes are theirs.
+    [TestMethod]
+    public void AFixedSizeArrayFieldsElements_AreTheirBytes_InTheRecord()
+    {
+        var (storage, _, field, address) = WithArrayField(VBLongType.TypeInfo);
+        Assert.IsTrue(field.TrySetElementAt(1, new ValueBindingHandle(new VBRuntimeValue<int>(300))));
+
+        Assert.AreEqual(300, BitConverter.ToInt32(Peek(storage, address.Value + 8, 4)), "N(1) is 4 bytes past N(0), at offset 4");
+        Assert.IsTrue(storage.TryPoke(new MemoryAddress(address.Value + 12), 7));
+
+        Assert.AreEqual(7, ((VBLongValue)field.ElementAt(2)!).Value);
+    }
+
+    [TestMethod]
+    public void AStringElementOfAFixedSizeArrayField_IsTheAddressOfItsCharacters()
+    {
+        var (storage, _, field, address) = WithArrayField(VBStringType.TypeInfo);
+        Assert.IsTrue(field.TrySetElementAt(1, new ValueBindingHandle(new VBRuntimeValue<string>("q"))));
+        var element = new MemoryAddress(address.Value + 16);
+
+        var characters = PointerOf(storage, element);
+
+        Assert.AreEqual(characters, BitConverter.ToInt64(Peek(storage, element.Value, 8)));
+        Assert.AreEqual(0, BitConverter.ToInt64(Peek(storage, address.Value + 8, 8)), "N(0) holds vbNullString");
+        Assert.IsTrue(storage.TryPoke(new MemoryAddress((int)characters), 114));
+        Assert.AreEqual("r", ((VBStringValue)field.ElementAt(1)!).Value);
     }
 
     // S11: a String field of a record is the address of its characters, at the field's offset.

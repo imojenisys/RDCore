@@ -13,6 +13,7 @@ public sealed class StrPtrTests
     private static readonly (string Name, string Source) Globals = ("Globals", StandardModule("Globals",
         "Option Explicit",
         "Public Type Mixed", "    B As Byte", "    S As String", "    V As Variant", "    F As String * 3", "End Type",
+        "Public Type Names", "    B As Byte", "    N(2) As String", "End Type",
         "Public Sub ByValStr(ByVal s As String, ByRef addr As LongPtr)", "    addr = StrPtr(s)", "End Sub",
         "Public Sub ByRefStr(ByRef s As String, ByRef addr As LongPtr)", "    addr = StrPtr(s)", "End Sub"));
 
@@ -37,6 +38,8 @@ public sealed class StrPtrTests
         DisplayName = "S10 an element, and one nothing was assigned to")]
     [DataRow("Dim r As Mixed ;; r.S = \"hey\" ;; P (StrPtr(r.S) <> 0) ;; P (StrPtr(r.S) = StrPtr(r.S))", "True|True|",
         DisplayName = "S11 a field of a record")]
+    [DataRow("Dim r As Names, s0 As LongPtr ;; r.N(1) = \"q\" ;; s0 = StrPtr(r.N(1)) ;; P (s0 <> 0) ;; P (StrPtr(r.N(1)) = s0) ;; P StrPtr(r.N(0)) ;; Mid$(r.N(1), 1, 1) = \"z\" ;; P (StrPtr(r.N(1)) = s0)",
+        "True|True|0|True|", DisplayName = "an element of a fixed-size array field")]
     [DataRow("Dim s As String, t As String ;; s = \"a\" ;; t = \"b\" ;; P (StrPtr(s) <> StrPtr(t))", "True|", DisplayName = "two Strings, two addresses")]
     [DataRow("P TypeName(StrPtr(\"abc\")) ;; P (StrPtr(\"abc\") <> 0)", "LongLong|True|", DisplayName = "a LongPtr, and a value is a temporary")]
     [DataRow("Dim n As Long, f As String * 3, r As Mixed ;; n = 5 ;; P (StrPtr(n) <> 0) ;; P (StrPtr(f) <> 0) ;; P (StrPtr(r.F) <> 0)", "True|True|True|",
@@ -44,14 +47,13 @@ public sealed class StrPtrTests
     public async Task StrPtr_IsTheAddressOfTheCharacters(string body, string expected)
         => Assert.AreEqual(expected, await RunAsync(body));
 
+    // S07: the Mid statement writes the characters where they are.
     [TestMethod]
-    [Ignore("the Mid statement assigns a String made of the target's, which is in another BSTR: MS-VBA writes the characters in place (oracle\\s17 S07)")]
     public async Task TheMidStatement_WritesTheCharactersInPlace()
         => Assert.AreEqual("True|zbc|", await RunAsync("Dim s As String, s0 As LongPtr ;; s = \"abc\" ;; s0 = StrPtr(s) ;; Mid$(s, 1, 1) = \"z\" ;; P (StrPtr(s) = s0) ;; P s"));
 
     // S02: any assignment makes another String, of the String itself too.
     [TestMethod]
-    [Ignore("the boxed evaluation (RDCORE_UNBOXED=0) stores back the very String a variable holds, which keeps its BSTR; the unboxed one makes another, as MS-VBA does (oracle\\s17 S02)")]
     public async Task AssigningAStringItself_MovesItsCharacters()
         => Assert.AreEqual("False|", await RunAsync("Dim s As String, s0 As LongPtr ;; s = \"abc\" ;; s0 = StrPtr(s) ;; s = s ;; P (StrPtr(s) = s0)"));
 }

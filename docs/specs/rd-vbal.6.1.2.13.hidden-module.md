@@ -92,20 +92,19 @@ As in **MS-VBA** (recorded in Excel):
 |Argument|`StrPtr` gives|
 |---|---|
 |`vbNullString`, a `String` variable nothing was assigned to|`0`. A zero-length `String`, `""`, is not `0`.|
-|A `String` variable, an element of a `String` array, a `String` field of a record|The address of its characters, the same until a `String` is assigned to it - any `String`: the same text, and `s = s` itself, are another (🚧 below). `t = s` gives `t` characters of its own, and so does a `ByVal` parameter; a `ByRef` one is the variable's.|
+|A `String` variable, an element of a `String` array, a `String` field of a record|The address of its characters, the same until a `String` is assigned to it - any `String`: the same text, and `s = s` itself, are another. `t = s` gives `t` characters of its own, and so does a `ByVal` parameter; a `ByRef` one is the variable's.|
 |A `Variant` holding a `String`|The address of the `Variant`'s own characters.|
 |What is no `String` variable: a literal, an expression, a fixed-length `String`, a number|The address of the characters of a `String` made of it, a temporary freed when the statement is over.|
 
-A `POKE` into the characters changes the `String`, in place: `StrPtr(s)` is where it was.
+A `POKE` into the characters changes the `String`, in place: `StrPtr(s)` is where it was. So does the `Mid` statement, which writes the characters of its
+target where they are.
 
-> [!NOTE]
-> 🚧 Not implemented yet:
->
-> - The `Mid` statement assigns a `String` made of its target's, which is in another `BSTR`; **MS-VBA** writes the characters in place, and `StrPtr` of the
->   target is the same after it.
-> - The `String`s of a fixed-size array field of a record are given to `StrPtr` as copies.
-> - `s = s` keeps the characters where they are when the program is evaluated boxed (`RDCORE_UNBOXED=0`).
-> - A `POKE` into the length, or into a `String` variable's pointer, is refused (*Ptr plan phase B: a pointer copied into a `String` variable).
+The bytes of the `BSTR` are its own, as in **MS-VBA** (recorded in Excel):
+
+|A `POKE` into|Makes|
+|---|---|
+|The length, `StrPtr(s) - 4`|The `String` as long as the length says, at the same address: `LenB` and `Len` are what it says, and the characters past it stay where they are - the length written back is the `String` it was. A length of `0` is a zero-length `String`, not `vbNullString`. A length that goes on past the `BSTR` is refused, as reading memory it is not.|
+|A `String`'s pointer, `VarPtr(t)` - a variable, an element, a field|`0`: `vbNullString`; the `BSTR` it pointed at is not freed, and pointing at it again is the `String` again. `StrPtr(s)`: the `String` of `s`, which the two then hold - a change to the characters through either, a `POKE` or the `Mid` statement, is the other's. A pointer is written a byte at a time, and one that points at no `BSTR` yet leaves the `String` as it was, its bytes as they were written.|
 
 ---
 > ⏮️ [**RD-VBAL §6.1.2.12** SystemColorConstants](rd-vbal.6.1.2.12.systemcolorconstants.md) | ⏭️ [**RD-VBAL §6.1.3** Predefined Class Modules](rd-vbal.6.1.3.predefined-class-modules.md)
