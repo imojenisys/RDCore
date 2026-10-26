@@ -264,7 +264,18 @@ public sealed class StdInteraction(
         }
 
         var parameters = RuntimeProcedureInvoker.GetParameters(target).Where(parameter => parameter.Name != "Me").ToArray();
-        if (args.Length > parameters.Length)
+
+        // VbLet and VbSet assign the last argument, which is the property's last parameter - its value - whatever index parameters come before it, Optional ones
+        // included: CallByName(c, "List", VbLet, v) is c.List = v, of Microsoft Forms' List(Optional pvargIndex, Optional pvargColumn).
+        var assignsValue = callType is VBCallType.VBLet or VBCallType.VBSet && parameters.Length > 0;
+        if (assignsValue && args.Length == 0)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.ArgumentNotOptional, $"'{target.Name}' was not given the value it is assigned.");
+        }
+
+        var given = assignsValue ? args.Length - 1 : args.Length;
+        var indexParameters = assignsValue ? parameters.Length - 1 : parameters.Length;
+        if (given > indexParameters)
         {
             return Fail<VBVariantValue>(VBRuntimeErrorId.WrongNumberOfArgumentsOrInvalidPropertyAssignment,
                 $"'{target.Name}' takes {parameters.Length} argument(s), and was given {args.Length}.");
@@ -274,7 +285,9 @@ public sealed class StdInteraction(
         for (var index = 0; index < parameters.Length; index++)
         {
             var parameter = parameters[index];
-            if (index >= args.Length)
+            var isValue = assignsValue && index == parameters.Length - 1;
+            var argument = isValue ? args.Length - 1 : index;
+            if (!isValue && index >= given)
             {
                 if (!parameter.IsOptional)
                 {
@@ -287,7 +300,7 @@ public sealed class StdInteraction(
                 continue;
             }
 
-            var coerced = Coerce(args[index], parameter.ResolvedType);
+            var coerced = Coerce(args[argument], parameter.ResolvedType);
             if (!coerced.IsSuccess)
             {
                 return RuntimeSemanticsEvaluationResult<VBVariantValue>.Error(coerced.ErrorInfo!);
@@ -524,12 +537,18 @@ public sealed class StdInteraction(
     /// <inheritdoc/>
     /// <remarks>
     /// The session's turn is given up for the events that wait for it - those of the objects of a library, which only Windows has - and the messages that wait in
-    /// the queue of the thread the program runs on are processed, which only Windows has either. Elsewhere there is nothing to yield to, and it returns at once.
-    /// The answer is <c>0</c>: the number of open forms, of which there are none.
+    /// the queue of the thread the program runs on are processed, which only Windows has either. So are the messages the windows of the program's forms held
+    /// while it ran (<see cref="External.Forms.IFormHost.DoEvents"/>): what they raise is handled now, as the answer to the call. Elsewhere there is nothing to yield
+    /// to, and it returns at once. The answer is <c>0</c>: the number of open forms, of which there are none.
     /// </remarks>
     public RuntimeSemanticsEvaluationResult<VBIntegerValue> DoEvents()
     {
         session.Turn.Pump();
+        using (session.Turn.Yield())
+        {
+            _outside.Forms.DoEvents();
+        }
+
         _outside.Desktop.DoEvents();
         return Succeed(new VBIntegerValue(0));
     }

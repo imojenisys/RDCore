@@ -219,6 +219,19 @@ public sealed class FormHostingTests
         CollectionAssert.AreEqual(new[] { "changed to 7", "after" }, printed, string.Join(" | ", printed));
     }
 
+    // what an object answers to is asked of it where it lives: in the external host (oracle\s41 M04, M05).
+    [TestMethod]
+    public async Task AControl_ThroughAnExternalHost_IsTheExtenderItIsWrappedIn()
+    {
+        RequireMicrosoftForms();
+        using var host = ExternalHosts.New();
+
+        var printed = await RunWithCodeAsync(ExternalHosts.WorldOf(host), Handlers, "Debug.Print TypeOf ExampleView.AmountBox Is MSForms.Control",
+            "Debug.Print TypeOf ExampleView.AmountBox Is MSForms.ComboBox", "Dim c As MSForms.Control", "Set c = ExampleView.AmountBox", "Debug.Print c.Name", "Unload ExampleView");
+
+        CollectionAssert.AreEqual(new[] { "True", "False", "AmountBox" }, printed, string.Join(" | ", printed));
+    }
+
     // a modal Show waits; a click on the form while it does is the answer to that call, and runs UserForm_Click inside it - which hides the form, which ends the wait.
     [TestMethod]
     [DataRow(false, DisplayName = "in the process")]
@@ -335,6 +348,15 @@ public sealed class FormHostingTests
     [DataRow(new[] { "ExampleView.AddCheck", "Unload ExampleView", "Debug.Print ExampleView.Controls.Count" }, new[] { "13" }, DisplayName = "C12 gone with the form")]
     [DataRow(new[] { "Debug.Print ExampleView.AmountBox.Left > 0", "ExampleView.AmountBox.Left = 3", "Debug.Print ExampleView.AmountBox.Left", "Debug.Print Err.Number" },
         new[] { "True", "3", "0" }, DisplayName = "the extender's members of a designer's control, which its class does not declare")]
+    [DataRow(new[] { "Debug.Print TypeOf ExampleView.AmountBox Is MSForms.Control", "Debug.Print TypeOf ExampleView.AmountBox Is MSForms.TextBox",
+        "Debug.Print TypeOf ExampleView.AmountBox Is MSForms.ComboBox", "Debug.Print TypeOf ExampleView.Controls(0) Is MSForms.Control" },
+        new[] { "True", "True", "False", "True" }, DisplayName = "M04 M08 a control is the extender it is wrapped in, and its own class")]
+    [DataRow(new[] { "Dim c As MSForms.Control", "Set c = ExampleView.AmountBox", "Debug.Print TypeName(c)", "Debug.Print c Is ExampleView.AmountBox", "Debug.Print c.Name",
+        "Dim t As MSForms.TextBox", "Set t = c", "Debug.Print TypeName(t)" },
+        new[] { "TextBox", "True", "AmountBox", "TextBox" }, DisplayName = "M05 M07 a variable of the extender's class holds the control")]
+    [DataRow(new[] { "Dim c As MSForms.Control", "Set c = ExampleView", "Debug.Print Err.Number", "Dim d As Object", "Set d = CreateObject(\"Scripting.Dictionary\")",
+        "Debug.Print TypeOf d Is MSForms.Control" },
+        new[] { "13", "False" }, DisplayName = "M06 M09 a form, and an object of another library, are none")]
     public async Task ControlsAddedAtRunTime_AreWhatMSVBAMakesThem(string[] body, string[] printed)
     {
         RequireMicrosoftForms();
@@ -346,7 +368,7 @@ public sealed class FormHostingTests
     }
 
     // the handlers of the extender's events of two controls, AmountBox (the first in the tab order) and ComboBox1, as the Excel oracle's FocusForm has them; and Go,
-    // which moves the focus as the program does.
+    // which moves the focus as the program does, then lets the form take in what that posted (DoEvents), as the oracle's Go does.
     private static readonly string[] Focus =
     [
         "Public CancelExit As Boolean",
@@ -362,7 +384,7 @@ public sealed class FormHostingTests
         "Private Sub AmountBox_Change()", "    Debug.Print \"AmountChange\"", "End Sub",
         "Private Sub ComboBox1_Enter()", "    Debug.Print \"ComboEnter\"", "End Sub",
         "Private Sub ComboBox1_Exit(ByVal Cancel As MSForms.ReturnBoolean)", "    Debug.Print \"ComboExit\"", "End Sub",
-        "Public Sub Go(ByVal name As String)", "    Me.Controls(name).SetFocus", "End Sub",
+        "Public Sub Go(ByVal name As String)", "    Me.Controls(name).SetFocus", "    DoEvents", "End Sub",
     ];
 
     // oracle\s41 E01-E17: the extender's events as the focus moves, in the order Excel raises them - by Microsoft Forms itself, and by the host when the form is unloaded.
@@ -431,8 +453,8 @@ public sealed class FormHostingTests
 
     // oracle\s41 E09, E12: the same changes as E14, E15, with nothing pumped between the program's statements - which MS-VBA does not do until DoEvents, a modal Show
     // or the program's end, and Microsoft Forms then counts the change as the focused control's.
+    // MS-VBA dispatches no message while a program runs: a change Microsoft Forms posts, nothing pumped, is the next focused control's update (E09, E12, against E14, E15).
     [TestMethod]
-    [Ignore("The apartment dispatches the forms' messages between every call the program makes; MS-VBA dispatches none while a program runs, so a change Microsoft Forms posts is the next focused control's update there (E09, E12, against E14, E15). Pumping only when the program waits is a design ruling to ask for.")]
     [DataRow(new[] { "ExampleView.Show vbModeless", "ExampleView.Go \"ComboBox1\"", "ExampleView.AmountBox.Text = \"7\"", "ExampleView.Go \"AmountBox\"", "ExampleView.Go \"ComboBox1\"",
         "Unload ExampleView" },
         new[] { "Initialize", "AmountEnter", "Activate", "AmountExit", "ComboEnter", "AmountChange", "ComboExit", "AmountEnter", "AmountBeforeUpdate",
@@ -468,6 +490,23 @@ public sealed class FormHostingTests
 
     // the Cancel argument is Microsoft Forms' object, in the external host, which the handler's assignment reaches across the process; the SetFocus whose move is
     // cancelled fails, as Excel's does (oracle\s41 E16, E17).
+    [TestMethod]
+    public async Task AChangeNothingPumped_ThroughAnExternalHost_IsTheNextUpdate()
+    {
+        // E09 where the forms are: the external host holds their messages while the program runs, and DoEvents (Go's) dispatches them.
+        RequireMicrosoftForms();
+        using var host = ExternalHosts.New();
+
+        var actual = await RunWithCodeAsync(ExternalHosts.WorldOf(host), Focus, "On Error Resume Next", "ExampleView.Show vbModeless", "ExampleView.Go \"ComboBox1\"",
+            "ExampleView.AmountBox.Text = \"7\"", "ExampleView.Go \"AmountBox\"", "ExampleView.Go \"ComboBox1\"", "Unload ExampleView");
+
+        CollectionAssert.AreEqual(new[]
+        {
+            "Initialize", "AmountEnter", "Activate", "AmountExit", "ComboEnter", "AmountChange", "ComboExit", "AmountEnter", "AmountBeforeUpdate",
+            "AmountAfterUpdate", "AmountExit", "ComboEnter", "QueryClose 1", "ComboExit", "Terminate",
+        }, actual, string.Join(" | ", actual));
+    }
+
     [TestMethod]
     public async Task TheExtendersEvents_ThroughAnExternalHost_AreCancelled()
     {
@@ -568,6 +607,37 @@ public sealed class FormHostingTests
         var actual = await ModuleWorkspace.RunAsync(
             [Punk], Program(["On Error Resume Next", .. body]), new ModuleWorkspace.WorkspaceLibraries(["MSForms", "stdole"], Shipped, Outside: world), [ExampleView(Focus)]);
         CollectionAssert.AreEqual(printed, actual, string.Join(" | ", actual));
+    }
+
+    // MVVM's ControlEventsPunk keeps the interface and the cookie in the fields of a record (`This`), which ConnectToConnectionPoint reads and writes by reference.
+    private static readonly (string Name, string Source) RecordPunk = ("RecordPunk", ModuleWorkspace.ClassModule("RecordPunk",
+        "Option Explicit",
+        "Private Type GUID", "    Data1 As Long", "    Data2 As Integer", "    Data3 As Integer", "    Data4(0 To 7) As Byte", "End Type",
+        "Private Type TState", "    RefIID As GUID", "    Target As Object", "    Cookie As Long", "End Type",
+        "Private This As TState",
+        "Private Declare PtrSafe Function ConnectToConnectionPoint Lib \"shlwapi\" Alias \"#168\" (ByVal Punk As stdole.IUnknown, ByRef riidEvent As GUID, ByVal fConnect As Long, ByVal PunkTarget As stdole.IUnknown, ByRef pdwCookie As Long, Optional ByVal ppcpOut As LongPtr) As Long",
+        "Public Function Connect(ByVal t As Object) As Long",
+        "    Set This.Target = t",
+        "    This.RefIID.Data1 = &H20400: This.RefIID.Data4(0) = &HC0: This.RefIID.Data4(7) = &H46",
+        "    Connect = ConnectToConnectionPoint(Me, This.RefIID, 1, This.Target, This.Cookie, 0&)",
+        "End Function",
+        "Public Function Disconnect() As Long", "    Disconnect = ConnectToConnectionPoint(Me, This.RefIID, 0, This.Target, This.Cookie, 0&)", "End Function",
+        "Public Property Get CookieValue() As Long", "    CookieValue = This.Cookie", "End Property",
+        "Public Sub OnEnter()", "Attribute OnEnter.VB_UserMemId = -2147384830", "    Debug.Print \"R:Enter\"", "End Sub"));
+
+    [TestMethod]
+    public async Task ASinkThatKeepsItsStateInARecord_IsConnected_AndDisconnected()
+    {
+        RequireMicrosoftForms();
+        var (world, apartment) = InProcess();
+        using var _ = apartment;
+
+        var actual = await ModuleWorkspace.RunAsync([RecordPunk], Program(["On Error Resume Next", "Dim p As New RecordPunk", "Debug.Print p.Connect(ExampleView.AmountBox)",
+            "Debug.Print p.CookieValue <> 0", "ExampleView.Show vbModeless", "ExampleView.Go \"ComboBox1\"", "Debug.Print p.Disconnect", "ExampleView.Go \"AmountBox\"",
+            "Debug.Print Err.Number", "Unload ExampleView"]),
+            new ModuleWorkspace.WorkspaceLibraries(["MSForms", "stdole"], Shipped, Outside: world), [ExampleView(Focus)]);
+        CollectionAssert.AreEqual(new[] { "Initialize", "0", "True", "AmountEnter", "R:Enter", "Activate", "AmountExit", "ComboEnter", "0", "ComboExit", "AmountEnter",
+            "0", "QueryClose 1", "AmountExit", "Terminate" }, actual, string.Join(" | ", actual));
     }
 
     // the dispatch identifier an event is raised with crosses from the external host with it, and the sink's Cancel is Microsoft Forms' object there.
