@@ -68,11 +68,67 @@ public sealed class PropertyAssignmentByNameTests
     public Task ASetOfAPropertyWithNoPropertySet_ByItsName_IsAnInvalidUseOfProperty()
         => AssertSetIsInvalidAsync("Set Items = Nothing");
 
+    // MS-VBA, Excel-measured, oracle\s44 V01: qualified by its module, as by its bare name.
     [TestMethod]
-    [Ignore("A property qualified by its standard module (Program.Items) is not checked: HasOnlyAPropertyGet only reads the members of a class an object is of. "
-        + "MS-VBAL §5.4.3.9 makes it invalid; MS-VBA is not measured for it yet.")]
     public Task ASetOfAPropertyWithNoPropertySet_QualifiedByItsModule_IsAnInvalidUseOfProperty()
         => AssertSetIsInvalidAsync("Set Program.Items = Nothing");
+
+    // MS-VBA, Excel-measured, oracle\s44 W02, W03: another module's property, qualified by its module or by its bare name.
+    [TestMethod]
+    [DataRow("Store.")]
+    [DataRow("")]
+    public async Task ASetOfAnotherModulesProperty_IsCheckedAgainstThatModulesAccessors(string qualifier)
+    {
+        var program = string.Join("\r\n", "Attribute VB_Name = \"Program\"", "Public Sub Main()", $"Set {qualifier}Items = Nothing", $"Set {qualifier}Fixed = Nothing", "End Sub") + "\r\n";
+        var store = ModuleWorkspace.StandardModule("Store",
+            "Public Property Get Items() As Collection", "End Property", "Public Property Set Items(ByVal c As Collection)", "End Property",
+            "Public Property Get Fixed() As Collection", "End Property");
+
+        var errors = await ModuleWorkspace.LoadErrorsAsync([], [("Store", store)], program);
+
+        Assert.HasCount(1, errors, string.Join(" | ", errors));
+        StringAssert.StartsWith(errors[0], "Invalid use of property");
+        StringAssert.Contains(errors[0], "Fixed");
+    }
+
+    // MS-VBAL §5.4.3.9: a Set of another module's property invokes its Property Set, by its bare name or through its module (MS-VBA, oracle\s44 W01).
+    [TestMethod]
+    [DataRow("Store.")]
+    [DataRow("")]
+    public async Task ASetOfAnotherModulesProperty_InvokesItsPropertySet(string qualifier)
+    {
+        var program = string.Join("\r\n", "Attribute VB_Name = \"Program\"", "Public Sub Main()",
+            $"Set {qualifier}Items = New Collection", "Debug.Print CStr(Store.Items Is Nothing)", "Debug.Print CStr(Store.Count)",
+            $"Set {qualifier}Items = Nothing", "Debug.Print CStr(Store.Items Is Nothing)", "Debug.Print CStr(Store.Count)", "End Sub") + "\r\n";
+        var store = ModuleWorkspace.StandardModule("Store",
+            "Private mItems As Collection",
+            "Public Count As Long",
+            "Public Property Get Items() As Collection", "    Set Items = mItems", "End Property",
+            "Public Property Set Items(ByVal c As Collection)", "    Set mItems = c", "    Count = Count + 1", "End Property");
+
+        var printed = await ModuleWorkspace.RunAsync([], [("Store", store)], program);
+
+        Assert.AreEqual("False | 1 | True | 2", string.Join(" | ", printed));
+    }
+
+    // MS-VBAL §5.4.3.9: a class's property Set by its bare name from the class's own code invokes its Property Set on the object whose code it is.
+    [TestMethod]
+    public async Task ASetOfAClassesProperty_ByNameFromItsOwnCode_InvokesItsPropertySetOnTheObject()
+    {
+        var keeper = ("Keeper", ModuleWorkspace.ClassModule("Keeper",
+            "Option Explicit",
+            "Private mItems As Collection",
+            "Public Count As Long",
+            "Public Property Get Items() As Collection", "    Set Items = mItems", "End Property",
+            "Public Property Set Items(ByVal c As Collection)", "    Set mItems = c", "    Count = Count + 1", "End Property",
+            "Public Sub Fill()", "    Set Items = New Collection", "End Sub"));
+        var program = string.Join("\r\n", "Attribute VB_Name = \"Program\"", "Public Sub Main()",
+            "Dim k As New Keeper", "k.Fill", "Debug.Print CStr(k.Items Is Nothing)", "Debug.Print CStr(k.Count)", "End Sub") + "\r\n";
+
+        var printed = await ModuleWorkspace.RunAsync([keeper], program);
+
+        Assert.AreEqual("False | 1", string.Join(" | ", printed));
+    }
 
     private static async Task AssertSetIsInvalidAsync(string statement)
     {
