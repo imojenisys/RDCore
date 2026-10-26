@@ -56,6 +56,70 @@ internal sealed class ReplPlatformClient(IRDCoreClientApp client) : IReplPlatfor
     }
 
     /// <inheritdoc/>
+    public async Task<IReadOnlyList<Diagnostic>> PullDiagnosticsAsync(Uri document, CancellationToken token)
+    {
+        // the report is read as a record of its own: OmniSharp reads no RelatedDocumentDiagnosticReport (DocumentDiagnosticPullParams).
+        var report = await AskAgainIfModifiedAsync(() => client.SendRequestAsync<DocumentDiagnosticPullParams, DocumentDiagnosticPullReport?>(
+            new DocumentDiagnosticPullParams { TextDocument = new TextDocumentIdentifier(document) }, token));
+        return report?.Items ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<CodeAction>> GetCodeActionsAsync(Uri document, OmniSharp.Extensions.LanguageServer.Protocol.Models.Range range,
+        IReadOnlyList<Diagnostic> diagnostics, CancellationToken token)
+    {
+        var actions = await AskAgainIfModifiedAsync(() => client.SendRequestAsync<CodeActionParams, CommandOrCodeActionContainer?>(
+            new CodeActionParams
+            {
+                TextDocument = new TextDocumentIdentifier(document),
+                Range = range,
+                Context = new CodeActionContext { Diagnostics = new Container<Diagnostic>(diagnostics) },
+            }, token));
+        return actions is null ? [] : [.. actions.Where(item => item.IsCodeAction).Select(item => item.CodeAction!)];
+    }
+
+    // a request the server answers with ContentModified was overtaken by a change of the document (LSP 3.17 ErrorCodes.ContentModified), which a client asks
+    // again, of the text as it is now; a few times, and then the error is the answer.
+    private static async Task<T> AskAgainIfModifiedAsync<T>(Func<Task<T>> ask)
+    {
+        const int Attempts = 3;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await ask();
+            }
+            catch (OmniSharp.Extensions.JsonRpc.Server.ContentModifiedException) when (attempt < Attempts)
+            {
+                await Task.Delay(100 * attempt);
+            }
+        }
+    }
+
+    /// <inheritdoc/>
+    public Task<ReplRenameAnswer<PlaceholderRange>> PrepareRenameAsync(Uri document, Position position, CancellationToken token)
+        => AnswerAsync(async () => (await client.SendRequestAsync<PrepareRenameParams, RangeOrPlaceholderRange?>(
+            new PrepareRenameParams { TextDocument = new TextDocumentIdentifier(document), Position = position }, token))?.PlaceholderRange);
+
+    /// <inheritdoc/>
+    public Task<ReplRenameAnswer<WorkspaceEdit>> RenameAsync(Uri document, Position position, string newName, CancellationToken token)
+        => AnswerAsync(() => client.SendRequestAsync<RenameParams, WorkspaceEdit?>(
+            new RenameParams { TextDocument = new TextDocumentIdentifier(document), Position = position, NewName = newName }, token));
+
+    // a rename the server refuses is answered with an error, whose message says why.
+    private static async Task<ReplRenameAnswer<T>> AnswerAsync<T>(Func<Task<T?>> ask) where T : class
+    {
+        try
+        {
+            return new(await ask(), null);
+        }
+        catch (OmniSharp.Extensions.JsonRpc.Server.JsonRpcException exception)
+        {
+            return new(null, exception.Message);
+        }
+    }
+
+    /// <inheritdoc/>
     public Task SaveDocumentAsync(Uri document, string text, CancellationToken token)
         => client.SendNotificationAsync(
             new DidSaveTextDocumentParams { TextDocument = new TextDocumentIdentifier(document), Text = text }, token);
