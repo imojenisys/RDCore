@@ -62,6 +62,9 @@ internal class CoreDiagnosticsApp(
         services.AddSingleton<IModuleAnalyzer, AmbiguousConcatenationAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, VariantNumberStringComparisonAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, VariantComparedWithStringAsTextAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, CaseComparedInSelectorTypeAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, LikePatternDepartureAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, VariantStringThatIsNoNumberRankedAnalyzer>();
 
         // the ones that read how the module is written.
         services.AddSingleton<IModuleAnalyzer, OptionBaseAnalyzer>();
@@ -88,6 +91,11 @@ internal class CoreDiagnosticsApp(
         services.AddSingleton<IModuleAnalyzer, RedundantByValArgumentAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, EarlyBindingOpportunityAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, SetThroughACallAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, ArgumentTypedArithmeticAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, IgnoredTypeCharacterAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, ProcedureConstantLengthAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, ValueOfObjectWithNoDefaultMemberAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, EmptyLetToArrayAnalyzer>();
 
         // what the host vouches for about a member, and the names a module chooses.
         services.AddSingleton<IModuleAnalyzer, ImplementationsShouldBePrivateAnalyzer>();

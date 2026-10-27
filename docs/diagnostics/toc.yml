@@ -434,3 +434,19 @@
   href: rdc11012.md
 - name: RDC11013 — Variant compared with a String as text
   href: rdc11013.md
+- name: RDC11014 — Case Is compared in the selector's type
+  href: rdc11014.md
+- name: RDC11015 — Object with no default member used as a value
+  href: rdc11015.md
+- name: RDC11016 — Empty or Null assigned to an array
+  href: rdc11016.md
+- name: RDC11017 — Like pattern MS-VBA matches otherwise than specified
+  href: rdc11017.md
+- name: RDC11018 — Integer arithmetic of Abs, Int or Fix that can overflow
+  href: rdc11018.md
+- name: RDC11019 — Type character ignored on a function of the library
+  href: rdc11019.md
+- name: RDC11020 — Variant String that is no number, compared with a number
+  href: rdc11020.md
+- name: RDC11021 — Constant of a procedure valued with Len
+  href: rdc11021.md

@@ -222,7 +222,7 @@ public sealed class RuntimeExecutionPipeline
             statements,
             conditions,
             new WithTargetEvaluator(expressions, new WithStatementRuntimeSemantics(setCoercion, letCoercion), observation),
-            new CaseMatchEvaluator(expressions, operators),
+            new CaseMatchEvaluator(expressions, operators, letCoercion, observation),
             new ForLoopEvaluator(expressions, operators, letCoercion),
             new ForEachEvaluator(expressions, operators, setCoercion),
             new JumpTableEvaluator(expressions, letCoercion),
@@ -315,5 +315,8 @@ public sealed class RuntimeExecutionPipeline
 
         public LetCoercionAnalysisContext Analyze(ISymbolResolver resolver, ILetCoercionSemanticContextBuilder builder, ExpressionNode expression, LetCoercionStackFrame frame)
             => Inner.Analyze(resolver, builder, expression, frame);
+
+        public LetCoercionResult EvaluateUnstated(ISymbolResolver resolver, ExpressionNode expression, LetCoercionStackFrame frame)
+            => Inner.EvaluateUnstated(resolver, expression, frame);
     }
 }

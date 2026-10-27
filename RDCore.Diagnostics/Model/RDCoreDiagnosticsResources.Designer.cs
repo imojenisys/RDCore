@@ -527,7 +527,43 @@ namespace RDCore.Diagnostics.Model {
                 return ResourceManager.GetString("VariantComparedWithStringAsText_Message", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to MS-VBA convertit la valeur de ce Case Is au type déclaré du sélecteur avant de les comparer, alors que MS-VBAL §5.4.2.10 en fait l&apos;expression « sélecteur opérateur valeur » : le résultat peut différer..
+        /// </summary>
+        public static string CaseComparedInSelectorType_Message {
+            get {
+                return ResourceManager.GetString("CaseComparedInSelectorType_Message", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Ce motif contient un [] ou un [!] : MS-VBAL en fait une liste d&apos;aucun caractère, qui ne correspond à rien, alors que MS-VBA fait correspondre [] à aucun caractère du tout, et [!] à un « ! »..
+        /// </summary>
+        public static string LikePatternDeparture_EmptyCharList_Message {
+            get {
+                return ResourceManager.GetString("LikePatternDeparture_EmptyCharList_Message", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Ce motif n&apos;est pas un motif Like valide : MS-VBAL lève l&apos;erreur d&apos;exécution 93 partout où il est utilisé, alors que MS-VBA ne la lève que lorsqu&apos;une correspondance atteint l&apos;élément invalide..
+        /// </summary>
+        public static string LikePatternDeparture_InvalidPattern_Message {
+            get {
+                return ResourceManager.GetString("LikePatternDeparture_InvalidPattern_Message", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; compare un Variant qui contient une String qui n&apos;est pas un nombre à un nombre, une date ou un Boolean : MS-VBA classe la String au-dessus, quelles que soient les valeurs, et MS-VBAL §5.6.9.5 en fait une incompatibilité de type (13)..
+        /// </summary>
+        public static string VariantStringThatIsNoNumberRanked_Message {
+            get {
+                return ResourceManager.GetString("VariantStringThatIsNoNumberRanked_Message", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to &apos;{0}&apos; porte le nom du gestionnaire d&apos;un événement d&apos;un contrôle, et ne correspond pas à l&apos;événement : l&apos;événement ne l&apos;appelle jamais, et rien d&apos;autre non plus..
         /// </summary>
@@ -543,6 +579,51 @@ namespace RDCore.Diagnostics.Model {
         public static string SetThroughACallFails_NoDefaultMemberToSet_Message {
             get {
                 return ResourceManager.GetString("SetThroughACallFails_NoDefaultMemberToSet_Message", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Cette opération est de type {0} : MS-VBA type Abs, Int et Fix d&apos;un nombre comme ce nombre, là où MS-VBAL les déclare Variant. Elle peut déborder (erreur d&apos;exécution 6) là où une opération de Variant s&apos;élargirait à un type plus grand..
+        /// </summary>
+        public static string ArgumentTypedArithmeticOverflow_Message {
+            get {
+                return ResourceManager.GetString("ArgumentTypedArithmeticOverflow_Message", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Le caractère de type de cette fonction ne correspond pas à son type déclaré ({1}) : MS-VBAL rend ce nom invalide, et MS-VBA ignore le caractère. Écrivez &apos;{0}&apos; sans lui..
+        /// </summary>
+        public static string IgnoredTypeCharacter_Message {
+            get {
+                return ResourceManager.GetString("IgnoredTypeCharacter_Message", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to La valeur de la constante &apos;{0}&apos; appelle Len : MS-VBA l&apos;accepte dans une procédure, mais la refuse dans un module (Expression constante requise), et son exécution n&apos;est pas fiable. Écrivez la longueur elle-même..
+        /// </summary>
+        public static string ProcedureConstantLength_Message {
+            get {
+                return ResourceManager.GetString("ProcedureConstantLength_Message", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Un objet de la classe &apos;{0}&apos;, qui n&apos;a pas de membre par défaut, est là où une valeur est attendue : MS-VBA lève l&apos;erreur d&apos;exécution 438 (91 quand il vaut Nothing) quand il s&apos;exécute, alors que MS-VBAL §5.5.1.1 en fait une erreur de compilation (incompatibilité de type)..
+        /// </summary>
+        public static string ValueOfObjectWithNoDefaultMember_Message {
+            get {
+                return ResourceManager.GetString("ValueOfObjectWithNoDefaultMember_Message", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to {0} est assigné à un tableau : MS-VBAL le permet, {0} étant un Variant, mais la valeur qu&apos;il contient lève l&apos;erreur d&apos;exécution 13 (Incompatibilité de type) chaque fois que l&apos;assignation s&apos;exécute. Erase vide un tableau dynamique..
+        /// </summary>
+        public static string EmptyLetToArray_Message {
+            get {
+                return ResourceManager.GetString("EmptyLetToArray_Message", resourceCulture);
             }
         }
     }

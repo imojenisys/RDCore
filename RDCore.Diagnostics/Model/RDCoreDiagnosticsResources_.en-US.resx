@@ -273,10 +273,37 @@
   <data name="VariantComparedWithStringAsText_Message" xml:space="preserve">
     <value>'{0}' compares a Variant holding a number, a Date or a Boolean with a String: MS-VBA compares their text, where MS-VBAL §5.6.9.5 makes it a type mismatch (13) when the String is no number.</value>
   </data>
+  <data name="CaseComparedInSelectorType_Message" xml:space="preserve">
+    <value>MS-VBA converts the value of this Case Is to the declared type of the selector before comparing the two, where MS-VBAL §5.4.2.10 states the expression 'selector operator value': the result can differ.</value>
+  </data>
+  <data name="VariantStringThatIsNoNumberRanked_Message" xml:space="preserve">
+    <value>'{0}' compares a Variant holding a String that is no number with a number, a Date or a Boolean: MS-VBA ranks the String above it, whatever their values, where MS-VBAL §5.6.9.5 makes it a type mismatch (13).</value>
+  </data>
   <data name="UnmatchedEventHandler_Message" xml:space="preserve">
     <value>&apos;{0}&apos; is named as the handler of an event of a control, and does not match the event: the event never calls it, and neither does anything else.</value>
   </data>
   <data name="SetThroughACallFails_NoDefaultMemberToSet_Message" xml:space="preserve">
     <value>This Set calls &apos;{0}&apos; and Sets the default member of what it returns, which has no Property Set: it raises run-time error 438 (Object doesn&apos;t support this property or method) whenever it runs.</value>
+  </data>
+  <data name="LikePatternDeparture_EmptyCharList_Message" xml:space="preserve">
+    <value>This pattern has a [] or a [!]: MS-VBAL makes it a list of no character, which matches nothing, where MS-VBA matches [] with no character at all, and [!] with a &apos;!&apos;.</value>
+  </data>
+  <data name="LikePatternDeparture_InvalidPattern_Message" xml:space="preserve">
+    <value>This pattern is not a valid Like pattern: MS-VBAL raises run-time error 93 wherever it is used, where MS-VBA raises it only when a match reaches the invalid element.</value>
+  </data>
+  <data name="ArgumentTypedArithmeticOverflow_Message" xml:space="preserve">
+    <value>This operation is {0} arithmetic: MS-VBA types Abs, Int and Fix of a number as that number&apos;s type, where MS-VBAL declares them Variant. It can overflow (run-time error 6) where a Variant operation would widen to a larger type.</value>
+  </data>
+  <data name="IgnoredTypeCharacter_Message" xml:space="preserve">
+    <value>The type character of this function does not match its declared type ({1}): MS-VBAL makes the name invalid, and MS-VBA ignores the character. Write &apos;{0}&apos; without it.</value>
+  </data>
+  <data name="ProcedureConstantLength_Message" xml:space="preserve">
+    <value>The value of constant &apos;{0}&apos; calls Len: MS-VBA accepts it in a procedure, but refuses it in a module (Constant expression required), and its run is not reliable. Write the length itself.</value>
+  </data>
+  <data name="ValueOfObjectWithNoDefaultMember_Message" xml:space="preserve">
+    <value>An object of class &apos;{0}&apos;, which has no default member, is where a value is expected: MS-VBA raises run-time error 438 (91 when it is Nothing) when it runs, where MS-VBAL §5.5.1.1 makes it a compile error (type mismatch).</value>
+  </data>
+  <data name="EmptyLetToArray_Message" xml:space="preserve">
+    <value>{0} is assigned to an array: MS-VBAL allows it, {0} being a Variant, but the value it holds raises run-time error 13 (Type mismatch) whenever the assignment runs. Erase empties a dynamic array.</value>
   </data>
 </root>

@@ -273,10 +273,37 @@
   <data name="VariantComparedWithStringAsText_Message" xml:space="preserve">
     <value>'{0}' compare un Variant qui contient un nombre, une date ou un Boolean à une String: MS-VBA compare leurs textes, et MS-VBAL §5.6.9.5 en fait une incompatibilité de type (13) quand la String n'est pas un nombre.</value>
   </data>
+  <data name="CaseComparedInSelectorType_Message" xml:space="preserve">
+    <value>MS-VBA convertit la valeur de ce Case Is au type déclaré du sélecteur avant de les comparer, alors que MS-VBAL §5.4.2.10 en fait l'expression « sélecteur opérateur valeur » : le résultat peut différer.</value>
+  </data>
+  <data name="VariantStringThatIsNoNumberRanked_Message" xml:space="preserve">
+    <value>'{0}' compare un Variant qui contient une String qui n'est pas un nombre à un nombre, une date ou un Boolean : MS-VBA classe la String au-dessus, quelles que soient les valeurs, et MS-VBAL §5.6.9.5 en fait une incompatibilité de type (13).</value>
+  </data>
   <data name="UnmatchedEventHandler_Message" xml:space="preserve">
     <value>&apos;{0}&apos; porte le nom du gestionnaire d&apos;un événement d&apos;un contrôle, et ne correspond pas à l&apos;événement : l&apos;événement ne l&apos;appelle jamais, et rien d&apos;autre non plus.</value>
   </data>
   <data name="SetThroughACallFails_NoDefaultMemberToSet_Message" xml:space="preserve">
     <value>Ce Set appelle &apos;{0}&apos; et assigne le membre par défaut de ce qu&apos;il retourne, qui n&apos;a pas de Property Set : il lève l&apos;erreur d&apos;exécution 438 (Cet objet ne gère pas cette propriété ou méthode) chaque fois qu&apos;il s&apos;exécute.</value>
+  </data>
+  <data name="LikePatternDeparture_EmptyCharList_Message" xml:space="preserve">
+    <value>Ce motif contient un [] ou un [!] : MS-VBAL en fait une liste d&apos;aucun caractère, qui ne correspond à rien, alors que MS-VBA fait correspondre [] à aucun caractère du tout, et [!] à un « ! ».</value>
+  </data>
+  <data name="LikePatternDeparture_InvalidPattern_Message" xml:space="preserve">
+    <value>Ce motif n&apos;est pas un motif Like valide : MS-VBAL lève l&apos;erreur d&apos;exécution 93 partout où il est utilisé, alors que MS-VBA ne la lève que lorsqu&apos;une correspondance atteint l&apos;élément invalide.</value>
+  </data>
+  <data name="ArgumentTypedArithmeticOverflow_Message" xml:space="preserve">
+    <value>Cette opération est de type {0} : MS-VBA type Abs, Int et Fix d&apos;un nombre comme ce nombre, là où MS-VBAL les déclare Variant. Elle peut déborder (erreur d&apos;exécution 6) là où une opération de Variant s&apos;élargirait à un type plus grand.</value>
+  </data>
+  <data name="IgnoredTypeCharacter_Message" xml:space="preserve">
+    <value>Le caractère de type de cette fonction ne correspond pas à son type déclaré ({1}) : MS-VBAL rend ce nom invalide, et MS-VBA ignore le caractère. Écrivez &apos;{0}&apos; sans lui.</value>
+  </data>
+  <data name="ProcedureConstantLength_Message" xml:space="preserve">
+    <value>La valeur de la constante &apos;{0}&apos; appelle Len : MS-VBA l&apos;accepte dans une procédure, mais la refuse dans un module (Expression constante requise), et son exécution n&apos;est pas fiable. Écrivez la longueur elle-même.</value>
+  </data>
+  <data name="ValueOfObjectWithNoDefaultMember_Message" xml:space="preserve">
+    <value>Un objet de la classe &apos;{0}&apos;, qui n&apos;a pas de membre par défaut, est là où une valeur est attendue : MS-VBA lève l&apos;erreur d&apos;exécution 438 (91 quand il vaut Nothing) quand il s&apos;exécute, alors que MS-VBAL §5.5.1.1 en fait une erreur de compilation (incompatibilité de type).</value>
+  </data>
+  <data name="EmptyLetToArray_Message" xml:space="preserve">
+    <value>{0} est assigné à un tableau : MS-VBAL le permet, {0} étant un Variant, mais la valeur qu&apos;il contient lève l&apos;erreur d&apos;exécution 13 (Incompatibilité de type) chaque fois que l&apos;assignation s&apos;exécute. Erase vide un tableau dynamique.</value>
   </data>
 </root>

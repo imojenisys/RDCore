@@ -29,6 +29,11 @@ procedure, a function of a library, a module or a project is no match, as **MS-V
 |A fixed-size array|`ReDim Grid(3)` of `Public Grid(2) As Long`|[VBC09357](../diagnostics/vbc09357.md) _Array already dimensioned_.|
 |A variable of another type, a constant, a member of an enumeration, the function's own result|`ReDim Count(1)` of a `Long`, `ReDim vbCrLf(1)`, `ReDim Red(1)`|[VBC09307](../diagnostics/vbc09307.md) _Expected array_.|
 |Nothing that matches: no name, a procedure, a function of a library, a module|`ReDim Totals(12)`, `ReDim Left(1)`|An implicit declaration of a new array, which hides what the name otherwise is.|
+|A name with no declaration that the procedure uses before the `ReDim`: written, read, or on a line that never runs|`y = 5`, then `ReDim y(2)`|[VBC09306](../diagnostics/vbc09306.md) _Invalid ReDim_: the earlier use declared `y` implicitly, as a `Variant`.|
+
+**MS-VBA** decides between the last two rows by the text of the procedure, not by what runs: a name used anywhere before
+the first `ReDim` of it is a variable declared implicitly there, which no `ReDim` re-dimensions; a name used only after
+it is the array the `ReDim` declared (recorded in Excel, `oracle\findings-labels` R01-R10).
 
 For an implicit `ReDim` declaration:
 
@@ -85,8 +90,12 @@ dial rather than something the statement wrote.
 |---|---|
 |A resizable array|Re-dimensioned.|
 |A `Variant` holding an array|Re-dimensioned. The variable keeps storing a `Variant`.|
-|A `Variant` holding nothing yet|Becomes an array. The static rule admits a `Variant` target so that it can become an array, so the `Empty` a `Variant` starts as is not the error below.|
-|A `Variant` holding anything else|Runtime error 13, `Type mismatch`.|
+|A `Variant` holding anything else|Becomes an array: a number, a `String`, an object or `Null`, and the `Empty` a `Variant` starts as.|
+|A `Variant` holding anything but an array, with `Preserve`|Runtime error 13, `Type mismatch`, the `Empty` a `Variant` starts as included. The `Variant` keeps what it held.|
+
+**MS-VBAL §5.4.3.3** says "Runtime Error 13 is raised if the declared type of a redimensioned variable is `Variant` and its value type is not an array". RD-VBA
+reads the sentence as **MS-VBA** does (recorded in Excel): as a `ReDim Preserve`'s, the one that has the elements of an array to keep. A `ReDim` without
+`Preserve` keeps nothing of what the `Variant` held, and makes it an array whatever that was.
 
 Each bound is Let-coerced to `Long`, as any other subscript is ([**RD-VBAL §5.6.13**](rd-vbal.5.6.13.index-expressions.md#subscripts)). An upper bound below its
 lower bound is runtime error 9, `Subscript out of range`.
