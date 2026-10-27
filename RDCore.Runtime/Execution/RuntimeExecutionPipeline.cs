@@ -2,6 +2,7 @@ using RDCore.Runtime.Semantics;
 using RDCore.Runtime.Execution.External;
 using RDCore.Runtime.Execution.External.Automation;
 using RDCore.External;
+using RDCore.Runtime.Execution.External.Forms;
 using RDCore.Runtime.Execution.External.Native;
 using RDCore.Runtime.StdLib;
 using RDCore.Runtime.Semantics.LetCoercion;
@@ -160,6 +161,8 @@ public sealed class RuntimeExecutionPipeline
         Sweep,
     }
 
+    private static readonly IReadOnlyDictionary<string, SDK.Workspace.Forms.FormDescriptor> NoForms = new Dictionary<string, SDK.Workspace.Forms.FormDescriptor>();
+
     private static RuntimeExecutionPipeline Build(
         IRuntimeSession session,
         IReadOnlyDictionary<SemanticId, InstructionList> bodies,
@@ -181,7 +184,7 @@ public sealed class RuntimeExecutionPipeline
                 new VBNumericLetCoercionTypeRuntimeSemantics(messages, handle, session.Environment.Regional),
                 new VBBooleanLetCoercionRuntimeSemantics(handle, messages, session.Environment.Regional),
                 // every number and date Let-coerced to String is written in the environment's regional settings.
-                new VBStringLetCoercionRuntimeSemantics(messages, session.Environment.Culture),
+                new VBStringLetCoercionRuntimeSemantics(messages, session.Environment.Culture, session.Environment.Regional),
                 new VBDateLetCoercionRuntimeSemantics(handle, messages, session.Environment.Regional),
                 new VBFixedStringLetCoercionRuntimeSemantics(handle, messages),
                 new VBVariantTypeLetCoercionRuntimeSemantics(handle, messages),
@@ -219,7 +222,7 @@ public sealed class RuntimeExecutionPipeline
             statements,
             conditions,
             new WithTargetEvaluator(expressions, new WithStatementRuntimeSemantics(setCoercion, letCoercion), observation),
-            new CaseMatchEvaluator(expressions, operators),
+            new CaseMatchEvaluator(expressions, operators, letCoercion, observation),
             new ForLoopEvaluator(expressions, operators, letCoercion),
             new ForEachEvaluator(expressions, operators, setCoercion),
             new JumpTableEvaluator(expressions, letCoercion),
@@ -238,17 +241,27 @@ public sealed class RuntimeExecutionPipeline
         // whichever provider can reach it runs it.
         // an analysis does not make a call the platform does not run itself, and no policy decides whether it may: the outside world answers
         // with a value that is not known. What the library does depends on state the analysis does not have, which the observation is told of.
+        var world = outside ?? ExternalWorld.None;
+        var servers = new AutomationCallProvider(session, world.Automation);
+        var forms = new FormCallProvider(session, world, servers, bodies is ProgramImage image ? image.Forms : NoForms);
         var external = analysis
             ? new ExternalCallPipeline(session, observation is null ? [] : [new AssumedCallInterceptor(observation)], [StdLibDispatcher.For(session), new OutsideWorldCallProvider()])
-            // the servers' provider is asked first: it answers the members of the standard library's enumerator for the enumerators it holds, and for nothing else of it.
+            // a member a form's designer declares is the form host's, which calls the members of the form object itself through the servers' provider.
+            // The servers' provider is asked next: it answers the members of the standard library's enumerator for the enumerators it holds, and for nothing else of it.
             // A Declare'd procedure is a native library's, and is called when the policy over library imports lets it through.
             : ExternalCallPipeline.For(session,
                 [
-                    new AutomationCallProvider(session, (outside ?? ExternalWorld.None).Automation),
+                    // the image keeps what the designers of its forms declare; bodies that are only bodies have no forms.
+                    forms,
+                    servers,
                     StdLibDispatcher.For(session, outside, cancellation),
-                    new DeclaredProcedureProvider(session, (outside ?? ExternalWorld.None).Libraries),
+                    // the shlwapi function that connects an object of the program's own to a server's events is the session's to run, not the native library's.
+                    new ConnectionPointCallProvider(session, world.Automation),
+                    new DeclaredProcedureProvider(session, world.Libraries),
                 ]);
         var bindings = new RuntimeCallableBindingFactory(invoker, external);
+        // Unload runs a form's QueryClose and Terminate, which are code the bindings call: the last edge of that cycle too.
+        forms.Bindings = bindings;
         expressions.ProcedureInvoker = invoker;
         expressions.Bindings = bindings;
         expressions.AssumesVariables = mode is PipelineMode.Sweep;
@@ -302,5 +315,8 @@ public sealed class RuntimeExecutionPipeline
 
         public LetCoercionAnalysisContext Analyze(ISymbolResolver resolver, ILetCoercionSemanticContextBuilder builder, ExpressionNode expression, LetCoercionStackFrame frame)
             => Inner.Analyze(resolver, builder, expression, frame);
+
+        public LetCoercionResult EvaluateUnstated(ISymbolResolver resolver, ExpressionNode expression, LetCoercionStackFrame frame)
+            => Inner.EvaluateUnstated(resolver, expression, frame);
     }
 }

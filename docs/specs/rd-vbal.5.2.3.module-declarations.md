@@ -59,13 +59,42 @@ An _array declaration_ creates an _array value_ of the appropriate _array type_ 
 |---|---|---|---|
 |One or more _bounds_ (dimension specifications)|`Dim g(1 To 3, 0 To 4) As Long`|[VBFixedSizeArrayType](../api/RDCore.SDK.Model.Types.VBFixedSizeArrayType.html)|[VBFixedSizeArrayValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBFixedSizeArrayValue.html)|
 |An empty `()` clause|`Dim b() As Long`|[VBResizableArrayType](../api/RDCore.SDK.Model.Types.VBResizableArrayType.html)|[VBResizableArrayValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBResizableArrayValue.html)|
-|A trailing `()` on the `As` clause|`Dim b As Long()`|`VBResizableArrayType`|`VBResizableArrayValue`|
-|An empty `()` clause, or a trailing `()` on the `As` clause, with a `Byte` _item type_|`Dim b() As Byte`|[VBResizableByteArrayType](../api/RDCore.SDK.Model.Types.VBResizableByteArrayType.html)|[VBResizableByteArrayValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBResizableByteArrayValue.html)|
+|An empty `()` clause, with a `Byte` _item type_|`Dim b() As Byte`|[VBResizableByteArrayType](../api/RDCore.SDK.Model.Types.VBResizableByteArrayType.html)|[VBResizableByteArrayValue](../api/RDCore.SDK.Model.Values.Intrinsic.VBResizableByteArrayValue.html)|
 
 An array has up to 60 dimensions.
 
+An array is declared by the `()` after its name, and only so: a trailing `()` on the `As` clause (`As Long()`, the `array-designator` of
+**MS-VBAL §5.3.1.4**) is the type of what a `Function`, a `Property Get` or a `Declare`'s `Function` returns, and is a syntax error anywhere else, as it
+is in **MS-VBA** (recorded in Excel): a variable of a module, a local (`Dim`, `Static`), a field of a `Type`, a constant, a parameter (of a procedure, an
+event or a `Declare`), or the `As` clause of a `ReDim`. `DeclarationStaticSemanticsEvaluator.CheckSyntax` reports it.
+
+|Declaration|Outcome|
+|---|---|
+|`Function F() As Long()`, `Property Get P() As Long()`, `Declare Function F Lib "…" () As Long()`|Valid: what is returned is an array of `Long`.|
+|`Dim b As Long()`, `Public b As Long()`, `Static s As Long()`, `F As Long()` in a `Type`|[VBC00001](../diagnostics/vbc00001.md) _Syntax error_. Write `Dim b() As Long`.|
+|`Sub X(a As Long())`, `Event E(a As Long())`|`VBC00001` _Syntax error_. Write `Sub X(a() As Long)`.|
+|`ReDim a(2) As Long()`, `Const K As Long() = 1`|`VBC00001` _Syntax error_.|
+
 Resolving an omitted _lower bound_ against `Option Base` is specified in
 [**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md) (§5.2.1.2).
+
+A bound is a constant expression Let-coerced to `Long`, reduced when the module is compiled, of a variable, a local and a
+field of a `Type` alike, as **MS-VBA** reduces it (recorded in Excel):
+
+|Bound|Example|Outcome|
+|---|---|---|
+|No constant expression|`Dim a(n) As Long`, `X(Count) As Long` in a `Type`|[VBC09350](../diagnostics/vbc09350.md) _Constant expression required_|
+|Past the range of a `Long`, written or given by a constant|`Dim a(1E10) As Long`, `Const K = 1E10: Dim a(K) As Byte`|[VBC09352](../diagnostics/vbc09352.md) _Overflow_|
+|An upper bound below the lower one|`Dim a(5 To 1) As Long`, `Dim a(-1) As Long`|[VBC09365](../diagnostics/vbc09365.md) _Range has no values_|
+|A fraction, or a `String` that reads as a number|`Dim a(2.6) As Long`, `Dim a("3") As Long`|Valid: the bound is rounded half to even, or read, as Let-coercion to `Long` does: `3`.|
+|`Len` or `LenB` of a constant expression|`Const K = "abcd": Dim a(Len(K)) As Long`|Valid: `4`, and `8` for `LenB`, of a local and of a module's variable alike. **MS-VBAL §5.6.16.1** lists both among constant expressions; MS-VBA admits them in a bound (recorded in Excel), though not in the value of a `Const`: see below.|
+
+**MS-VBAL §5.6.16.1** lists `Len` and `LenB` among constant expressions, and so a valid value of a `Const`. MS-VBA refuses them in a `Const` of a module, and
+`LenB` in one of a procedure, with [VBC09350](../diagnostics/vbc09350.md) _Constant expression required_ (recorded in Excel), and so does RD-VBA: that is no
+check MS-VBA skips but one it adds, so no warning goes with it.
+
+🎯 A `Const` of a procedure valued `Len` of a constant (`Const K3 = Len(K)`) compiles in MS-VBA, inconsistently, and running it crashed the host. RD-VBA
+compiles it, gives it the length MS-VBAL gives it (`4`), and warns with [RDC11021](../diagnostics/rdc11021.md). `String * Len(K)` is a syntax error in both.
 
 ### 5.2.3.1.4 Variable Type Declarations
 
@@ -77,15 +106,59 @@ A declared type name binds in the _type binding context_. With the
 binds to a sibling module's `Type` or `Enum`, or to a class, not only to a reserved data-type name
 ([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)). A name that binds an `Enum` type, of the
 workspace or of a library, declares a `Long` ([**RD-VBAL §5.2.3.4** Enum Declarations](#5234-enum-declarations)). A
-name that binds a procedural module, the project's or a library's, is not a type (**MS-VBAL §5.6.16.7**), and the
-declaration is [VBC09311](../diagnostics/vbc09311.md) _User-defined type not defined_. A type of the project ranks
+name that binds a procedural module or a project is not a type, and the declaration is the error
+[**RD-VBAL §5.6.16.7** Type Expressions](rd-vbal.5.6.16.constrained-expressions.md#56167-type-expressions) lists for it. A type of the project ranks
 ahead of a library's procedural module of the same name ([**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md#lookup-order)).
 
-**MS-VBAL §5.2.3.1.4**: the type specified in an `As New` clause must be a named class, and must be creatable unless
-it is declared in the same project.
+The length of a fixed-length `String * n` is "the data value of its `<INTEGER>` element or the data value referenced by
+its `<constant-name>` Let-coerced to declared type Long", reduced when the module is compiled, wherever it is written:
+a variable, a local, an element of an array, a field of a `Type`, the `As` clause of a `ReDim`. **MS-VBA** refuses
+what is no length (recorded in Excel):
+
+|Length|Example|Outcome|
+|---|---|---|
+|1 to 65526, written or given by a constant or an `Enum` member|`String * 10`, `String * &H10`, `String * Red`|Valid.|
+|A constant whose value is a fraction or a numeric `String`|`Const K = 2.5`, `Const K = "3"`|Valid: `2` and `3`, as Let-coercion to `Long` has them.|
+|Less than 1, or more than 65526|`String * 0`, `String * 65527`, `Const K = 70000: … String * K`|[VBC09375](../diagnostics/vbc09375.md) _Invalid length for fixed-length string_|
+|A number written past 65535, or no integer|`String * 65536`, `String * 1.5`|[VBC00001](../diagnostics/vbc00001.md) _Syntax error_|
+|A name that is no constant|`String * n`, a variable|[VBC09350](../diagnostics/vbc09350.md) _Constant expression required_|
+|A name nothing declares, under `Option Explicit`|`String * NoSuch`|[VBC09302](../diagnostics/vbc09302.md) _Variable not defined_|
 
 > [!NOTE]
-> **Not implemented.** The declaration-level validity of `As New` (**MS-VBAL §5.2.3.1.4**) is not modeled.
+> **Not implemented.** A constant whose value is an expression (`Const K = 1 + 2`) is reduced to report a length that
+> is invalid, but the variable `String * K` declares is a variable-length `String`: its type is decided before the
+> constants are folded.
+
+**MS-VBAL §5.2.3.1.4**: the type specified in an `As New` clause must be a named class, and must be creatable unless
+it is declared in the same project. `DeclarationStaticSemanticsEvaluator` checks every declaration that has an
+`As New` clause - a variable, a field, an array (its element type), a field of a `Type` - as **MS-VBA** does
+(recorded in Excel):
+
+|`As New` of|Outcome|
+|---|---|
+|A class of the project, creatable or not (`VB_Creatable = False`)|Valid.|
+|A creatable class of a library (`As New Collection`)|Valid.|
+|A class of a library that cannot be created (`As New ErrObject`, `As New Workbook`)|Compile error [`VBC09368`](../diagnostics/vbc09368.md) _Invalid use of New keyword_.|
+|A user-defined type, or an `Enum` (of the project or of a library)|`VBC09368`.|
+|A `WithEvents` variable (`Private WithEvents w As New Widget`, **MS-VBAL §5.2.3.1.2**)|`VBC09368`.|
+|An intrinsic type (`As New Long`, `As New String`, `As New Variant`, `As New Object`)|Compile error [`VBC00001`](../diagnostics/vbc00001.md) _Syntax error_: `New` is followed by a type name no class can have.|
+
+> [!IMPORTANT]
+> **MS-VBA** compiles `As New` of a library's class that cannot be created, and raises run-time error -2147221164
+> _Class not registered_ when the variable is first referred to. **RD-VBA** reports it when the module is compiled, as
+> **MS-VBAL §5.2.3.1.4** has it; the verbose message says what MS-VBA does.
+
+An automatic instantiation variable that is _dependent_ on another (**MS-VBAL §2.5.1**) is created on its first
+reference too:
+
+|Variable|Example|First reference|
+|---|---|---|
+|An element of an array declared `As New`|`Dim a(1 To 3) As New Collection`, then `a(2).Add 1`|Creates the object of that element, and only that one.|
+|A field of a `Type` declared `As New`|`Dim r As TRecord`, then `r.Items.Add 1`|Creates the object of that field. A copy of the record (`r2 = r`) holds the same object.|
+|A field of a class module declared `As New`|`Public Items As New Collection`, then `obj.Items.Count`|Creates the object of that field, of that object.|
+
+Each is never `Nothing` when it is referred to: after `Set a(2) = Nothing`, the next reference to `a(2)` creates another
+object.
 
 ### 5.2.3.1.5 Implicit Type Determination
 

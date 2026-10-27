@@ -61,6 +61,25 @@ Keeping module-level facts on `ModuleDirectives` rather than on `StaticEvaluatio
 stable as the directive surface that MS-VBAL and RD-VBA both define (`Option Compare`, `Attribute` declarations, …)
 grows.
 
+### The types of the workspace
+
+A declaration is bound to a type that exists, whichever module declares the type and in whichever order the project file
+lists the modules. The environment host is given a workspace's symbols in three phases, each for every module before
+the next ([DefineSymbolsParams](../api/RDCore.SDK.Platform.Protocol.DefineSymbolsParams.html)`.DeclareTypesOnly`):
+
+1. **Declare types.** Each module's user-defined types, with their fields, and enumerations, with their members. A class
+   module exists as soon as the project is composed.
+2. **Bind declarations.** Each module's declarations are bound against those types: its variables, constants,
+   parameters, return types, and the fields of its user-defined types. A class module is composed once its members are
+   bound.
+3. **Load code.** Each module's code is checked and loaded against the whole workspace.
+
+A declaration holds the class or user-defined type it names by its identity, not a copy of it: what the type declares -
+the members and default member of a class, the fields of a user-defined type - is read from the type as the composition
+has it when it is asked
+([CurrentTypes](../api/RDCore.SDK.Semantics.Static.CurrentTypes.html)). A module listed before the class it uses is
+bound before the class is composed, and two classes can name each other: no order would make every copy complete.
+
 ### Expression evaluation
 
 Each static semantics rule for a node kind is documented in isolation, in the section that implements its MS-VBAL
@@ -251,9 +270,10 @@ caller's; a variable of the module or a `Static` local, entered with whatever th
 procedure the analysis does not run returns - the subtype is not known either. An operation of a `Variant` whose subtype is
 not known states no effective type and nothing of what it does, a conversion of one states that it converts a `Variant`,
 and what either yields is a `Variant` whose subtype is not known. An operation of a `Variant` whose subtype is known yields
-a `Variant` of the type of its result. 👉 The analysis presumes there is no overflow: an `Integer`, `Long`, `Single` or
+a `Variant` of the type of its result. 👉 The analysis presumes there is no overflow: a `Byte`, `Integer`, `Long`, `Single` or
 `Date` result of an arithmetic operator of a `Variant` that overflows is the narrowest of `Integer`, `Long` or `Double` it
-fits (**MS-VBAL §5.6.9.3**), which a value that is not known cannot tell - an edge case, not worth what the subtype tells
+fits (**MS-VBAL §5.6.9.3**, which lists no `Byte`: MS-VBA widens one as it does an `Integer`, `CByte(200) + CByte(100)` being the
+`Integer` 300 - recorded in Excel), which a value that is not known cannot tell - an edge case, not worth what the subtype tells
 of every other one.
 
 A statement inside an excluded `#If` branch is not analyzed and defines no label (**MS-VBAL §3.4.2**). Lowering a body to

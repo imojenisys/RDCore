@@ -77,6 +77,8 @@ public class DiagnosticFactory : ICoreDiagnosticsFactory
             Severity = finding.Severity,
             Source = nameof(RDCore),
             Range = finding.Range.ToLsp(),
+            Tags = finding.Tags.Count == 0 ? null : new Container<DiagnosticTag>(finding.Tags),
+            Data = finding.Fixes?.ToData(),
         };
     }
 

@@ -1,12 +1,15 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using RDCore.LanguageServer.Progress;
 using RDCore.LanguageServer.Workspace;
 using RDCore.LanguageServer.Workspace.Services;
 using RDCore.SDK.Model.AST;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.Source;
 using RDCore.SDK.Platform.Protocol;
+using RDCore.SDK.Server.Progress;
 using RDCore.SDK.Workspace;
+using RDCore.SDK.Workspace.Forms;
 
 namespace RDCore.LanguageServer.Parsing;
 
@@ -29,12 +32,15 @@ internal interface IParsingClientService
     Task<ModuleParseResult> ParseDocumentAsync(Uri documentUri, CancellationToken token);
 
     /// <summary>
-    /// Parses source that is not a workspace document, and caches nothing.
+    /// Parses source that is not a workspace document; the last few parses are kept apart from the documents' own, by the text they are of.
     /// </summary>
     /// <remarks>
     /// Not every module a client wants parsed is a file. An interactive shell's program lives in a
     /// buffer, and its immediate-mode line is a procedure that exists for one statement's worth of
     /// time — neither is a workspace document, and neither should evict the cached parse of one.
+    /// A completion list is asked of the same text at each name typed on a line - the module with
+    /// the line taken out - and the text that was parsed last is answered with the very parse it was,
+    /// which is what lets what is composed of it be reused too.
     /// </remarks>
     /// <param name="documentUri">The URI the parse result is addressed under.</param>
     /// <param name="source">The source to parse.</param>
@@ -44,7 +50,9 @@ internal interface IParsingClientService
     /// <summary>
     /// Parses every currently-loaded workspace source document. Failures are logged, not thrown.
     /// </summary>
-    Task ParseWorkspaceAsync(CancellationToken token);
+    /// <param name="token">A token that cancels the parse.</param>
+    /// <param name="progress">Where each document is reported as it is parsed.</param>
+    Task ParseWorkspaceAsync(CancellationToken token, IProgress<WorkProgressStep>? progress = null);
 
     /// <summary>
     /// Gets the last <see cref="ModuleParseResult"/> cached for <paramref name="documentUri"/>.
@@ -109,15 +117,44 @@ internal sealed class ParsingClientService(
 
     public async Task<ModuleParseResult> ParseFragmentAsync(Uri documentUri, string source, CancellationToken token)
     {
+        lock (_fragments)
+        {
+            var index = _fragments.FindIndex(fragment => fragment.Uri == documentUri.AbsoluteUri && fragment.Source == source);
+            if (index >= 0)
+            {
+                var kept = _fragments[index];
+                _fragments.RemoveAt(index);
+                _fragments.Insert(0, kept);
+                return kept.Parse;
+            }
+        }
+
         await orchestration.ParsingService.WaitForReadyAsync(token);
 
         var envelope = await orchestration.ParsingService.SendRequestAsync<ParseDocumentParams, PlatformJsonEnvelope>(
             new ParseDocumentParams { DocumentUri = documentUri, Fragment = source }, token);
 
-        return envelope is not null
-            ? envelope.Unwrap<ModuleParseResult>()
-            : ModuleParseResult.Failed(new SourceLocation(documentUri, SourceRange.Empty), "the parser returned no result");
+        if (envelope is null)
+        {
+            return ModuleParseResult.Failed(new SourceLocation(documentUri, SourceRange.Empty), "the parser returned no result");
+        }
+
+        var parse = envelope.Unwrap<ModuleParseResult>();
+        lock (_fragments)
+        {
+            _fragments.Insert(0, (documentUri.AbsoluteUri, source, parse));
+            if (_fragments.Count > KeptFragments)
+            {
+                _fragments.RemoveAt(_fragments.Count - 1);
+            }
+        }
+
+        return parse;
     }
+
+    // the fragments parsed last, the last first: a few, since each holds the syntax tree of a whole module.
+    private const int KeptFragments = 4;
+    private readonly List<(string Uri, string Source, ModuleParseResult Parse)> _fragments = [];
 
     public async Task<ModuleParseResult> ParseDocumentAsync(Uri documentUri, CancellationToken token)
     {
@@ -144,7 +181,7 @@ internal sealed class ParsingClientService(
         // an error response from the parser comes back as a null envelope; degrade this one document
         // rather than abort the whole workspace parse.
         var result = envelope is not null
-            ? envelope.Unwrap<ModuleParseResult>()
+            ? envelope.Unwrap<ModuleParseResult>() with { Designer = DesignerOf(document) }
             : ModuleParseResult.Failed(new SourceLocation(documentUri, SourceRange.Empty), "the parser returned no result");
 
         // what the parser answered is the parse of the version it was sent. A failure to answer is not: it is kept under no version, so that it is what the last
@@ -167,7 +204,7 @@ internal sealed class ParsingClientService(
         return result;
     }
 
-    public async Task ParseWorkspaceAsync(CancellationToken token)
+    public async Task ParseWorkspaceAsync(CancellationToken token, IProgress<WorkProgressStep>? progress = null)
     {
         try
         {
@@ -175,10 +212,13 @@ internal sealed class ParsingClientService(
 
             var parsed = 0;
             var failed = 0;
-            foreach (var document in documents.GetAllDocuments())
+            var all = documents.GetAllDocuments().ToList();
+            foreach (var document in all)
             {
                 token.ThrowIfCancellationRequested();
                 var uri = document.Id.Uri.ToUri();
+                progress?.Report(new WorkProgressStep(
+                    string.Format(ProgressMessages.ItemOf, document.Name, parsed + failed + 1, all.Count), 100 * (parsed + failed) / Math.Max(1, all.Count)));
                 try
                 {
                     await ParseDocumentAsync(uri, token);
@@ -205,6 +245,22 @@ internal sealed class ParsingClientService(
         catch (Exception exception)
         {
             logger.LogError(exception, "❌ Workspace parse failed.");
+        }
+    }
+
+    // what a form module's designer declares, from its text and its companion file: the parser reads text alone. A form whose designer data cannot be read
+    // declares no controls; the designer's own problem is logged.
+    // TODO: report an unreadable designer as a diagnostic of the form module, by its FormDesignerFormatProblem.
+    private FormDescriptor? DesignerOf(WorkspaceDocument document)
+    {
+        try
+        {
+            return FormDesigner.Read(document.Text, document.Companion);
+        }
+        catch (FormDesignerFormatException exception)
+        {
+            logger.LogWarning("⚠️ The designer of {uri} cannot be read: {reason}", document.Id.Uri, exception.Message);
+            return null;
         }
     }
 

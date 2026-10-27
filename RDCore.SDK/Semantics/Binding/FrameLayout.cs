@@ -1,6 +1,8 @@
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Symbols.VBProject;
+using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 
 namespace RDCore.SDK.Semantics.Binding;
 
@@ -41,13 +43,39 @@ public sealed class FrameLayout
         {
             _slots.TryAdd(variable.SemanticId, _slots.Count);
         }
+
+        ParameterSlots = [.. parameters.Select(SlotNumberOf)];
+        LocalSlots = [.. locals.Select(SlotNumberOf)];
     }
+
+    private int SlotNumberOf(Symbol symbol) => _slots.TryGetValue(symbol.SemanticId, out var index) ? index : -1;
+
+    /// <summary>
+    /// The number of the slot of each parameter of the procedure, in the order they are declared - <c>-1</c> for one that has none: what an activation
+    /// fills with its arguments, by number rather than by looking each parameter's symbol up.
+    /// </summary>
+    public ImmutableArray<int> ParameterSlots { get; }
+
+    /// <summary>
+    /// The number of the slot of each variable and constant the procedure declares, in the order they are declared - <c>-1</c> for one that has none: a
+    /// <c>Static</c> variable, a constant.
+    /// </summary>
+    public ImmutableArray<int> LocalSlots { get; }
 
     /// <summary>
     /// The layout of an activation of <paramref name="procedure"/>.
     /// </summary>
     /// <param name="procedure">The procedure: a <c>Sub</c>, a <c>Function</c> or a property accessor. Anything else has no slots.</param>
     public static FrameLayout Of(Symbol procedure) => new(procedure);
+
+    private static readonly ConditionalWeakTable<Symbol, FrameLayout> _layouts = [];
+
+    /// <summary>
+    /// The layout of an activation of <paramref name="procedure"/>, the same instance every time it is asked for that very symbol: what binds a name of the
+    /// procedure to a slot and what lays out its activations agree on it by identity (<see cref="FrameSlot.Layout"/>).
+    /// </summary>
+    /// <param name="procedure">The procedure: a <c>Sub</c>, a <c>Function</c> or a property accessor. Anything else has no slots.</param>
+    public static FrameLayout For(Symbol procedure) => _layouts.GetValue(procedure, Of);
 
     /// <summary>
     /// The procedure this is the layout of.

@@ -49,7 +49,27 @@ public record class DefineSymbolsParams : IRequest, IRequest<DefineSymbolsResult
     /// <summary>
     /// The member symbol descriptors, in declaration order.
     /// </summary>
+    /// <remarks>
+    /// Not on the wire as such: a descriptor carries expressions (<see cref="ConstantDescriptor.Value"/>, <see cref="ParameterDescriptor.DefaultValue"/>,
+    /// <see cref="ArrayBoundDescriptor"/>), which the transport's serializer cannot write - and a request it cannot write is never sent, nor ever answered.
+    /// They travel as <see cref="SymbolsJson"/>.
+    /// </remarks>
+    [Newtonsoft.Json.JsonIgnore]
     public ImmutableArray<SymbolDescriptor> Symbols { get; init; } = [];
+
+    /// <summary>
+    /// The <see cref="System.Text.Json"/> representation of <see cref="Symbols"/> (see <see cref="PlatformJson"/>): the form they take on the wire.
+    /// </summary>
+    /// <remarks>
+    /// An AST node is polymorphic, and the literal one holds a value whose type holds a value of that type; <c>Newtonsoft.Json</c> refuses the first and loops on
+    /// the second. Setting it sets <see cref="Symbols"/>.
+    /// </remarks>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SymbolsJson
+    {
+        get => PlatformJson.Serialize(Symbols);
+        init => Symbols = value.Length == 0 ? [] : PlatformJson.Deserialize<ImmutableArray<SymbolDescriptor>>(value);
+    }
 
     /// <summary>
     /// The module's own <c>Option</c> directives (<strong>MS-VBAL §5.2.1</strong>), which the host
@@ -109,15 +129,28 @@ public record class DefineSymbolsParams : IRequest, IRequest<DefineSymbolsResult
     public bool Replace { get; init; }
 
     /// <summary>
-    /// Whether the module's symbols were defined by an earlier request, and this one is for its code alone: the host defines nothing, composes the class,
-    /// and loads the module's procedures from <see cref="ParseResultJson"/>.
+    /// Whether the module's symbols were defined by an earlier request, and this one is for its code alone: the host defines nothing, and loads the module's
+    /// procedures from <see cref="ParseResultJson"/>.
     /// </summary>
     /// <remarks>
     /// A module's code is checked against what the whole workspace declares (<strong>RD-VBAL §5.0.1</strong>), and the host is told of the modules one at a
     /// time: a module that names one that comes after it cannot be checked until that one is defined. The language server defines every module first, and
-    /// then sends the code of each.
+    /// then sends the code of each. See <see cref="DeclareTypesOnly"/> for the three phases.
     /// </remarks>
     public bool CodeOnly { get; init; }
+
+    /// <summary>
+    /// Whether this request declares the module's types alone - its user-defined types with their fields, and its enumerations with their members - and
+    /// nothing else is defined, composed or loaded.
+    /// </summary>
+    /// <remarks>
+    /// A workspace is defined in three phases, each for every module before the next: its types are declared (this), then its declarations are bound
+    /// (a request that is neither this nor <see cref="CodeOnly"/>), then its code is loaded (<see cref="CodeOnly"/>). A declaration is bound to a type that
+    /// exists, whichever module declares it and in whichever order a project lists its modules: a class module exists as soon as the project is composed,
+    /// and a user-defined type or an enumeration once this phase has declared it. A request that binds a module's declarations declares its types first, so
+    /// that a module defined on its own (the shell's program) is right too; the types the declare phase gave the session are there already.
+    /// </remarks>
+    public bool DeclareTypesOnly { get; init; }
 }
 
 /// <summary>
@@ -266,6 +299,17 @@ public record class SymbolDescriptor
     /// module named for it and an event of its class handle that event of the object it holds.
     /// </summary>
     public bool IsWithEvents { get; init; }
+
+    /// <summary>
+    /// Whether a member is one of a form's controls: declared by the form's designer, not by its code (<see cref="SymbolProperties.DesignerControl"/>).
+    /// </summary>
+    public bool IsDesignerControl { get; init; }
+
+    /// <summary>
+    /// What runs a member whose code is not the module's (<see cref="SymbolProperties.ExternalTarget"/>): a member a form's designer declares on its class - a
+    /// control, a member of the form object - is dispatched to whatever hosts the form (<see cref="Workspace.Forms.FormObject.TargetOf"/>).
+    /// </summary>
+    public string? ExternalTarget { get; init; }
 
     /// <summary>
     /// The member's <c>VB_UserMemId</c> (<strong>MS-VBAL §5.2.1</strong>), when its module says one: <c>0</c> marks the default member of a class, <c>-4</c> its enumeration

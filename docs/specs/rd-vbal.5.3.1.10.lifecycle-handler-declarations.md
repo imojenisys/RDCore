@@ -22,13 +22,15 @@ A handler is never called by name. Raising an event dispatches the interface mem
 |---|---|
 |The `New` operator|Implemented|
 |The first reference to a variable declared `As New`, and to a predeclared default instance|Implemented|
-|The `CreateObject` function|Not implemented|
+|The `CreateObject` function|Not applicable: it creates an object of a server or of the standard library, never of a class of the workspace|
 
 An error the handler leaves unhandled is the error of the creating operation.
 
 ## `Terminate`
 
 `Class_Terminate` runs when an object loses its last reference, while the object is still whole. It runs at most once per object. A handler that gives the object a reference again prevents its destruction; the object is destroyed, without `Terminate` running a second time, when it next loses its last one.
+
+An error the handler leaves unhandled ends the program, as **MS-VBA** has it: it is an unhandled run-time error whatever `On Error` is in effect where the object was let go of — `On Error Resume Next`, or a handler of the code that let go of it — and whatever let go of it: a `Set`, a reassignment, a local at the end of its procedure, an `Erase`. The program stops as soon as what released the reference is over (recorded in Excel). An error the handler handles itself is no error to anything, and `Err` is clear when it returns.
 
 A reference is held by the variable that stores it. It is released when the variable is assigned another object or `Nothing`, and when the procedure that declared the variable returns. A `Static` variable, a module-level variable, a field of an object, an array element and a `Variant` do not release the object they hold when their own lifetime ends, and an object that is held only by one of them is not terminated before the session ends. An object that no variable ever held is not terminated either.
 

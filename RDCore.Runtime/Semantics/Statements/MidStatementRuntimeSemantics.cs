@@ -68,7 +68,16 @@ public sealed record class MidStatementRuntimeSemantics(
             ? ReplaceBytes(target, (int)start - 1, length, value!)
             : ReplaceBytes(target, 2 * ((int)start - 1), 2 * CharactersReplaced(target, (int)start - 1, length, value!), value!);
 
-        return Assignments.Assign(session, context, mid, mid.Target, mid.Value, replaced);
+        // the characters are written where they are: a String whose characters are in a BSTR (StrPtr) is in the same one once it is assigned.
+        var storage = session.Storage as Execution.Memory.SessionStorage;
+        var inPlace = storage?.BlockOf(target.RuntimeValue);
+        var assigned = Assignments.Assign(session, context, mid, mid.Target, mid.Value, replaced);
+        if (inPlace is not null)
+        {
+            storage!.KeepInPlace(inPlace);
+        }
+
+        return assigned;
     }
 
     private static string Text(VBStringValue value) => value.Handle.Value.BoxedValue as string ?? string.Empty;
@@ -113,6 +122,14 @@ public sealed record class MidStatementRuntimeSemantics(
             source = wrapped;
         }
 
+        // a String nothing observes is let-coerced by its plan (IR lowering S0.11): a copy of it.
+        if (Expressions.TryConvertUnobserved(source, VBStringType.TypeInfo, out var planned) && planned is VBStringValue plannedText)
+        {
+            text = plannedText;
+            failure = RuntimeExecutionOutcome.Next;
+            return true;
+        }
+
         var coerced = LetCoercion.EvaluateLetCoercionSemantics(session.Symbols.Resolver, expression, new()
         {
             NodeId = mid.Identity,
@@ -145,6 +162,14 @@ public sealed record class MidStatementRuntimeSemantics(
         {
             failure = ToFailure(evaluated);
             return false;
+        }
+
+        // a number nothing observes is let-coerced by its plan (IR lowering S0.11); one that does not fit a Long is the coercion's to raise.
+        if (Expressions.TryConvertUnobserved(evaluated.Result!, VBLongType.TypeInfo, out var planned) && planned is VBLongValue plannedLong)
+        {
+            value = plannedLong.Value;
+            failure = RuntimeExecutionOutcome.Next;
+            return true;
         }
 
         var coerced = LetCoercion.EvaluateLetCoercionSemantics(session.Symbols.Resolver, expression, new()

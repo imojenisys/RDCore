@@ -18,20 +18,28 @@ See [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md).
 `VBResizableArrayValue`. It is invalid to use `ReDim` with a `VBFixedSizeArrayValue`. See
 [**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md).
 
-The target name of a `ReDim` statement decides what the statement is:
+The target name of a `ReDim` statement "is first matched as a simple name expression" (**MS-VBAL §5.4.3.3**), and
+what it matches decides what the statement is. A match is a variable or a constant - of the procedure, of the module,
+of another module, of a library - a member of an enumeration, or the result of the function the `ReDim` is in. A
+procedure, a function of a library, a module or a project is no match, as **MS-VBA** has it (recorded in Excel):
 
-|Target name|The `ReDim` statement is|
-|---|---|
-|Resolves to a local, a parameter, or a module field|A re-dimension of an existing array.|
-|Resolves to a constant (`ReDim Limit(1)`, for `Const Limit = 10`)|Invalid: the name a `ReDim` matches is the _redimensioned variable_ (**MS-VBAL §5.4.3.3**), and a constant is not one. [`VBC09333`](../diagnostics/vbc09333.md) (`VariableRequired`).|
-|Unqualified, and resolves to nothing|An implicit declaration.|
+|Target name|Example|The `ReDim` statement is|
+|---|---|---|
+|A resizable array or a `Variant`, of the procedure, the module or another module, bare or qualified|`ReDim Items(3)` of another module's `Public Items() As Long`|A re-dimension of that array.|
+|A fixed-size array|`ReDim Grid(3)` of `Public Grid(2) As Long`|[VBC09357](../diagnostics/vbc09357.md) _Array already dimensioned_.|
+|A variable of another type, a constant, a member of an enumeration, the function's own result|`ReDim Count(1)` of a `Long`, `ReDim vbCrLf(1)`, `ReDim Red(1)`|[VBC09307](../diagnostics/vbc09307.md) _Expected array_.|
+|Nothing that matches: no name, a procedure, a function of a library, a module|`ReDim Totals(12)`, `ReDim Left(1)`|An implicit declaration of a new array, which hides what the name otherwise is.|
+|A name with no declaration that the procedure uses before its first `ReDim`: written, read, or on a line that never runs|`y = 5`, then `ReDim y(2)`|A re-dimension of the variable that earlier use declared implicitly (**MS-VBAL §5.6.10**), a `Variant`, with [RDC11022](../diagnostics/rdc11022.md) (Warning).|
 
-> [!NOTE]
-> **Not implemented.** The declaration pass looks an unqualified `ReDim` target up among the procedure's names and its
-> module's, not the library's nor another module's: a target only the library or another module declares
-> (`ReDim vbCrLf(1)`, `ReDim Left(1)`, or `ReDim Limit(1)` for another module's `Public Const Limit`) is an implicit
-> declaration of a local array, where **MS-VBAL §5.4.3.3** makes the member the name matches the redimensioned
-> variable: a constant or a function can't be one, and another module's array is the one to redimension.
+The last two rows are told apart by the text of the procedure, not by what runs, as **MS-VBA** tells them apart: a name
+used anywhere before the first `ReDim` of it is a variable declared implicitly there; a name used only after it is the
+array the `ReDim` declared (recorded in Excel, `oracle\findings-labels` R01-R10).
+
+👉 **MS-VBA** then refuses the `ReDim` of the implicit variable at compile time, _Invalid ReDim_. **MS-VBAL** makes that
+variable a `Variant`, which a `ReDim` re-dimensions, and vb6.exe runs it so. RD-VBA does what the specification says,
+and warns that MS-VBA refuses it ([RDC11022](../diagnostics/rdc11022.md)). Under `Option Explicit` no use declares anything: the
+`ReDim` declares the array from where it is, and a use of the name before it is [VBC09302](../diagnostics/vbc09302.md) _Variable not defined_, in
+MS-VBA as in RD-VBA (recorded in Excel).
 
 For an implicit `ReDim` declaration:
 
@@ -41,7 +49,35 @@ For an implicit `ReDim` declaration:
 - The implicit declaration is legal under `Option Explicit`; see
   [**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md).
 - A later analysis pass raises a semantic flag at the site of the implicit declaration; see
-  [**RD-VBAL §1.1.3** Core Semantic Flags](rd-vbal.1.1.3.core-semantic-flags.md).
+  [**RD-VBAL §1.1.3** Core Semantic Flags](rd-vbal.1.1.3.core-semantic-flags.md). The declaration says so
+  (`DeclarationFact.DeclaredBy` is `ReDim`), and [RDC00114](../diagnostics/rdc00114.md) _Implicit array declaration_
+  suggests a `Dim` before it.
+- The declaration pass composes the workspace twice. In the second pass, the local the first pass declared for the
+  `ReDim` is the first thing its name resolves to; what else it matches is looked up from the module, past the
+  procedure's locals, so that a `ReDim` of another module's array is a re-dimension of it.
+
+### The `As` clause
+
+A `ReDim` that re-dimensions a declared resizable array may restate its element type in an `As` clause. The type it
+states must be the element type the array is declared with, `As New` included: a `ReDim … As New` of an array that is
+not declared `As New`, or a plain `As` of one that is, changes the type of its elements too. A `ReDim` that changes
+the element type is compile error [`VBC09369`](../diagnostics/vbc09369.md) _Can't change data types of array
+elements_, as it is in **MS-VBA**:
+
+|Declaration|`ReDim`|Outcome|
+|---|---|---|
+|`Dim a() As Long`|`ReDim a(1) As Long`|Valid.|
+|`Dim a() As Long`|`ReDim a(1) As String`|`VBC09369`.|
+|`Dim a() As Collection`|`ReDim a(1) As New Collection`|`VBC09369`.|
+|`Dim a() As New Collection`|`ReDim a(1) As Collection`|`VBC09369`.|
+|`Dim a() As Collection`|`ReDim a(1) As Collection`|Valid.|
+|`Dim a() As New Collection`|`ReDim a(1) As New Collection`|Valid.|
+
+> [!IMPORTANT]
+> **MS-VBAL §5.4.3.3** says the `As` clause of a `ReDim` MUST NOT be an `As New` clause. **MS-VBA** compiles
+> `ReDim … As New` of an array declared `As New` of the same class, and runs it (recorded in Excel); so does
+> **RD-VBA**. Its elements are automatic instantiation variables, as the declaration's are
+> ([**RD-VBAL §5.2.3** Module Declarations](rd-vbal.5.2.3.module-declarations.md), §5.2.3.1.4).
 
 `ReDim` bounds are ordinary run-time expressions, not constant expressions. A `ReDim` bound is therefore an
 expression node, and not the verbatim text a declared array bound keeps
@@ -60,11 +96,17 @@ dial rather than something the statement wrote.
 |---|---|
 |A resizable array|Re-dimensioned.|
 |A `Variant` holding an array|Re-dimensioned. The variable keeps storing a `Variant`.|
-|A `Variant` holding nothing yet|Becomes an array. The static rule admits a `Variant` target so that it can become an array, so the `Empty` a `Variant` starts as is not the error below.|
-|A `Variant` holding anything else|Runtime error 13, `Type mismatch`.|
+|A `Variant` holding anything else|Becomes an array: a number, a `String`, an object or `Null`, and the `Empty` a `Variant` starts as.|
+|A `Variant` holding anything but an array, with `Preserve`|Runtime error 13, `Type mismatch`, the `Empty` a `Variant` starts as included. The `Variant` keeps what it held.|
 
-Each bound is Let-coerced to `Integer`, as any other subscript is. An upper bound below its lower bound is
-runtime error 9, `Subscript out of range`.
+**MS-VBAL §5.4.3.3** says "Runtime Error 13 is raised if the declared type of a redimensioned variable is `Variant` and its value type is not an array". RD-VBA
+reads the sentence as **MS-VBA** does (recorded in Excel): as a `ReDim Preserve`'s, the one that has the elements of an array to keep. A `ReDim` without
+`Preserve` keeps nothing of what the `Variant` held, and makes it an array whatever that was.
+
+Each bound is Let-coerced to `Long`, as any other subscript is ([**RD-VBAL §5.6.13**](rd-vbal.5.6.13.index-expressions.md#subscripts)). An upper bound below its
+lower bound is runtime error 9, `Subscript out of range`, for a variable declared as an array. A `Variant` given such bounds raises runtime error 7,
+`Out of memory`, whatever it held, and is left `Empty`; with `Preserve`, a `Variant` that holds no array raises 13 first (recorded in Excel, as vb6.exe
+does too).
 
 Without `Preserve`, every element of the re-dimensioned array is its element type's default value.
 
@@ -75,6 +117,7 @@ else:
 
 |Change|Result|
 |---|---|
+|Any, of an array that was never dimensioned|Allowed: there is nothing to preserve, and the array is dimensioned, as by a `ReDim` without `Preserve` (**MS-VBA**, recorded in Excel).|
 |The upper bound of the last dimension|Allowed.|
 |The upper bound of any other dimension|Runtime error 9, `Subscript out of range`.|
 |The lower bound of any dimension|Runtime error 9, `Subscript out of range`.|
@@ -88,6 +131,10 @@ formal parameter"). An array is locked, as MS-VBA has it, while an activation on
 while a `For Each` over it runs; the lock is gone once the call returns, or the loop is over
 ([ICallStackFrame](../api/RDCore.SDK.Runtime.Abstract.Execution.ICallStackFrame.html)`.LocksArray`). A locked array is not erased either, nor assigned another
 array (`arr = other`): error 10 too.
+
+A fixed-size array can't be re-dimensioned either. A `ReDim` of one is a compile error where it is declared, but a
+resizable array parameter can be bound to one ([**RD-VBAL §5.3.1.11**](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)):
+a `ReDim` of that parameter, with `Preserve` or without, is runtime error 10, and the array keeps its bounds.
 
 > [!IMPORTANT]
 > The whole array passed by reference does **not** lock it, which is what MS-VBA does (recorded in Excel) and not how §5.4.3.3 reads: the parameter is another

@@ -17,9 +17,14 @@ namespace RDCore.Diagnostics;
 
 internal class CoreDiagnosticsAppHost() : RDCorePlatformServerHost<CoreDiagnosticsApp>()
 {
+    protected override SettingsSchema Settings => SettingsSchema.Platform.Combine(DiagnosticsOptions.Schema);
+
     protected override void ConfigureAdditionalExternalServices(IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<DiagnosticsOptions>(configuration.GetSection("Configuration:Diagnostics"));
+        services
+            .Configure<DiagnosticsOptions>(configuration.GetSection($"{SettingsSchema.Root}:{DiagnosticsOptions.Section}"))
+            // the analyzers' settings are live: what the client says they are is set on the options the analyzers read when they analyze.
+            .AddLiveSettings<DiagnosticsOptions>(DiagnosticsOptions.Schema, DiagnosticsOptions.Section);
     }
 }
 
@@ -56,6 +61,10 @@ internal class CoreDiagnosticsApp(
         services.AddSingleton<IModuleAnalyzer, BitwiseSemanticsAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, AmbiguousConcatenationAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, VariantNumberStringComparisonAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, VariantComparedWithStringAsTextAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, CaseComparedInSelectorTypeAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, LikePatternDepartureAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, VariantStringThatIsNoNumberRankedAnalyzer>();
 
         // the ones that read how the module is written.
         services.AddSingleton<IModuleAnalyzer, OptionBaseAnalyzer>();
@@ -63,6 +72,7 @@ internal class CoreDiagnosticsApp(
         services.AddSingleton<IModuleAnalyzer, ImplicitByRefModifierAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, ImplicitPublicMemberAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, ImplicitVariantDeclarationAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, ImplicitArrayDeclarationAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, ImplicitVariantReturnTypeAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, IntegerDataTypeAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, ModuleScopeDimAnalyzer>();
@@ -78,9 +88,19 @@ internal class CoreDiagnosticsApp(
         services.AddSingleton<IModuleAnalyzer, ObsoleteTypeHintAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, ObsoleteWhileWendAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, ObsoleteOnLocalErrorStatementAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, RedundantByValArgumentAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, EarlyBindingOpportunityAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, SetThroughACallAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, ArgumentTypedArithmeticAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, IgnoredTypeCharacterAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, ProcedureConstantLengthAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, ReDimOfAnImplicitVariantAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, ValueOfObjectWithNoDefaultMemberAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, EmptyLetToArrayAnalyzer>();
 
         // what the host vouches for about a member, and the names a module chooses.
         services.AddSingleton<IModuleAnalyzer, ImplementationsShouldBePrivateAnalyzer>();
+        services.AddSingleton<IModuleAnalyzer, UnmatchedEventHandlerAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, UseMeaningfulIdentifierNamesAnalyzer>();
         services.AddSingleton<IModuleAnalyzer, HungarianNotationAnalyzer>();
     }

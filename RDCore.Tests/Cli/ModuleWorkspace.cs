@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using RDCore.CLI.Host;
 using RDCore.CLI.Host.Handlers;
@@ -10,9 +10,11 @@ using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Libraries;
 using RDCore.SDK.Services.VerboseMessages;
 using RDCore.SDK.Workspace;
+using RDCore.SDK.Workspace.Forms;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 using RDCore.Symbols;
+using RDCore.Tests.Platform;
 
 namespace RDCore.Tests.Cli;
 
@@ -60,6 +62,16 @@ internal static class ModuleWorkspace
         => RunCoreAsync(classes, program, errorsOnly: true, modules: modules);
 
     /// <summary>
+    /// Runs <c>Program.Main</c> like <see cref="RunAsync(IReadOnlyList{ValueTuple{string, string}}, IReadOnlyList{ValueTuple{string, string}}, string)"/>, with
+    /// <c>Program</c> listed first in the project, and so defined and loaded before the modules it uses, as a <c>.rdproj</c> may list them.
+    /// </summary>
+    /// <param name="classes">The class modules of the workspace.</param>
+    /// <param name="modules">The standard modules of the workspace other than <c>Program</c> (<see cref="StandardModule"/>).</param>
+    /// <param name="program">The source of the <c>Program</c> standard module.</param>
+    public static Task<string[]> RunProgramFirstAsync(IReadOnlyList<(string Name, string Source)> classes, IReadOnlyList<(string Name, string Source)> modules, string program)
+        => RunCoreAsync(classes, program, errorsOnly: false, modules: modules, programFirst: true);
+
+    /// <summary>
     /// Loads the workspace of <paramref name="classes"/> and the <c>Program</c> standard module the way <see cref="RunAsync"/> does, and gives the
     /// errors that stopped a module from loading, instead of running it.
     /// </summary>
@@ -95,6 +107,14 @@ internal static class ModuleWorkspace
         => RunCoreAsync(classes, program, errorsOnly: false, libraries: libraries);
 
     /// <summary>
+    /// Runs <c>Program.Main</c> like <see cref="RunAsync(IReadOnlyList{ValueTuple{string, string}}, string, WorkspaceLibraries)"/>, in a workspace that has forms,
+    /// whose parse has what their designer declares, as the language server's does.
+    /// </summary>
+    public static Task<string[]> RunAsync(
+        IReadOnlyList<(string Name, string Source)> classes, string program, WorkspaceLibraries libraries, IReadOnlyList<(string Name, string Source, FormDescriptor Designer)> forms)
+        => RunCoreAsync(classes, program, errorsOnly: false, libraries: libraries, forms: forms);
+
+    /// <summary>
     /// Runs <c>Program.Main</c> like <see cref="RunAsync"/>, in a workspace that has other standard modules besides <c>Program</c>, for a project that
     /// references libraries, or only the standard library when <paramref name="libraries"/> is <see langword="null"/>.
     /// </summary>
@@ -109,15 +129,17 @@ internal static class ModuleWorkspace
     /// <param name="program">The source of the <c>Program</c> standard module.</param>
     /// <param name="moduleName">The module whose model is asked for, or empty for the models of every module.</param>
     /// <param name="language">The language the code is written in; RD-VBA unless said otherwise.</param>
+    /// <param name="libraries">The libraries the project references, and the source they and others are found in; only the standard library when omitted.</param>
     public static async Task<SemanticsPayload> SemanticsAsync(
-        IReadOnlyList<(string Name, string Source)> classes, string program, string moduleName = "", SupportedLanguage? language = null)
+        IReadOnlyList<(string Name, string Source)> classes, string program, string moduleName = "", SupportedLanguage? language = null,
+        WorkspaceLibraries? libraries = null, IReadOnlyList<(string Name, string Source, FormDescriptor Designer)>? forms = null)
     {
         SemanticsPayload? payload = null;
         await RunCoreAsync(classes, program, errorsOnly: true, afterLoading: async sessionProvider =>
         {
             var result = await new HostSemanticsHandler(sessionProvider).Handle(new HostSemanticsParams { ModuleName = moduleName }, CancellationToken.None);
             payload = PlatformJson.Deserialize<SemanticsPayload>(result.Json);
-        }, language: language);
+        }, language: language, libraries: libraries, forms: forms);
 
         return payload!;
     }
@@ -172,15 +194,18 @@ internal static class ModuleWorkspace
         IReadOnlyList<(string Name, string Source)> classes, string program, bool errorsOnly, Func<EnvironmentSessionProvider, Task>? afterLoading = null,
         SupportedLanguage? language = null,
         Func<EnvironmentSessionProvider, ExecuteSessionResult, Func<Task<ExecuteSessionResult>>, Task>? inspect = null, TimeSpan? cancelAfter = null, bool debug = false,
-        WorkspaceLibraries? libraries = null, IReadOnlyList<(string Name, string Source)>? modules = null)
+        WorkspaceLibraries? libraries = null, IReadOnlyList<(string Name, string Source)>? modules = null,
+        IReadOnlyList<(string Name, string Source, FormDescriptor Designer)>? forms = null, bool programFirst = false)
     {
         var loadErrors = new List<string>();
-        (string Name, string Extension, ModuleType Type, string Source)[] allModules =
+        (string Name, string Extension, ModuleType Type, string Source)[] others =
         [
             .. classes.Select(module => (module.Name, "cls", ModuleType.ClassModule, module.Source)),
+            .. (forms ?? []).Select(module => (module.Name, "frm", ModuleType.ClassModule, module.Source)),
             .. (modules ?? []).Select(module => (module.Name, "bas", ModuleType.StdModule, module.Source)),
-            ("Program", "bas", ModuleType.StdModule, program),
         ];
+        (string Name, string Extension, ModuleType Type, string Source) programModule = ("Program", "bas", ModuleType.StdModule, program);
+        (string Name, string Extension, ModuleType Type, string Source)[] allModules = programFirst ? [programModule, .. others] : [.. others, programModule];
 
         var project = new ProjectFile(Root, new RDCoreProject
         {
@@ -199,13 +224,16 @@ internal static class ModuleWorkspace
             new MockFileSystem(files), NullLogger<EnvironmentSessionProvider>.Instance, libraries?.Source,
             // a test that brings its own servers brings no libraries of its own: those are the machine's still.
             libraries?.Outside ?? (libraries?.Automation is { } automation ? MachineExternal.World with { Automation = automation } : null));
-        var workspaceRoot = new Uri(Root);
+        var workspaceRoot = Wire.FileUri(Root);
         sessionProvider.Compose(project.ProjectInfo, workspaceRoot);
 
         var parsed = allModules.Select(module =>
         {
-            var parse = new ModuleParser().Parse(new Uri(Path.Combine(Root, $"{module.Name}.{module.Extension}")), module.Source);
+            var parse = new ModuleParser().Parse(Wire.FileUri(Path.Combine(Root, $"{module.Name}.{module.Extension}")), module.Source);
             Assert.IsTrue(parse.IsSuccess, $"{module.Name}: {string.Join("; ", parse.SyntaxErrors.Select(error => error.Verbose))}");
+
+            // as the language server does: the parse of a form has what its designer declares, which the parser does not read.
+            parse = parse with { Designer = forms?.FirstOrDefault(form => form.Name == module.Name).Designer };
             return (Module: module, Uri: new UriBuilder(workspaceRoot) { Fragment = module.Name }.Uri, Parse: parse);
         }).ToArray();
 
@@ -215,24 +243,30 @@ internal static class ModuleWorkspace
             : (IReadOnlyList<RDCore.SDK.Model.Symbols.Abstract.Symbol>)[.. new LibrarySymbolProvider(
                 workspaceRoot, LibrarySymbolProvider.Load(libraries.Source, project.ProjectInfo.References)).ProvideSymbols()];
         var resolver = WorkspaceSymbolResolver.Compose(
-            workspaceRoot, parsed.Select(module => (module.Uri, module.Module.Type, module.Parse)), new IntrinsicSymbolResolver(), libraries: librarySymbols);
+            workspaceRoot, parsed.Select(module => (module.Uri, module.Module.Type, module.Parse)), new IntrinsicSymbolResolver(), project.ProjectInfo.Name,
+            libraries: librarySymbols);
 
-        // as the language server does: every module is defined, and then the code of each is sent.
-        foreach (var module in parsed)
+        // as the language server does, in three phases: the types of every module are declared, then the declarations of every module are bound, and then
+        // the code of each is sent.
+        foreach (var declareTypesOnly in new[] { true, false })
         {
-            var symbols = new SyntaxTreeSymbolProvider(workspaceRoot, module.Uri, module.Module.Type, module.Parse, resolver, withImplicitDeclarations: true).ProvideSymbols();
-            await new DefineSymbolsHandler(sessionProvider, Substitute.For<IVerboseMessageBuilder>(), NullLogger<DefineSymbolsHandler>.Instance)
-                .Handle(new DefineSymbolsParams
-                {
-                    WorkspaceRoot = workspaceRoot,
-                    ModuleUri = module.Uri,
-                    ModuleName = module.Module.Name,
-                    Symbols = SymbolDescriptorProjector.Project(symbols, module.Uri),
-                    Directives = module.Parse.SyntaxTree!.GetModuleDirectives(),
-                    ImplementedInterfaceNames = module.Parse.SyntaxTree!.GetImplementedInterfaceNames(),
-                    ImplementedInterfaceRanges = module.Parse.SyntaxTree!.GetImplementedInterfaceRanges(),
-                    Replace = true,
-                }, CancellationToken.None);
+            foreach (var module in parsed)
+            {
+                var symbols = new SyntaxTreeSymbolProvider(workspaceRoot, module.Uri, module.Module.Type, module.Parse, resolver, withImplicitDeclarations: true).ProvideSymbols();
+                await new DefineSymbolsHandler(sessionProvider, Substitute.For<IVerboseMessageBuilder>(), NullLogger<DefineSymbolsHandler>.Instance)
+                    .Handle(Wire.RoundTrip(new DefineSymbolsParams
+                    {
+                        WorkspaceRoot = workspaceRoot,
+                        ModuleUri = module.Uri,
+                        ModuleName = module.Module.Name,
+                        Symbols = SymbolDescriptorProjector.Project(symbols, module.Uri),
+                        Directives = module.Parse.SyntaxTree!.GetModuleDirectives(),
+                        ImplementedInterfaceNames = module.Parse.SyntaxTree!.GetImplementedInterfaceNames(),
+                        ImplementedInterfaceRanges = module.Parse.SyntaxTree!.GetImplementedInterfaceRanges(),
+                        Replace = true,
+                        DeclareTypesOnly = declareTypesOnly,
+                    }), CancellationToken.None);
+            }
         }
 
         foreach (var module in parsed)

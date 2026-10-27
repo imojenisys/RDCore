@@ -46,7 +46,8 @@ internal sealed class SymbolAddressTable(ISessionStorage storage)
             storage.TryDeallocate(previous);
         }
 
-        if (!storage.TryAllocate(value.Size, FreshBinding(value), out address))
+        // a variable of a scalar type (or a Variant holding one) is held as a payload, as a local is (IR lowering S1.5, Frames.CallStackFrame.CellFor).
+        if (!storage.TryAllocate(value.Size, Frames.CallStackFrame.CellFor(value), out address))
         {
             _addressBySymbol.Remove(symbol.SemanticId);
             return false;
@@ -55,6 +56,28 @@ internal sealed class SymbolAddressTable(ISessionStorage storage)
         _addressBySymbol[symbol.SemanticId] = address;
         return true;
     }
+
+    /// <summary>
+    /// Reserves <paramref name="size"/> bytes of storage for a binding that already exists, and binds it to <paramref name="symbol"/>: the address is then
+    /// another way to reach that very binding, as a variable that is given one only when something asks for it is (IR lowering S1.1).
+    /// </summary>
+    /// <returns><c>false</c> if the underlying storage is exhausted.</returns>
+    public bool TryAllocate(Symbol symbol, int size, IBindingHandle binding, out MemoryAddress address)
+    {
+        if (!storage.TryAllocate(size, binding, out address))
+        {
+            return false;
+        }
+
+        _addressBySymbol[symbol.SemanticId] = address;
+        return true;
+    }
+
+    /// <summary>
+    /// Binds <paramref name="symbol"/> to an address that is already allocated, which this table frees from then on: a variable's cell that a second name
+    /// for it was given an address for first (<see cref="Frames.CallStackFrame"/>, a <c>ByRef</c> parameter of a call the activation made).
+    /// </summary>
+    public void Adopt(Symbol symbol, MemoryAddress address) => _addressBySymbol[symbol.SemanticId] = address;
 
     /// <summary>
     /// A caller's <see cref="VBTypedValue.Handle"/> may be a cached, shared instance — a type's
@@ -94,7 +117,7 @@ internal sealed class SymbolAddressTable(ISessionStorage storage)
         _ => value.Handle.Value,
     };
 
-    private static IBindingHandle FreshBinding(VBTypedValue value)
+    internal static IBindingHandle FreshBinding(VBTypedValue value)
     {
         var cell = FreshCell(value);
 
@@ -118,6 +141,8 @@ internal sealed class SymbolAddressTable(ISessionStorage storage)
             ReferenceBindingHandle => new ReferenceBindingHandle((VBRuntimeReference)value.Handle.Value),
             IndeterminateBindingHandle { Assumed: ReferenceBindingHandle } => new ReferenceBindingHandle((VBRuntimeReference)value.Handle.Value),
             IndeterminateBindingHandle => new ValueBindingHandle(value.Handle.Value),
+            // a value read from a variable's payload cell is that variable's cell: the new one holds a copy of what it holds.
+            Frames.ScalarCell => new ValueBindingHandle(value.Handle.Value),
             _ => value.Handle,
         }
     };

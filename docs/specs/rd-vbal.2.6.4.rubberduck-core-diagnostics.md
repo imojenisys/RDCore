@@ -39,6 +39,7 @@ The severity of a finding is a choice of the analyzer ([**RD-VBAL §2.6** Diagno
 |[`RDC00106`](../diagnostics/rdc00106.md)|Implicit Variant declaration|Information|the syntax tree: a declaration with no type, and the `Def<Type>` directives|
 |[`RDC00107`](../diagnostics/rdc00107.md)|Implicit Variant return type|Information|the syntax tree: a function with no type, and the `Def<Type>` directives|
 |[`RDC00112`](../diagnostics/rdc00112.md)|Implicit narrowing conversion|Warning|`ProcedureSemanticModel.Runtime`: the `ConversionFact`s the language core states about the code of the procedure|
+|[`RDC00114`](../diagnostics/rdc00114.md)|Implicit array declaration|Information|`ModuleSemanticModel.Declarations`: a local whose `DeclarationFact.DeclaredBy` is `ReDim`|
 |[`RDC00201`](../diagnostics/rdc00201.md)|Integer data type declaration|Information|the syntax tree: `AsTypeExpressionNode`|
 |[`RDC00202`](../diagnostics/rdc00202.md)|Module-scope Dim declaration|Information|the syntax tree: a module-level variable with no access modifier|
 |[`RDC00203`](../diagnostics/rdc00203.md)|Multiline parameter declaration|Information|the syntax tree: the range of a `ParameterDeclarationNode`|
@@ -53,12 +54,20 @@ The severity of a finding is a choice of the analyzer ([**RD-VBAL §2.6** Diagno
 |[`RDC00307`](../diagnostics/rdc00307.md)|Obsolete type hint|Information|the syntax tree: the type hints of declarations; `ExpressionFact.Binding` of the references|
 |[`RDC00308`](../diagnostics/rdc00308.md)|Obsolete While…Wend|Information|the syntax tree: a `WhileWendStatementNode`|
 |[`RDC00309`](../diagnostics/rdc00309.md)|Obsolete On Local Error statement|Information|the syntax tree: `OnErrorGoToStatementNode.IsLocal`|
+|[`RDC00310`](../diagnostics/rdc00310.md)|Redundant ByVal argument|Hint|`ValueExpressionSemanticFlags.RedundantByVal`|
+|[`RDC00311`](../diagnostics/rdc00311.md)|Early binding opportunity|Information|`ExpressionFact.Creates` (`ObjectClassSource.ReferencedLibrary`)|
 |[`RDC00405`](../diagnostics/rdc00405.md)|Implementations should be private|Information|`DeclarationFact.Role` and `DeclarationFact.Access`|
 |[`RDC01001`](../diagnostics/rdc01001.md)|Use meaningful identifier names|Information|the names the syntax tree declares, and the allow-list in `DiagnosticsOptions.MeaningfulNames`|
 |[`RDC01002`](../diagnostics/rdc01002.md)|Hungarian notation|Information|the names the syntax tree declares, and the allow-list in `DiagnosticsOptions.HungarianNotation`|
 |[`RDC11005`](../diagnostics/rdc11005.md)|Bitwise operator|Hint|`ProcedureSemanticModel.Runtime`: `LogicalOperatorSemanticFlags.IsBitwiseSemantics` of the `LogicalOperatorFact`s|
 |[`RDC11006`](../diagnostics/rdc11006.md)|Ambiguous concatenation|Information|`ProcedureSemanticModel.Runtime`: `ArithmeticOperatorSemanticFlags.VBStringEffectiveType` of the `ArithmeticOperatorFact`s of `+`|
 |[`RDC11011`](../diagnostics/rdc11011.md)|Variant number compared with a Variant String|Warning|`ProcedureSemanticModel.Runtime`: `ComparisonOperatorSemanticFlags.IsVariantStringNumericException` of the `ComparisonOperatorFact`s|
+|[`RDC11013`](../diagnostics/rdc11013.md)|Variant compared with a String as text|Warning|`ProcedureSemanticModel.Runtime`: `ComparisonOperatorSemanticFlags.IsVariantComparedWithStringAsText` of the `ComparisonOperatorFact`s|
+|[`RDC11014`](../diagnostics/rdc11014.md)|Case Is compared in the selector's type|Warning|`ProcedureSemanticModel.Runtime`: `CaseClauseSemanticFlags.ComparisonForm` and `ComparedInSelectorType` of the `CaseClauseStatementFact`s|
+|[`RDC11015`](../diagnostics/rdc11015.md)|Object with no default member used as a value|Warning|`ValueExpressionSemanticFlags.ValueOfObjectWithNoDefaultMember`|
+|[`RDC11016`](../diagnostics/rdc11016.md)|Empty or Null assigned to an array|Warning|`ValueExpressionSemanticFlags.EmptyLetToArray`|
+|[`RDC11017`](../diagnostics/rdc11017.md)|Like pattern MS-VBA matches otherwise than specified|Warning|`ProcedureSemanticModel.Runtime`: `ComparisonOperatorSemanticFlags.LikePatternHasEmptyCharList` and `LikePatternIsInvalid` of the `ComparisonOperatorFact`s|
+|[`RDC11020`](../diagnostics/rdc11020.md)|Variant String that is no number, compared with a number|Warning|`ProcedureSemanticModel.Runtime`: `ComparisonOperatorSemanticFlags.IsVariantStringThatIsNoValueRanked` of the `ComparisonOperatorFact`s|
 
 What the host's static pass found wrong with the code is not an opinion: it is reported as the `VBC` compile error it is, by the same
 extension, from the same model. Likewise, a run-time error that evaluating the code finds an instruction raises *whenever it runs* (`RuntimeFacts.Errors`) is reported
@@ -83,6 +92,8 @@ instruction of the procedure once (the *sweep*), and only when it is true of the
 An error is stated only when nothing the instruction did was *assumed*: the value of a variable or a parameter, what a procedure that is not called returns, the
 state of the standard library or of the outside world (files, `Rnd`, `CreateObject`), or what another instruction left behind (a loop's counter, a `With` block's
 target). `Dim c As Collection: c.Add 1` raises error 91 when it runs, but the sweep does not follow paths and cannot tell that nothing set `c`, so it says nothing.
+The bounds of a fixed-size array are not assumed: they are its declaration's, whatever it holds. `Dim a(5) As Long: a(6) = 1` is error 9 whenever it runs, and
+is stated; what an element holds is assumed, so `x = 1 \ a(1)` says nothing.
 `MemberAccessOperationSemanticFlags.CallByNameAccess` is not stated yet: a `CallByName` call is a call of the library, which the sweep does not look into.
 
 ## Language Core Conditions and Analyzer Opinions

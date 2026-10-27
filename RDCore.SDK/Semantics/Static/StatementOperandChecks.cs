@@ -89,10 +89,12 @@ internal sealed class StatementOperandChecks(StaticEvaluationContext context)
         }
     }
 
-    private static bool IsObject(VBType type, bool throughUserDefinedTypes) => type switch
+    // the fields of a user-defined type are the type's as the composition has it now (CurrentTypes).
+    private bool IsObject(VBType type, bool throughUserDefinedTypes) => type switch
     {
         VBObjectType or VBClassType => true,
-        VBUserDefinedType udt when throughUserDefinedTypes => udt.Fields().Any(field => field.ResolvedType is { } fieldType && IsObject(fieldType, true)),
+        VBUserDefinedType udt when throughUserDefinedTypes
+            => CurrentTypes.Of(context, udt).Fields().Any(field => field.ResolvedType is { } fieldType && IsObject(fieldType, true)),
         _ => false,
     };
 
@@ -143,6 +145,136 @@ internal sealed class StatementOperandChecks(StaticEvaluationContext context)
         => Report(expression, NotAVariable(expression, LibraryFunctions.OfAClassObjectOrVariant), $"{role} must be a variable", section);
 
     /// <summary>
+    /// What <see cref="RequireLetTarget"/> or <see cref="RequireVariable"/> require of the target of an assignment, a constant being
+    /// <see cref="VBCompileErrorId.AssignmentToConstantNotPermitted"/> rather than <see cref="VBCompileErrorId.VariableRequired"/>, as MS-VBA has it
+    /// (Excel-verified: a constant the code declares, and a member of an enumeration).
+    /// </summary>
+    /// <param name="expression">The target.</param>
+    /// <param name="role">What the operand is to its statement, which the message starts with.</param>
+    /// <param name="section">The section of MS-VBAL that requires it, which the message cites.</param>
+    /// <param name="isLet">Whether the assignment is a <c>Let</c> statement, whose target may be a library's function of an object or <c>Variant</c> type.</param>
+    public void RequireAssignmentTarget(ExpressionNode expression, string role, string section, bool isLet)
+    {
+        if (ConstantNamedBy(expression) is { } constant)
+        {
+            Report(expression, $"the constant {constant}", $"{role} must be a variable", section, VBCompileErrorId.AssignmentToConstantNotPermitted);
+        }
+        else if (FunctionNamedBy(expression, isLet ? FunctionTarget.Let : FunctionTarget.Set) is { } function)
+        {
+            RequireFunctionTarget(expression, function, isLet ? FunctionTarget.Let : FunctionTarget.Set);
+        }
+        else if (isLet)
+        {
+            RequireLetTarget(expression, role, section);
+        }
+        else
+        {
+            RequireVariable(expression, role, section);
+        }
+    }
+
+    /// <summary>
+    /// What a function named as an element of an <c>Erase</c> statement, outside its own body, must be (<see cref="RequireFunctionTarget(ExpressionNode, VBFunctionMemberSymbol, FunctionTarget)"/>).
+    /// </summary>
+    /// <param name="expression">The element.</param>
+    public void RequireErasable(ExpressionNode expression)
+    {
+        if (FunctionNamedBy(expression, FunctionTarget.Erase) is { } function)
+        {
+            RequireFunctionTarget(expression, function, FunctionTarget.Erase);
+        }
+    }
+
+    // what a function named as a target is used for.
+    private enum FunctionTarget
+    {
+        Let,
+        Set,
+        Erase,
+    }
+
+    // A function named - by its name, or qualified by its module - as the target of an assignment or an element of an Erase statement, outside its own body,
+    // is a call of it with no argument: what it returns is what is assigned, through its default member, or erased (MS-VBAL §5.4.3.8, §5.4.3.9, §5.4.3.4).
+    // So is a property of a module that has no accessor for the assignment, the library's (Now, Timer) as the workspace's.
+    // What cannot be one is a compile error, as MS-VBA has it (Excel-verified, oracle\s28): a Let of one whose declared type is neither a Variant nor an
+    // object is "Function call on left-hand side of assignment must return Variant or Object" - "Can't assign to read-only property" for a property -
+    // before what its parameters are (`Left$ = "x"`); one that takes an argument is "Argument not optional" (`Left = "x"`, and first for a Set and an
+    // Erase: `Set Left$ = Nothing`); a Set of one that returns no object is "Invalid use of property", and so is a Set of the library's Err, which MS-VBA's
+    // library declares a property; an Erase of one that cannot return an array is "Expected array". What passes is called when it runs: what it returns is
+    // error 424 for a Let or a Set that has no object to assign through, and error 13 for an Erase that has no array.
+    private void RequireFunctionTarget(ExpressionNode expression, VBReturningMemberSymbol function, FunctionTarget use)
+    {
+        var holdsAnything = function.ResolvedType is VBVariantType or VBUnknownType;
+        var holdsAnObject = function.ResolvedType is VBObjectType or VBClassType;
+        var takesAnArgument = function.Parameters.Any(parameter => parameter.Name != Tokens.Me && !parameter.IsOptional && parameter is not ParamArrayParameterSymbol);
+        var isProperty = function is VBPropertyGetMemberSymbol;
+        var what = $"the {(isProperty ? "property" : "function")} {function.Name}";
+
+        var (id, requirement) = use switch
+        {
+            FunctionTarget.Let when !holdsAnything && !holdsAnObject && isProperty
+                => (VBCompileErrorId.CantAssignToReadOnlyProperty, "A property assigned to must have a Property Let, or return a Variant or an object"),
+            FunctionTarget.Let when !holdsAnything && !holdsAnObject
+                => (VBCompileErrorId.FunctionCallOnLeftHandSideMustReturnVariantOrObject, "A function assigned to outside its own body must return a Variant or an object"),
+            _ when takesAnArgument => (VBCompileErrorId.ArgumentNotOptional, "A function named as a target is called with no argument, and must take none"),
+            FunctionTarget.Set when !holdsAnything && !holdsAnObject
+                => (VBCompileErrorId.InvalidUseOfProperty, "A function Set-assigned to outside its own body must return a Variant or an object"),
+            FunctionTarget.Set when function.ResolvedType is VBClassType && IsOfALibrary(function)
+                => (VBCompileErrorId.InvalidUseOfProperty, "An object a library's function returns is not Set-assigned through it, the way a property's is not"),
+            FunctionTarget.Erase when !holdsAnything => (VBCompileErrorId.ExpectedArray, "A function named in an Erase statement must return a Variant, which can hold an array"),
+            _ => ((VBCompileErrorId?)null, string.Empty),
+        };
+
+        if (id is { } error)
+        {
+            Report(expression, what, requirement, use == FunctionTarget.Erase ? "5.4.3.4" : use == FunctionTarget.Let ? "5.4.3.8" : "5.4.3.9", error);
+        }
+    }
+
+    // the function an expression names, by its name or qualified by its module, when it is not the procedure the expression is written in - whose name
+    // there is its result; or the property of a module it names, when that property has no accessor for what is done with it: a Let assigns a property
+    // that has a Property Let through it, and a Set one that has a Property Set. A class's own property, which is invoked on the object, is none of these.
+    private VBReturningMemberSymbol? FunctionNamedBy(ExpressionNode expression, FunctionTarget use)
+    {
+        var symbol = expression switch
+        {
+            SimpleNameExpressionNode name => Named(name),
+            MemberAccessExpressionNode { Owner: { } owner } access when context.Resolver.NamespaceOf(owner, context.Scope.Uri) is { } qualifier
+                => context.Resolver.ResolveMember(qualifier, access.Member, context.Scope.Uri).Symbol,
+            _ => null,
+        };
+
+        return symbol switch
+        {
+            VBFunctionMemberSymbol function when function.Uri.AbsoluteUri != context.Scope.Uri.AbsoluteUri => function,
+            VBPropertyGetMemberSymbol property when property.Uri.AbsoluteUri != context.Scope.Uri.AbsoluteUri
+                && property.Parameters is not [{ Name: Tokens.Me }, ..] && !HasAccessorFor(property, use) => property,
+            _ => null,
+        };
+    }
+
+    // whether the module that declares a property declares the accessor an assignment of the kind goes through, of the same name.
+    private bool HasAccessorFor(VBPropertyGetMemberSymbol property, FunctionTarget use)
+        => use != FunctionTarget.Erase && context.Scope.SelfAndAncestors()
+            .SelectMany(scope => scope.DeclaredAs(property.Name))
+            .Any(declared => declared.ParentUri.AbsoluteUri == property.ParentUri.AbsoluteUri
+                && (use == FunctionTarget.Let ? declared is VBPropertyLetMemberSymbol : declared is VBPropertySetMemberSymbol));
+
+    // the name of the constant an expression is: a constant the code declares, by its name or through its module, or a member of an enumeration.
+    private string? ConstantNamedBy(ExpressionNode expression) => expression switch
+    {
+        SimpleNameExpressionNode name when Named(name) is VBConstantMemberSymbol or VBLocalConstantSymbol or VBEnumConstMemberSymbol => name.IdentifierName,
+        MemberAccessExpressionNode { Owner: { } owner } access when context.Resolver.NamespaceOf(owner, context.Scope.Uri) is { } qualifier
+            => context.Resolver.ResolveMember(qualifier, access.Member, context.Scope.Uri).Symbol is VBConstantMemberSymbol or VBEnumConstMemberSymbol
+                ? access.Member.IdentifierName
+                : null,
+        MemberAccessExpressionNode { Owner: { } owner } access
+            when NameClassificationStaticSemantics.EnumerationOf(context, owner) is { } enumType
+            => enumType.Members.FirstOrDefault(member => string.Equals(member.Name, access.Member.IdentifierName, StringComparison.OrdinalIgnoreCase))?.Name,
+        _ => null,
+    };
+
+    /// <summary>
     /// "MUST be classified as a variable, property, function or unbound member", as an element of an <c>Erase</c> statement is
     /// (<strong>MS-VBAL §5.4.3.4</strong>): anything but a value.
     /// </summary>
@@ -168,11 +300,11 @@ internal sealed class StatementOperandChecks(StaticEvaluationContext context)
         Any,
     }
 
-    private void Report(ExpressionNode expression, string? what, string requirement, string? section)
+    private void Report(ExpressionNode expression, string? what, string requirement, string? section, VBCompileErrorId id = VBCompileErrorId.VariableRequired)
     {
         if (what is not null)
         {
-            _errors.Add(VBCompileErrorInfo.For(VBCompileErrorId.VariableRequired, expression.Location,
+            _errors.Add(VBCompileErrorInfo.For(id, expression.Location,
                 $"{requirement}, and this is {what}{(section is null ? string.Empty : $" (MS-VBAL §{section})")}."));
         }
     }
@@ -188,7 +320,7 @@ internal sealed class StatementOperandChecks(StaticEvaluationContext context)
             => NotAVariable(context.Resolver.ResolveMember(qualifier, access.Member, context.Scope.Uri).Symbol, functions),
         // and a member of an Enum is one of its constants (MS-VBAL §5.2.3.4); a name that is none of them is not found, which is another error.
         MemberAccessExpressionNode { Owner: { } owner } access
-            when ExpressionStaticSemanticsEvaluator.Evaluate(context, owner) is { IsSuccess: true, Result: VBEnumType enumType }
+            when NameClassificationStaticSemantics.EnumerationOf(context, owner) is { } enumType
             && enumType.Members.FirstOrDefault(member => string.Equals(member.Name, access.Member.IdentifierName, StringComparison.OrdinalIgnoreCase)) is { } constant
             => $"the constant {constant.Name}",
         _ => null,

@@ -131,6 +131,18 @@ public class LanguageServerCapabilities
     public SessionAnalyze SessionAnalyze { get; set; } = new();
 
     /// <summary>
+    /// If supported, the language server lists what can be written at a position of a module the client supplies, over <c>rdcore/session/completion</c>: the
+    /// completion list of a line that is being typed at a prompt, which is no document.
+    /// </summary>
+    public SessionCompletion SessionCompletion { get; set; } = new();
+
+    /// <summary>
+    /// If supported, the language server says what the call being written at a position of a module the client supplies takes, over
+    /// <c>rdcore/session/signatureHelp</c>: the signature help of a line that is being typed at a prompt, which is no document.
+    /// </summary>
+    public SessionSignatureHelp SessionSignatureHelp { get; set; } = new();
+
+    /// <summary>
     /// If supported, the language server reads and writes single bytes of the runtime session's
     /// memory, over <c>rdcore/session/memory/peek</c> and <c>.../poke</c>.
     /// </summary>
@@ -280,6 +292,21 @@ public static class RDCorePlatformProtocol
     public const string SessionAnalyze = "rdcore/session/analyze";
 
     /// <summary>
+    /// Asks the language server what can be written at a position of a module the client supplies.
+    /// </summary>
+    public const string SessionCompletion = "rdcore/session/completion";
+
+    /// <summary>
+    /// Asks the language server what the call being written at a position of a module the client supplies takes.
+    /// </summary>
+    public const string SessionSignatureHelp = "rdcore/session/signatureHelp";
+
+    /// <summary>
+    /// Registers the verbs of a client's own commands with the language server, described, which completes them as they are typed.
+    /// </summary>
+    public const string SessionCommands = "rdcore/session/commands";
+
+    /// <summary>
     /// Reads one byte of the runtime session's memory.
     /// </summary>
     public const string SessionPeek = "rdcore/session/memory/peek";
@@ -336,6 +363,8 @@ public static class RDCorePlatformProtocol
 [JsonDerivedType(typeof(SessionDiscard))]
 [JsonDerivedType(typeof(ProgramDebugging))]
 [JsonDerivedType(typeof(SessionAnalyze))]
+[JsonDerivedType(typeof(SessionCompletion))]
+[JsonDerivedType(typeof(SessionSignatureHelp))]
 [JsonDerivedType(typeof(SemanticAnalysis))]
 [JsonDerivedType(typeof(SessionMemoryAccess))]
 [JsonDerivedType(typeof(SessionInteraction))]
@@ -397,6 +426,18 @@ public record class ProgramDebugging(bool IsSupported = false) : CorePlatformCli
 /// <c>rdcore/session/analyze</c>, the editor-less counterpart to LSP's own diagnostics pull.
 /// </summary>
 public record class SessionAnalyze(bool IsSupported = false) : CorePlatformClientCapability(IsSupported);
+
+/// <summary>
+/// Advertises that the declaring component lists what can be written at a position of a supplied module - <c>rdcore/session/completion</c>, the counterpart
+/// to LSP's own <c>textDocument/completion</c> for a line typed at a prompt, which is in no document.
+/// </summary>
+public record class SessionCompletion(bool IsSupported = false) : CorePlatformClientCapability(IsSupported);
+
+/// <summary>
+/// Advertises that the declaring component says what the call being written at a position of a supplied module takes - <c>rdcore/session/signatureHelp</c>,
+/// the counterpart to LSP's own <c>textDocument/signatureHelp</c> for a line typed at a prompt, which is in no document.
+/// </summary>
+public record class SessionSignatureHelp(bool IsSupported = false) : CorePlatformClientCapability(IsSupported);
 
 /// <summary>
 /// Advertises that the declaring component reads and writes single bytes of a live runtime session's

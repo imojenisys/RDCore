@@ -47,6 +47,22 @@ public sealed class ForLoopEvaluator(
         => expressionEvaluator.Evaluate(session, expression, context);
 
     /// <summary>
+    /// Evaluates the <c>start-value</c>, <c>end-value</c> or <c>step-increment</c> of a loop whose counter is declared <paramref name="counterType"/>: a
+    /// <c>Single</c>, <c>Double</c> or <c>Date</c> expression is converted to it from the extended format it is computed in (MS-VBAL §5.6.9.3; MS-VBA:
+    /// <c>For l = 1 To s + 1</c>, <c>s</c> a <c>Single</c> of 16777216, counts to 16777217 - grid oracle\s42 D31).
+    /// </summary>
+    public RuntimeSemanticsEvaluationResult EvaluateOperand(IRuntimeSession session, ExpressionNode expression, VBType counterType, RuntimeEvaluationContext context)
+        => expressionEvaluator.EvaluateLetCoercedTo(session, expression, counterType, context);
+
+    /// <summary>
+    /// Steps the loop on payloads, when its counter holds one (IR lowering S1.2): what <see cref="Increment"/>, <see cref="AssignCounter"/> and
+    /// <see cref="IsOutOfRange"/> do, with no value made of the counter.
+    /// </summary>
+    /// <returns><see langword="false"/> when the loop is to be stepped the way it always is.</returns>
+    public bool TryStepUnboxed(IRuntimeSession session, ForLoopState state, RuntimeEvaluationContext context, out bool isOutOfRange)
+        => expressionEvaluator.TryStepForUnboxed(session, state, context, out isOutOfRange);
+
+    /// <summary>
     /// The start, the end and the step of a loop as it counts with them: numbers of the one type the loop counts in (<strong>MS-VBAL §5.4.2.3</strong>).
     /// </summary>
     /// <remarks>

@@ -2,6 +2,7 @@
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Types.Complex;
+using RDCore.SDK.Semantics.Flags;
 using RDCore.SDK.Semantics.Static.Abstract;
 
 namespace RDCore.SDK.Semantics.Static;
@@ -19,16 +20,35 @@ public record class LetCoercionStaticSemantics : StaticSemantics
         var destinationType = operandDeclaredTypes[(int)InputIndex.CoercionDestinationType];
         var sourceType = operandDeclaredTypes[(int)InputIndex.CoercionSourceValue];
 
-        // an object of a class that has no default member has no value to give a Variant either: the error says what MS-VBA does with it instead.
-        if (sourceType is VBClassType { DefaultMember: null } noDefault && destinationType is VBVariantType)
+        // what an object's class declares is read from the class as the composition has it now, not as it was when the declaration was bound.
+        if (sourceType is VBClassType declaredClass)
         {
-            return StaticSemanticsEvaluationResult.Error(ObjectValueStaticSemantics.NoDefaultMember(expression, noDefault));
+            sourceType = CurrentTypes.Of(context, declaredClass);
+        }
+
+        // MS-VBAL §3.3.5.2: the Empty and Null literals have a declared type of Variant, which is valid to Let-coerce to an array; the value each holds is
+        // not, and raises 13 when it runs (MS-VBA, Excel-measured, oracle s46 F17a-b, s48 J01-J02). The fact is for an analyzer to report.
+        if (sourceType is VBEmptyType or VBNullType && destinationType is VBArrayType)
+        {
+            if (context.Facts is { } facts && facts.TryGet(expression.Identity, out var fact))
+            {
+                facts.Record(fact with { Flags = fact.Flags | ValueExpressionSemanticFlags.EmptyLetToArray });
+            }
+
+            sourceType = VBVariantType.TypeInfo;
+        }
+
+        // an object of a class that has no default member has no value to give a Variant either: MS-VBA compiles it, and raises 438 when it runs (RD-VBAL 5.5.1.1).
+        if (sourceType is VBClassType { DefaultMember: null } && destinationType is VBVariantType)
+        {
+            ObjectValueStaticSemantics.MarkNoDefaultMember(context.Facts, expression);
+            return StaticSemanticsEvaluationResult.Success(destinationType);
         }
 
         // a destination of a value type expects a value of the source: an object stands for its default member's value, which it must have.
         if (ObjectValueStaticSemantics.IsValueType(destinationType))
         {
-            var value = ObjectValueStaticSemantics.ValueOf(expression, sourceType, ValueDestination.TypedValue);
+            var value = ObjectValueStaticSemantics.ValueOf(context, expression, sourceType, ValueDestination.TypedValue);
             if (value.IsError)
             {
                 return value;
@@ -68,8 +88,11 @@ public record class LetCoercionStaticSemantics : StaticSemantics
         VBArrayType srcArray when srcArray.ItemType is VBUserDefinedType and not VBExternalUserDefinedType && destination is VBVariantType => true,
         VBArrayType srcArray when srcArray.ItemType is VBFixedStringType && destination is VBVariantType => true,
 
-        // NOTE: this line is specified outside the section 5.5.1.1 table
-        VBLongLongType when destination is not VBLongLongType and not VBVariantType => true,
+        // MS-VBAL §5.5.1.1 (below its table) refuses to let-coerce a LongLong implicitly to anything but a LongLong or a Variant. MS-VBA refuses only what
+        // is narrower than it - Byte, Integer, Long (an Enum is one, §5.2.3.4), Currency - and lets Double, Single, String, Boolean and Date have it
+        // (Excel-verified); RD-VBA does what MS-VBA does (author's ruling, 2026-10-22). A 64-bit LongPtr is a LongLong (§2.2), and a 32-bit one a Long.
+        VBLongLongType or VBLongPtrType_x64
+            when destination is VBByteType or VBIntegerType or VBLongType or VBEnumType or VBCurrencyType or VBLongPtrType_x86 => true,
 
         // MS-VBAL 5.5.1.1's "source declared type OR LITERAL": the Nothing literal is told by its expression, not by a type, so DetermineDeclaredType asks
         // ObjectValueStaticSemantics, which reports it as MS-VBA does (Invalid use of object) before these rules are consulted.

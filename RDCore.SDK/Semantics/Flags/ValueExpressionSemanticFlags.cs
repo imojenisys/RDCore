@@ -58,4 +58,47 @@ public enum ValueExpressionSemanticFlags
     /// An argument that is passed by value, and an index of an array, is not.
     /// </summary>
     PassedAsArgument = 1 << 9,
+    /// <summary>
+    /// It is an argument written with <c>ByVal</c> for a parameter that is <c>ByVal</c> already: the keyword changes nothing. <strong>MS-VBA</strong> compiles
+    /// it, where <strong>MS-VBAL §5.6.13.1</strong> refuses it (RD-VBAL §5.6.13.1).
+    /// </summary>
+    RedundantByVal = 1 << 10,
+
+    /// <summary>
+    /// It is a call of a function, or of a property that has no <c>Property Set</c>, named as the target of a <c>Set</c> statement outside its own body, of a
+    /// class whose default member has no <c>Property Set</c>: what it returns has nothing to Set, and the <c>Set</c> raises run-time error 438 (Object doesn't
+    /// support this property or method) whenever it runs. <strong>MS-VBA</strong> compiles it (<strong>MS-VBAL §5.4.3.9</strong>).
+    /// </summary>
+    /// <remarks>
+    /// A call of a type that is neither an object nor a <c>Variant</c> is a compile error as the target of a <c>Set</c> already; one of an <c>Object</c> or a
+    /// <c>Variant</c> fails or not by the value it returns, which only an evaluation of it can tell.
+    /// </remarks>
+    SetHasNoDefaultMemberToSet = 1 << 11,
+
+    /// <summary>
+    /// It is an addition, a subtraction or a multiplication of <c>Byte</c>, <c>Integer</c> or <c>Long</c> values, one of which is <c>Abs</c>, <c>Int</c> or
+    /// <c>Fix</c> of a number: MS-VBA types that call as the number's type, and the operation overflows (error 6) where MS-VBAL, which declares the call
+    /// <c>As Variant</c>, has a <c>Variant</c> operation widen to a larger type (<see cref="Static.ArgumentTypedFunctions"/>).
+    /// </summary>
+    OverflowsWhereVariantWidens = 1 << 12,
+
+    /// <summary>
+    /// It is a name of a reserved function of the library written with a type character that does not match the function's declared type (<c>Len$</c>,
+    /// <c>CVar$</c>, <c>Abs%</c>): <strong>MS-VBAL §5.6.10</strong> makes the name invalid, and <strong>MS-VBA</strong> ignores the character.
+    /// </summary>
+    IgnoredTypeCharacter = 1 << 13,
+
+    /// <summary>
+    /// It is an object of a class that has no default member, where a value is expected: the value of a <c>Let</c> assignment, an operand of an operator other
+    /// than <c>Is</c>, an argument of a parameter declared with a value type. <strong>MS-VBAL §5.5.1.1</strong> makes it statically invalid; <strong>MS-VBA</strong>
+    /// compiles it, and raises run-time error 438 (Object doesn't support this property or method) whenever it runs, or 91 when the object is <c>Nothing</c>.
+    /// </summary>
+    ValueOfObjectWithNoDefaultMember = 1 << 14,
+
+    /// <summary>
+    /// It is the <c>Empty</c> or the <c>Null</c> literal, Let-assigned to an array: a variable, or the result of a function, declared as one. Its declared
+    /// type is <c>Variant</c> (<strong>MS-VBAL §3.3.5.2</strong>), which is valid to Let-coerce to an array; the value it holds raises run-time error 13
+    /// (Type mismatch) whenever it runs, as <strong>MS-VBA</strong> has it.
+    /// </summary>
+    EmptyLetToArray = 1 << 15,
 }

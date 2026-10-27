@@ -130,6 +130,23 @@ public sealed class NameAnalyzerTests
         CollectionAssert.AreEqual(new[] { "total1", "PI2", "a" }, Names(findings));
     }
 
+    // a live setting: the client says the names while the extension runs, and the analyzer that is built already reads them when it analyzes.
+    [TestMethod]
+    public void TheApprovedNames_AreTheOnesTheSettingsSayWhenAModuleIsAnalyzed()
+    {
+        var options = Options();
+        var meaningful = new UseMeaningfulIdentifierNamesAnalyzer(options);
+        var hungarian = new HungarianNotationAnalyzer(options);
+        var before = Names(Run(meaningful, Declarations));
+
+        options.Value.MeaningfulNames.AllowedNames = ["I", "X", "tmp"];
+        options.Value.HungarianNotation.AllowedNames = [.. Names(Run(hungarian, Declarations))];
+
+        CollectionAssert.Contains(before, "tmp");
+        CollectionAssert.AreEqual(new[] { "total1", "PI2", "a" }, Names(Run(meaningful, Declarations)));
+        Assert.IsEmpty(Run(hungarian, Declarations));
+    }
+
     [TestMethod]
     public void TheNameOfAnImplementationOrAHandler_IsTheInterfaceOrTheEventToChoose()
         => Assert.IsFalse(Names(Run(new UseMeaningfulIdentifierNamesAnalyzer(Options()), Declarations)).Contains("Handler_Click"));
@@ -192,6 +209,38 @@ public sealed class NameAnalyzerTests
     [DataRow("nameStr", false)]
     public void TheRule_IsAPrefixAndThenANewWord(string name, bool hungarian)
         => Assert.AreEqual(hungarian, HungarianNotationAnalyzer.IsHungarian(name));
+
+    [TestMethod]
+    public void AHungarianName_IsFixedByARename_ToTheWordAfterItsPrefix()
+    {
+        var findings = Run(new HungarianNotationAnalyzer(Options()), "Private strName As String\nPrivate strNext As String");
+
+        CollectionAssert.AreEqual(new[] { "Name" }, findings[0].Fixes?.Rename?.Suggestions.ToArray());
+        Assert.IsNotNull(findings[1].Fixes?.Rename, "a rename still fixes it");
+        Assert.IsEmpty(findings[1].Fixes!.Rename!.Suggestions, "Next is a keyword, which no name can be");
+    }
+
+    [TestMethod]
+    public void ANameThatDoesNotSayWhatItIs_IsFixedByARenameToANameTheUserChooses()
+    {
+        var finding = Run(new UseMeaningfulIdentifierNamesAnalyzer(Options()), "Private x As Long").Single();
+
+        Assert.IsNotNull(finding.Fixes?.Rename);
+        Assert.IsEmpty(finding.Fixes.Rename.Suggestions);
+    }
+
+    [TestMethod]
+    public void TheFixesOfAFinding_TravelInTheDataOfItsDiagnostic()
+    {
+        var finding = Run(new HungarianNotationAnalyzer(Options()), "Private strName As String").Single();
+
+        var diagnostic = new DiagnosticFactory().FromAnalyzerFinding(finding);
+        var sent = Newtonsoft.Json.JsonConvert.DeserializeObject<Diagnostic>(Newtonsoft.Json.JsonConvert.SerializeObject(diagnostic))!;
+
+        Assert.AreEqual("""{"rename":{"suggestions":["Name"]}}""", diagnostic.Data!.ToString(Newtonsoft.Json.Formatting.None));
+        CollectionAssert.AreEqual(new[] { "Name" }, DiagnosticFixes.Of(sent)?.Rename?.Suggestions.ToArray());
+        Assert.IsNull(DiagnosticFixes.Of(new Diagnostic { Data = Newtonsoft.Json.Linq.JToken.FromObject(new ErrorDiagnosticMetadata(13, "")) }), "the metadata of an error is no fix");
+    }
 
     #endregion
 

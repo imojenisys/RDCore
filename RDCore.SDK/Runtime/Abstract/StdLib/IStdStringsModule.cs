@@ -38,23 +38,25 @@ public interface IStdStringsModule
     /// <summary>
     /// <strong>MS-VBAL 6.1.2.11.1.1 Asc</strong> Gets the character code of the first character of a string.
     /// </summary>
-    /// <param name="stringValue">The string whose first character to report the code of.</param>
+    /// <param name="string">The string whose first character to report the code of: the parameter <c>String</c>, which a named argument names
+    /// (<c>Asc(String:="A")</c>).</param>
     /// <returns>A <see cref="RuntimeSemanticsEvaluationResult"/> object encapsulating the result of the successful operation, or the error metadata otherwise.</returns>
-    RuntimeSemanticsEvaluationResult<VBIntegerValue> Asc(VBStringValue stringValue);
+    RuntimeSemanticsEvaluationResult<VBIntegerValue> Asc(VBStringValue @string);
 
     /// <summary>
     /// <strong>MS-VBAL 6.1.2.11.1.2 AscB</strong> Gets the value of the first <em>byte</em> of a string, rather than of its first character.
     /// </summary>
-    /// <param name="stringValue">The string whose first byte to report the value of.</param>
+    /// <param name="string">The string whose first byte to report the value of: the parameter <c>String</c>.</param>
     /// <returns>A <see cref="RuntimeSemanticsEvaluationResult"/> object encapsulating the result of the successful operation, or the error metadata otherwise.</returns>
-    RuntimeSemanticsEvaluationResult<VBIntegerValue> AscB(VBStringValue stringValue);
+    RuntimeSemanticsEvaluationResult<VBIntegerValue> AscB(VBStringValue @string);
 
     /// <summary>
     /// <strong>MS-VBAL 6.1.2.11.1.3 AscW</strong> Gets the <em>Unicode</em> code point of the first character of a string.
     /// </summary>
-    /// <param name="stringValue">The string whose first character to report the code point of.</param>
+    /// <param name="string">The string whose first character to report the code point of: the parameter <c>String</c>, which a named argument names
+    /// (<c>AscW(String:="Z")</c>, MS-VBA, recorded in Excel: oracle\s46 F19).</param>
     /// <returns>A <see cref="RuntimeSemanticsEvaluationResult"/> object encapsulating the result of the successful operation, or the error metadata otherwise.</returns>
-    RuntimeSemanticsEvaluationResult<VBIntegerValue> AscW(VBStringValue stringValue);
+    RuntimeSemanticsEvaluationResult<VBIntegerValue> AscW(VBStringValue @string);
 
     /// <summary>
     /// <strong>MS-VBAL 6.1.2.11.1.4 Chr</strong> Gets the character a character code names.
@@ -347,10 +349,14 @@ public interface IStdStringsModule
     /// <param name="count">How many occurrences to replace. <c>-1</c>, the default, replaces every one of them.</param>
     /// <param name="compare">The string comparison to use. When omitted, the calling module's <c>Option Compare</c>.</param>
     /// <returns>A <see cref="RuntimeSemanticsEvaluationResult"/> object encapsulating the result of the successful operation, or the error metadata otherwise.</returns>
+    /// <remarks>
+    /// The type library declares every parameter by reference (<see cref="StdLibTypeLibraryByRefAttribute"/>): <c>Replace(ByVal s, ...)</c> is a compile error,
+    /// whichever argument is written <c>ByVal</c> (<strong>MS-VBA</strong>, recorded in Excel).
+    /// </remarks>
     RuntimeSemanticsEvaluationResult<VBStringValue> Replace(
-        VBStringValue expression, VBStringValue find, VBStringValue replace,
-        [StdLibDefault(1)] VBLongValue? start = default, [StdLibDefault(-1)] VBLongValue? count = default,
-        [StdLibOptionCompare] VBCompareMethod compare = VBCompareMethod.VBBinaryCompare);
+        [StdLibTypeLibraryByRef] VBStringValue expression, [StdLibTypeLibraryByRef] VBStringValue find, [StdLibTypeLibraryByRef] VBStringValue replace,
+        [StdLibDefault(1), StdLibTypeLibraryByRef] VBLongValue? start = default, [StdLibDefault(-1), StdLibTypeLibraryByRef] VBLongValue? count = default,
+        [StdLibOptionCompare, StdLibTypeLibraryByRef] VBCompareMethod compare = VBCompareMethod.VBBinaryCompare);
 
     /// <summary>
     /// <strong>MS-VBAL 6.1.2.11.1.30 Right</strong> Gets a given number of characters from the <em>end</em> of a string.

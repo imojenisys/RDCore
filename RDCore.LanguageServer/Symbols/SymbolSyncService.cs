@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RDCore.LanguageServer.Parsing;
+using RDCore.LanguageServer.Progress;
 using RDCore.LanguageServer.Workspace;
 using RDCore.LanguageServer.Workspace.Services;
 using RDCore.SDK.Client;
@@ -10,6 +11,7 @@ using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Platform.Protocol;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Server.Configuration;
+using RDCore.SDK.Server.Progress;
 using RDCore.Symbols;
 
 namespace RDCore.LanguageServer.Symbols;
@@ -24,7 +26,9 @@ internal interface ISymbolSyncService
     /// <summary>
     /// Sends the symbols of every workspace module with a cached parse result to the environment host.
     /// </summary>
-    Task SyncWorkspaceAsync(CancellationToken token);
+    /// <param name="token">A token that cancels the sync.</param>
+    /// <param name="progress">Where each module is reported as it is defined, and then as its code is loaded.</param>
+    Task SyncWorkspaceAsync(CancellationToken token, IProgress<WorkProgressStep>? progress = null);
 
     /// <summary>
     /// Sends the symbols of one parsed module to the environment host.
@@ -140,7 +144,7 @@ internal sealed class SymbolSyncService(
         var workspaceRoot = new Uri(documents.WorkspaceRoot);
         var moduleUri = new UriBuilder(workspaceRoot) { Fragment = moduleName }.Uri;
         var workspaceResolver = WorkspaceSymbolResolver.Compose(
-            workspaceRoot, [(moduleUri, ModuleType.StdModule, parseResult)], resolver, implicitScope: ImplicitScope,
+            workspaceRoot, [(moduleUri, ModuleType.StdModule, parseResult)], resolver, projectName: referencedLibraries.ProjectName, implicitScope: ImplicitScope,
             libraries: referencedLibraries.SymbolsUnder(workspaceRoot));
 
         // a module the client keeps editing is defined again every time it is run, so the newest
@@ -152,7 +156,7 @@ internal sealed class SymbolSyncService(
         return moduleUri;
     }
 
-    public async Task SyncWorkspaceAsync(CancellationToken token)
+    public async Task SyncWorkspaceAsync(CancellationToken token, IProgress<WorkProgressStep>? progress = null)
     {
         try
         {
@@ -180,13 +184,36 @@ internal sealed class SymbolSyncService(
             }
 
             var workspaceResolver = WorkspaceSymbolResolver.Compose(
-                workspaceRoot, modules.Select(module => (module.Uri, module.Kind, module.Parse)), resolver,
+                workspaceRoot, modules.Select(module => (module.Uri, module.Kind, module.Parse)), resolver, projectName: referencedLibraries.ProjectName,
                 implicitScope: ImplicitScope, libraries: referencedLibraries.SymbolsUnder(workspaceRoot));
 
+            // three phases, each for every module before the next (DefineSymbolsParams.DeclareTypesOnly): its types are declared, its declarations are bound,
+            // and its code is loaded - a third of the work each.
             var totalDefined = 0;
+            var step = 0;
+            void Step(string message, string module) => progress?.Report(new WorkProgressStep(
+                string.Format(ProgressMessages.ItemOf, string.Format(message, module), step % modules.Count + 1, modules.Count), 100 * step++ / (3 * modules.Count)));
+
+            // every type exists before any declaration is bound to it, whichever module declares it and in whichever order the project lists them.
             foreach (var module in modules)
             {
                 token.ThrowIfCancellationRequested();
+                Step(ProgressMessages.Declaring, module.Name);
+                try
+                {
+                    totalDefined += await DefineModuleSymbolsAsync(
+                        workspaceRoot, module.Uri, module.Name, module.Kind, module.Parse, workspaceResolver, replace: false, withCode: false, token, declareTypesOnly: true);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "❌ Declaring the types of module {module} failed; continuing with the remaining workspace modules.", module.Name);
+                }
+            }
+
+            foreach (var module in modules)
+            {
+                token.ThrowIfCancellationRequested();
+                Step(ProgressMessages.Defining, module.Name);
                 try
                 {
                     totalDefined += await DefineModuleSymbolsAsync(workspaceRoot, module.Uri, module.Name, module.Kind, module.Parse, workspaceResolver, replace: false, withCode: false, token);
@@ -206,6 +233,7 @@ internal sealed class SymbolSyncService(
             foreach (var module in modules)
             {
                 token.ThrowIfCancellationRequested();
+                Step(ProgressMessages.Loading, module.Name);
                 try
                 {
                     await SendModuleCodeAsync(workspaceRoot, module.Uri, module.Name, module.Parse, token);
@@ -230,12 +258,18 @@ internal sealed class SymbolSyncService(
 
     private async Task<int> DefineModuleSymbolsAsync(
         Uri workspaceRoot, Uri moduleUri, string moduleName, ModuleType moduleType, ModuleParseResult parseResult,
-        ISymbolResolver workspaceResolver, bool replace, bool withCode, CancellationToken token)
+        ISymbolResolver workspaceResolver, bool replace, bool withCode, CancellationToken token, bool declareTypesOnly = false)
     {
         var symbols = new SyntaxTreeSymbolProvider(
             workspaceRoot, moduleUri, moduleType, parseResult, workspaceResolver,
             withImplicitDeclarations: true, ImplicitScope).ProvideSymbols();
         var descriptors = SymbolDescriptorProjector.Project(symbols, moduleUri);
+
+        // a module that declares no type has nothing to declare in the first phase.
+        if (declareTypesOnly && !descriptors.Any(descriptor => descriptor.Kind is SymbolDescriptorKind.UserDefinedType or SymbolDescriptorKind.Enum))
+        {
+            return 0;
+        }
 
         var result = await orchestration.RuntimeEnvironment.SendRequestAsync<DefineSymbolsParams, DefineSymbolsResult>(
             new DefineSymbolsParams
@@ -249,6 +283,7 @@ internal sealed class SymbolSyncService(
                 ImplementedInterfaceRanges = parseResult.SyntaxTree?.GetImplementedInterfaceRanges() ?? [],
                 ParseResultJson = withCode ? PlatformJson.Serialize(parseResult) : string.Empty,
                 Replace = replace,
+                DeclareTypesOnly = declareTypesOnly,
             }, token);
 
         if (logger.IsEnabled(LogLevel.Information))
@@ -310,8 +345,8 @@ internal sealed class SymbolSyncService(
         // the module is defined again with the newest definition winning, in the workspace as it is now - what the other modules declare is what its names are
         // bound against - and then its code is loaded, which is checked against the same.
         var workspaceResolver = WorkspaceSymbolResolver.Compose(
-            workspaceRoot, modules.Select(module => (module.Uri, module.Kind, module.Parse)), resolver, implicitScope: ImplicitScope,
-            libraries: referencedLibraries.SymbolsUnder(workspaceRoot));
+            workspaceRoot, modules.Select(module => (module.Uri, module.Kind, module.Parse)), resolver, projectName: referencedLibraries.ProjectName,
+            implicitScope: ImplicitScope, libraries: referencedLibraries.SymbolsUnder(workspaceRoot));
         await DefineModuleSymbolsAsync(workspaceRoot, changed.Uri, changed.Name, changed.Kind, changed.Parse, workspaceResolver, replace: true, withCode: false, token);
         await SendModuleCodeAsync(workspaceRoot, changed.Uri, changed.Name, changed.Parse, token);
     }

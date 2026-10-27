@@ -88,6 +88,22 @@ public interface IAutomationServer : SDK.Runtime.Abstract.Execution.IExternalObj
     object CreateObject(string progId);
 
     /// <summary>
+    /// Gets an object by name, as <c>CreateObject</c> and <c>GetObject</c> do: one created here or on a server machine, one that is running, or the one a file
+    /// or a moniker is.
+    /// </summary>
+    /// <remarks>
+    /// A server that only creates objects here creates them, and has none running and no file to open: the class is not registered, as far as the program can
+    /// tell (error <c>429</c>).
+    /// </remarks>
+    /// <param name="request">How the object is obtained.</param>
+    /// <returns>The handle of the object.</returns>
+    /// <exception cref="AutomationException">There is no such object, the server would not start, or the machine named is not there.</exception>
+    object GetObject(SDK.Runtime.Abstract.Execution.ExternalObjectRequest request)
+        => request is { Source: SDK.Runtime.Abstract.Execution.ExternalObjectSource.Create, ProgId: { Length: > 0 } progId, ServerName: null or "" }
+            ? CreateObject(progId)
+            : throw new AutomationException(unchecked((int)0x80040154), $"{request.Describe()}: nothing here can get it.");
+
+    /// <summary>
     /// Calls a member of an object by its name.
     /// </summary>
     /// <param name="target">The handle of the object.</param>
@@ -114,6 +130,19 @@ public interface IAutomationServer : SDK.Runtime.Abstract.Execution.IExternalObj
     /// </remarks>
     /// <param name="target">The handle of the object.</param>
     string? ClassNameOf(object target);
+
+    /// <summary>
+    /// Gets whether an object is an instance of a class of the library its own class is of, as the object says: whether it answers to the class's interface.
+    /// </summary>
+    /// <remarks>
+    /// What <c>TypeOf ... Is</c> asks of an object of a server (<strong>MS-VBAL §5.6.7</strong>), and what only the object knows: a form's control is a
+    /// <c>MSForms.Label</c>, and a <c>MSForms.Control</c> too, the extender its form wraps it in. <see langword="null"/> when the server cannot tell - the class
+    /// is of another library, or the object describes none.
+    /// </remarks>
+    /// <param name="target">The handle of the object.</param>
+    /// <param name="library">The library that declares the class.</param>
+    /// <param name="className">The name of the class, or of the interface.</param>
+    bool? IsInstanceOf(object target, string library, string className) => null;
 
     /// <summary>
     /// Moves the enumerator an object's enumeration member returned (<c>_NewEnum</c>) to its next member.
@@ -191,6 +220,12 @@ public sealed class AutomationEvent(string name, object?[] arguments, bool isSyn
     /// Waits up to the given time, doing the work that is asked of the thread that raised the event meanwhile.
     /// </summary>
     public Action<TimeSpan> Serve { get; } = serve;
+
+    /// <summary>
+    /// The dispatch identifier the server raised the event with, which a sink's member answers to (<c>VB_UserMemId</c>); <see langword="null"/> for an event that
+    /// is not raised through a connection point - a form's window's.
+    /// </summary>
+    public int? DispatchId { get; init; }
 }
 
 /// <summary>

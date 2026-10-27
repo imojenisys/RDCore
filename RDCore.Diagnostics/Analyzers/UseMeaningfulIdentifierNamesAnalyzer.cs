@@ -24,18 +24,27 @@ internal sealed class UseMeaningfulIdentifierNamesAnalyzer(IOptions<DiagnosticsO
     /// </summary>
     public const int MinimumLength = 3;
 
-    private readonly HashSet<string> _allowed = new(options.Value.MeaningfulNames.AllowedNames ?? [], StringComparer.OrdinalIgnoreCase);
-
+    // the names are read when a module is analyzed: they are a live setting, which the client can change while the extension runs.
     protected override IEnumerable<AnalyzerFinding> Analyze(ModuleNode module)
+    {
+        var allowed = new HashSet<string>(options.Value.MeaningfulNames.AllowedNames ?? [], StringComparer.OrdinalIgnoreCase);
+        return Analyze(module, allowed);
+    }
+
+    private IEnumerable<AnalyzerFinding> Analyze(ModuleNode module, HashSet<string> allowed)
         => DeclaredNames.In(module)
-            .Where(declared => !_allowed.Contains(declared.Name))
+            .Where(declared => !allowed.Contains(declared.Name))
             .Select(declared => (declared, message: MessageFor(declared.Name)))
             .Where(entry => entry.message is not null)
             .Select(entry => new AnalyzerFinding(
                 RDCoreDiagnosticId.UseMeaningfulIdentifierNames,
                 entry.declared.Range,
                 DiagnosticSeverity.Information,
-                Say(entry.message!, entry.declared.Name)));
+                Say(entry.message!, entry.declared.Name))
+            {
+                // only the user can say what the name means.
+                Fixes = new DiagnosticFixes { Rename = new RenameFix() },
+            });
 
     private static string? MessageFor(string name)
     {

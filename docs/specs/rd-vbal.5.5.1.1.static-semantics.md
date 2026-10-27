@@ -10,8 +10,7 @@ The pairs of declared types MS-VBAL §5.5.1.1 makes invalid to Let-coerce are ch
 
 Where a value is expected, an object stands for its _simple data value_: what its default member returns
 (**MS-VBAL §5.5.1.2.13**). [ObjectValueStaticSemantics](../api/RDCore.SDK.Semantics.Static.ObjectValueStaticSemantics.html)
-checks at compile time that it can have one, as MS-VBA does (recorded in Excel, each statement compiled alone) - and, where
-the specification makes it a compile-time validation, where MS-VBA does not:
+checks at compile time that it can have one, as MS-VBA does (recorded in Excel, each statement compiled alone):
 
 |The object|Where a value of a declared type is expected|`Abs`, `Int`, `Fix`|`Len`, `LenB`|Where a `Variant` is expected|
 |---|---|---|---|---|
@@ -20,7 +19,7 @@ the specification makes it a compile-time validation, where MS-VBA does not:
 |Of a class whose default member returns an object|[`VBC09310`](../diagnostics/vbc09310.md) Type mismatch|compiles|[`VBC09333`](../diagnostics/vbc09333.md) Variable required|compiles|
 |Of a class whose default member returns a `String` or a `Variant`|compiles|compiles|compiles|compiles|
 |Of a class whose default member returns another value|compiles|compiles|`VBC09333` Variable required|compiles|
-|Of a class that has no default member|`VBC09310` Type mismatch 👉|compiles|compiles|compiles; `VBC09310` 👉 assigned to a `Variant` with `Let`|
+|Of a class that has no default member|compiles 👉: 438 when it runs, [`RDC11015`](../diagnostics/rdc11015.md)|compiles|compiles|compiles; assigned to a `Variant` with `Let` 👉: 438, `RDC11015`|
 
 A value of a declared type is expected:
 
@@ -39,13 +38,40 @@ as it is: `CVar`, `Round`, `Hex`, `Str`, `Left`, `Mid`, `Trim`, the functions of
 `Choose`. A standard-library parameter says which it is with
 [StdLibValueAttribute](../api/RDCore.SDK.Runtime.Abstract.StdLib.StdLibValueAttribute.html).
 
-👉 MS-VBAL §5.5.1.1 makes an object of a class that has no accessible default member statically invalid to Let-coerce,
-and RD-VBA reports it at compile time, as the specification says it is validated. MS-VBA compiles it, and raises run-time
-error 438 (Object doesn't support this property or method) when it runs, which the error's message says. A parameter
-declared `Variant`, and `Abs`, `Int`, `Fix`, `Len` and `LenB`, take the object as it is: the coercion there is the run
-time's. And the specification asks only for an "accessible default Property Get or function", where MS-VBA also asks
-that it take no argument, which RD-VBA does too.
+👉 MS-VBAL §5.5.1.1 makes an object of a class that has no accessible default member statically invalid to Let-coerce.
+MS-VBA compiles it, and raises run-time error 438 (Object doesn't support this property or method) when it runs, or 91
+(Object variable or With block variable not set) when the variable holds `Nothing` (Excel, `oracle\s46` F16a-c:
+`c = o`, `c = CInt(o)`, `Split("a,b,c", ",", o)`). RD-VBA does what MS-VBA does: the object is read for a value when it
+runs, as a late-bound one is. Where a value of a declared type is expected, or a `Variant` is `Let`-assigned the object,
+the static pass states it (`ValueExpressionSemanticFlags.ValueOfObjectWithNoDefaultMember`), and RDCore.Diagnostics
+reports [`RDC11015`](../diagnostics/rdc11015.md), a warning that stands in for the compile error the specification
+makes it. A parameter declared `Variant`, and `Abs`, `Int`, `Fix`, `Len` and `LenB`, take the object as it is: the
+coercion there is the run time's, and nothing is reported. And the specification asks only for an "accessible default
+Property Get or function", where MS-VBA also asks that it take no argument, which RD-VBA does too.
 
+## A `LongLong`
+
+MS-VBAL §5.5.1.1 makes it invalid to implicitly Let-coerce a `LongLong` to any declared type other than `LongLong` or
+`Variant`. MS-VBA refuses only what is narrower than it, and RD-VBA does what MS-VBA does (recorded in Excel, 64-bit):
+
+|To|Implicitly|
+|---|---|
+|`Byte`, `Integer`, `Long`, an enumeration, `Currency`|[`VBC09310`](../diagnostics/vbc09310.md) Type mismatch|
+|`Single`, `Double`, `String`, a fixed-length `String`, `Boolean`, `Date`, `LongPtr`, `Variant`|compiles|
+
+A `LongPtr` is a `LongLong` in a 64-bit environment and a `Long` in a 32-bit one ([**RD-VBAL §2.4.1**](rd-vbal.2.4.1.intrinsic-types.md)),
+and so is the address an `AddressOf` expression gives: `ByVal lpfn As Long` takes one in a 32-bit environment, and refuses
+it in a 64-bit one. The rule holds wherever a value is Let-coerced: an assignment, and an argument given to a parameter of
+a value type.
+
+## The `Empty` and `Null` literals
+
+**MS-VBAL §3.3.5.2** gives the `Empty` and `Null` literals a declared type of `Variant`, and a `Variant` is valid to
+Let-coerce to an array. So `a = Empty`, with `a` declared `As Integer()`, compiles, and so do `a = Null` and `F = Empty` in
+a function declared `As Integer()`; the value each holds is no array, and the assignment raises run-time error 13 (Type
+mismatch) when it runs. This is what MS-VBA does (Excel, `oracle\s46` F17a-b, `oracle\s48` J01-J02). The static pass states it
+(`ValueExpressionSemanticFlags.EmptyLetToArray`), and RDCore.Diagnostics reports
+[`RDC11016`](../diagnostics/rdc11016.md): the assignment fails whenever it runs.
 
 ---
 > ⏮️ [**RD-VBAL §5.5.1** Let-coercion](rd-vbal.5.5.1.let-coercion.md) | ⏭️ [**RD-VBAL §5.5.1.2** Runtime semantics](rd-vbal.5.5.1.2.runtime-semantics.md)

@@ -36,16 +36,18 @@ namespace RDCore.SDK.Runtime.StdLib;
 /// of that type. Either way the symbol carries the value, which is what a use site folds.
 /// </para>
 /// <para>
-/// 🚧 A member whose declared type is another standard-library <em>class</em> resolves only because
-/// classes are read before the modules that return them, which is enough for
-/// <c>Information.Err() As ErrObject</c>. The <c>RegExp</c> family is mutually referential
-/// (<c>Execute</c> returns a <c>MatchCollection</c> of <c>Match</c>, each with <c>SubMatches</c>), so
-/// TODO: order class completion topologically, with a cycle guard, once those classes declare their
-/// members.
+/// A member whose declared type is another standard-library <em>class</em> binds that class's type, so classes are read before the modules that
+/// return them (<c>Information.Err() As ErrObject</c>), and each class after every class it names (<c>RegExp.Execute</c> returns a
+/// <c>MatchCollection</c> of <c>Match</c>, each with its <c>SubMatches</c>).
 /// </para>
 /// </remarks>
 public sealed class StdLibSymbolReader
 {
+    // what each member does, in a sentence, and each of its parameters: what a completion list and a signature help show of them. Keyed by the module or the
+    // class and the member (`Strings_Left`), and the parameter after them (`Strings_Left_Length`); a `$` function has the doc strings of the one it is the
+    // String version of, and a member without an entry has none.
+    private static readonly System.Resources.ResourceManager DocStrings = new("RDCore.SDK.Runtime.StdLib.StdLibDocStrings", typeof(StdLibSymbolReader).Assembly);
+
     private readonly Uri _workspaceRoot;
     private readonly Uri _globalsOwnerUri;
     private readonly bool _is64Bit;
@@ -236,14 +238,28 @@ public sealed class StdLibSymbolReader
         var name = attribute.Name ?? StdLibNames.ClassName(declaration.Name);
 
         var symbol = (VBClassModuleSymbol)new VBClassModuleSymbol(_workspaceRoot, _workspaceRoot, name)
-            .With(SymbolProperties.Creatable, attribute.IsCreatable);
+            .With(SymbolProperties.Creatable, attribute.IsCreatable)
+            // a library's class, as any library's is: MS-VBA compiles a member its declaration does not have (`Err.Nope`, `c.Nope` of a Collection) and
+            // raises 438 at run time (Excel-verified).
+            .With(SymbolProperties.Extensible, true);
+
+        // a COM class the platform implements itself, which CreateObject finds by name before a server is asked.
+        if (attribute.ProgId is { Length: > 0 } progId)
+        {
+            symbol = (VBClassModuleSymbol)symbol.With(SymbolProperties.ProgId, progId);
+        }
+
+        if (attribute.TypeName is { Length: > 0 } typeName)
+        {
+            symbol = (VBClassModuleSymbol)symbol.With(SymbolProperties.ReportedTypeName, typeName);
+        }
 
         symbol = symbol with
         {
             Members =
             [
                 .. MembersOf(declaration).Select(method =>
-                    (VBTypeMemberSymbol)ReadMember(method, symbol.Uri, ScopeKind.Instance, enumTypes, classTypes)),
+                    (VBTypeMemberSymbol)ReadMember(method, name, symbol.Uri, ScopeKind.Instance, enumTypes, classTypes)),
             ],
         };
         // a pure function of Members, and fixed the moment they are known — the same ordering a
@@ -263,7 +279,7 @@ public sealed class StdLibSymbolReader
         // `vbCrLf`, a constant being a member like any other. A hidden module's procedures are hidden,
         // which is a flag of each member and leaves them resolving just the same.
         var members = MembersOf(declaration)
-            .Select(method => ReadMember(method, module.Uri, ScopeKind.Module, enumTypes, classTypes, attribute.IsHidden))
+            .Select(method => ReadMember(method, name, module.Uri, ScopeKind.Module, enumTypes, classTypes, attribute.IsHidden))
             .Concat(ConstantsOf(declaration).Select(field => ReadConstant(field, module.Uri)))
             .ToArray();
 
@@ -295,6 +311,36 @@ public sealed class StdLibSymbolReader
             _workspaceRoot, moduleUri, name, ScopeKind.Module, type, SourceRange.Empty, SourceRange.Empty,
             AccessModifier.Public, LiteralOf((VBTypedValue)field.GetValue(null)!, moduleUri));
     }
+
+    private Symbol ReadMember(
+        MethodInfo method, string ownerName, Uri ownerUri, ScopeKind scope,
+        Dictionary<Type, VBEnumType> enumTypes, Dictionary<Type, VBClassType> classTypes, bool ownerIsHidden = false)
+        => WithDocStrings(ReadMember(method, ownerUri, scope, enumTypes, classTypes, ownerIsHidden), ownerName);
+
+    private static Symbol WithDocStrings(Symbol member, string ownerName)
+    {
+        var key = $"{ownerName}_{member.Name.TrimEnd('$')}";
+        var parameters = member switch
+        {
+            VBReturningMemberSymbol returning => returning.Parameters,
+            VBProcedureMemberSymbol procedure => procedure.Parameters,
+            _ => [],
+        };
+
+        ImmutableArray<VBParameterSymbol> described = [.. parameters.Select(parameter => DocString($"{key}_{parameter.Name}") is { } docString
+            ? (VBParameterSymbol)parameter.With(SymbolProperties.DocString, docString)
+            : parameter)];
+        member = member switch
+        {
+            VBReturningMemberSymbol returning when parameters.Length > 0 => returning with { Parameters = described },
+            VBProcedureMemberSymbol procedure when parameters.Length > 0 => procedure with { Parameters = described },
+            _ => member,
+        };
+
+        return DocString(key) is { } memberDocString ? member.With(SymbolProperties.DocString, memberDocString) : member;
+    }
+
+    private static string? DocString(string key) => DocStrings.GetString(key, System.Globalization.CultureInfo.CurrentUICulture);
 
     private Symbol ReadMember(
         MethodInfo method, Uri ownerUri, ScopeKind scope,
@@ -369,7 +415,29 @@ public sealed class StdLibSymbolReader
         {
             var name = StdLibNames.ParameterName(parameter.Name);
             var declared = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
-            var byRef = parameter.ParameterType.IsByRef || parameter.GetCustomAttribute<StdLibByRefAttribute>() is not null;
+
+            // given the address of what it is passed, and declared as a type of its own (StrPtr).
+            var byAddress = parameter.GetCustomAttribute<StdLibByAddressAttribute>();
+            if (byAddress is not null)
+            {
+                if (declared != typeof(VBLongLongValue) || parameter.IsOptional || parameter.ParameterType.IsByRef || parameter.GetCustomAttribute<ParamArrayAttribute>() is not null)
+                {
+                    throw new InvalidOperationException(
+                        $"'{name}' in '{method.DeclaringType?.Name}.{method.Name}' is passed by address, which only a required ByVal parameter declared as a {nameof(VBLongLongValue)} is.");
+                }
+
+                declared = byAddress.DeclaredAs;
+            }
+
+            // `ByRef … As Any`: what the member is given is the address of the variable passed to it (VarPtr).
+            var asAny = parameter.GetCustomAttribute<StdLibAsAnyAttribute>() is not null;
+            if (asAny && (declared != typeof(VBLongLongValue) || parameter.IsOptional || parameter.GetCustomAttribute<ParamArrayAttribute>() is not null))
+            {
+                throw new InvalidOperationException(
+                    $"'{name}' in '{method.DeclaringType?.Name}.{method.Name}' is As Any, which only a required parameter declared as a {nameof(VBLongLongValue)} is.");
+            }
+
+            var byRef = parameter.ParameterType.IsByRef || parameter.GetCustomAttribute<StdLibByRefAttribute>() is not null || asAny;
             var array = parameter.GetCustomAttribute<StdLibArrayAttribute>();
             var paramArray = parameter.GetCustomAttribute<ParamArrayAttribute>() is not null;
 
@@ -403,14 +471,17 @@ public sealed class StdLibSymbolReader
                     $"which only an optional ByVal parameter declared as a {nameof(VBCompareMethod)} can.");
             }
 
+            // MS-VBAL §5.3.1.5: a param array is declared with no parameter mechanism, and its elements are ByRef.
             if (paramArray)
             {
                 builder.Add(new ParamArrayParameterSymbol(
-                    _workspaceRoot, memberUri, name, SourceRange.Empty, SourceRange.Empty, ParameterKind.ExplicitByVal));
+                    _workspaceRoot, memberUri, name, SourceRange.Empty, SourceRange.Empty, ParameterKind.ImplicitByRef));
                 continue;
             }
 
-            var declaredType = array is not null
+            // `As Any` has no declared type, as a Declare's parameter has none: it takes whatever it is given.
+            var declaredType = asAny ? VBUnknownType.TypeInfo
+                : array is not null
                 ? ArrayTypeOf(DeclaredTypeOf(array.ElementType, method, enumTypes, classTypes))
                 : DeclaredTypeOf(declared, method, enumTypes, classTypes);
             var symbol = new VBParameterSymbol(
@@ -418,10 +489,23 @@ public sealed class StdLibSymbolReader
                 byRef ? ParameterKind.ExplicitByRef : ParameterKind.ExplicitByVal,
                 declaredType, parameter.IsOptional, DefaultValueOf(parameter, declaredType, name, method, memberUri));
 
+            if (byAddress is not null)
+            {
+                symbol = (VBParameterSymbol)symbol.With(SymbolProperties.PassedByAddress, true);
+            }
+
             // the declared default stays: it is what a caller with no calling module gets.
             if (optionCompare)
             {
                 symbol = (VBParameterSymbol)symbol.With(SymbolProperties.DefaultsToOptionCompare, true);
+            }
+
+            // the type library declares a Variant parameter a VARIANT*, and a few others by reference too: what refuses a call-site ByVal (RD-VBAL §5.6.13.1). One
+            // that reads the value of its argument (StdLibValue) is one the type library declares with a type of its own, by value: a $ function's String.
+            if (!asAny && (declaredType is VBVariantType && parameter.GetCustomAttribute<StdLibValueAttribute>() is null
+                || parameter.GetCustomAttribute<StdLibTypeLibraryByRefAttribute>() is not null))
+            {
+                symbol = (VBParameterSymbol)symbol.With(SymbolProperties.TypeLibraryByRef, true);
             }
 
             // a Variant parameter that reads the value of its argument, as MS-VBA compiles it, which its declared type does not say.

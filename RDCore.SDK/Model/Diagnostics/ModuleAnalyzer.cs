@@ -26,7 +26,20 @@ public sealed record class ModuleAnalysisContext(Uri Document, ModuleParseResult
 /// <param name="Range">Where in the document it is.</param>
 /// <param name="Severity">How serious it is.</param>
 /// <param name="Message">What is worth saying about it, in the language of the reader.</param>
-public sealed record class AnalyzerFinding(RDCoreDiagnosticId Id, SourceRange Range, DiagnosticSeverity Severity, string Message);
+public sealed record class AnalyzerFinding(RDCoreDiagnosticId Id, SourceRange Range, DiagnosticSeverity Severity, string Message)
+{
+    /// <summary>
+    /// What the client is told about how to render the range (<strong>LSP 3.17</strong> <c>DiagnosticTag</c>): <see cref="DiagnosticTag.Unnecessary"/> for code
+    /// that is dead, which a client renders faded, as it renders code that cannot be reached.
+    /// </summary>
+    public IReadOnlyList<DiagnosticTag> Tags { get; init; } = [];
+
+    /// <summary>
+    /// What can be done about the finding, which the platform offers as code actions (<see cref="DiagnosticFixes"/>); <see langword="null"/> when nothing is
+    /// known to fix it.
+    /// </summary>
+    public DiagnosticFixes? Fixes { get; init; }
+}
 
 /// <summary>
 /// Looks at a module and says what is worth saying about it (<strong>RD-VBAL §2.6.4</strong>).

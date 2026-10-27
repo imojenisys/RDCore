@@ -34,7 +34,11 @@ internal static class ObjectDefaultMember
     /// </returns>
     public static bool TryFind(VBClassModuleSymbol classModule, [NotNullWhen(true)] out VBReturningMemberSymbol? member)
     {
-        member = VBClassType.FromClassModule(classModule).DefaultMember as VBReturningMemberSymbol;
+        // a late-bound object's default member is whatever answers to DISPID_VALUE: whether anything does, and with what arguments, is the object's to say.
+        member = External.Automation.LateBinding.IsLateBound(classModule)
+            ? (VBReturningMemberSymbol)External.Automation.LateBinding.MemberOf(
+                classModule, External.Automation.LateBinding.DefaultMemberName, RDCore.External.Automation.AutomationInvocation.Get)
+            : VBClassType.FromClassModule(classModule).DefaultMember as VBReturningMemberSymbol;
 
         // SymbolBuilder.BuildParameters gives every member of a class an implicit Me at slot 0; anything after it is the member's own.
         var parameters = member is null ? [] : RuntimeProcedureInvoker.GetParameters(member);
@@ -141,6 +145,29 @@ internal static class ObjectDefaultMember
         }
 
         return RuntimeSemanticsEvaluationResult.Success(value);
+    }
+
+    /// <summary>
+    /// What a pair of parentheses makes of the object it encloses (<strong>MS-VBAL §5.6.6</strong>, "the simple data value of its enclosed expression"):
+    /// what its default member returns - read once, whether that is a value or an object.
+    /// </summary>
+    /// <remarks>
+    /// One read for each pair of parentheses, as MS-VBA has it (recorded in Excel): <c>(o)</c> of an object whose default member returns a
+    /// <c>Collection</c> is that <c>Collection</c> - <c>TypeName((o))</c>, <c>Set x = (o)</c>, <c>(o) Is Nothing</c> - and <c>((o))</c> is the
+    /// <c>Collection</c>'s default member in turn. A Let-coercion reads on until it has a value (<see cref="ValueOf"/>); parentheses do not.
+    /// </remarks>
+    /// <param name="session">The session the object lives in.</param>
+    /// <param name="enclosed">The object.</param>
+    /// <returns>What its default member returned; or error 91 for <c>Nothing</c>, and 438 or 450 for an object that has no default member to read.</returns>
+    public static RuntimeSemanticsEvaluationResult EnclosedValueOf(IRuntimeSession session, VBObjectValue enclosed)
+    {
+        if (enclosed.IsNothing())
+        {
+            return RuntimeSemanticsEvaluationResult.Error(VBRuntimeErrorInfo.For(VBRuntimeErrorId.ObjectVariableOrWithBlockVariableNotSet, default,
+                "Nothing has no value."));
+        }
+
+        return Call(session, enclosed) ?? RuntimeSemanticsEvaluationResult.Error(NoValue(session, enclosed, returnedByADefaultMember: false));
     }
 
     /// <summary>

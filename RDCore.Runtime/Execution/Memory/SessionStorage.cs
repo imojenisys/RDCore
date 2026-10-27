@@ -1,4 +1,5 @@
 using RDCore.SDK.Model.Values.Bindings;
+using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
 using System.Diagnostics.CodeAnalysis;
@@ -10,49 +11,158 @@ namespace RDCore.Runtime.Execution.Memory;
 /// reserved for it through an <see cref="ISessionMemoryAllocator"/>.
 /// </summary>
 /// <param name="allocator">The session's memory allocator; reserves address space only, never values.</param>
-internal sealed class SessionStorage(ISessionMemoryAllocator allocator) : ISessionStorage
+/// <param name="pointerSize">The size of an address in the session's memory, in bytes: what a variable that holds nothing is given.</param>
+internal sealed partial class SessionStorage(ISessionMemoryAllocator allocator, int pointerSize = sizeof(long)) : ISessionStorage
 {
     private readonly Dictionary<MemoryAddress, IBindingHandle> _handleByAddress = [];
     private readonly Dictionary<MemoryAddress, byte[]> _bytesByAddress = [];
 
-    // A value whose declared Size is 0 (Nothing, Null, Empty, an uninitialized array, a UDT with no
-    // resolvable fields, an empty ParamArray) still needs a resolvable-by-name binding, but genuinely
-    // has nothing to write byte-for-byte - the allocator correctly refuses it (SessionMemorySegment's
-    // own guard: a 0-byte bump-pointer/free-list "allocation" would hand the same address to the next
-    // real caller). It never needs real memory, only a dictionary key distinct from every other one -
-    // minted from this counter instead, walking negative so it can never collide with an allocator
-    // address (those only ever grow from a non-negative offset).
-    private int _nextInertAddress = -1;
+    // the blocks the elements of arrays are laid out in (ArrayBlock), by the address each starts at, and by the array: an array that is gone is not kept
+    // alive by its block, which is freed the next time a block is made.
+    private readonly Dictionary<MemoryAddress, ArrayBlock> _arrayBlocks = [];
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<SDK.Model.Values.Intrinsic.VBArrayValue, System.Runtime.CompilerServices.StrongBox<MemoryAddress>> _blockOfArray = new();
+
+    /// <summary>
+    /// The address of the element at <paramref name="flatIndex"/> of <paramref name="array"/>, in the order <see cref="SDK.Model.Values.Intrinsic.VBArrayValue.IndexOf"/>
+    /// numbers them: in the block the array's elements are laid out in side by side (<see cref="ArrayBlock"/>), made the first time the address of one of
+    /// them is asked for. Every element of the array is at the start of the block plus its index times the width of an element (<c>VarPtr</c>).
+    /// </summary>
+    /// <returns><see langword="false"/> when there is no element at the index, or no room for the block.</returns>
+    public bool TryAddressOfElement(SDK.Model.Values.Intrinsic.VBArrayValue array, int flatIndex, out MemoryAddress address)
+    {
+        address = default;
+        if (flatIndex < 0 || flatIndex >= array.Length)
+        {
+            return false;
+        }
+
+        if (!_blockOfArray.TryGetValue(array, out var start))
+        {
+            var made = new ArrayBlock(array, pointerSize);
+            if (!allocator.TryAllocate(made.Size, out var at))
+            {
+                return false;
+            }
+
+            // the blocks of the arrays that are gone are freed once this one is made, so that it is never where one of them was: an array ReDim'd is
+            // elsewhere (oracle\s17 V11), whenever the one it was is collected.
+            FreeBlocksOfArraysThatAreGone();
+            _arrayBlocks[at] = made;
+            _blockOfArray.Add(array, start = new System.Runtime.CompilerServices.StrongBox<MemoryAddress>(at));
+            Generation++;
+        }
+
+        address = new MemoryAddress(start.Value.Value + flatIndex * _arrayBlocks[start.Value].ElementWidth);
+        return true;
+    }
+
+    private void FreeBlocksOfArraysThatAreGone()
+    {
+        foreach (var (at, block) in _arrayBlocks.Where(block => !block.Value.TryGetArray(out _)).ToList())
+        {
+            FreeStringBlocksIn(at, block.Size);
+            FreeDescriptorsIn(at, block.Size);
+            _arrayBlocks.Remove(at);
+            allocator.TryDeallocate(at, out _);
+            Generation++;
+        }
+    }
+
+    private static SDK.Model.Values.Intrinsic.VBUserDefinedTypeValue? RecordOf(IBindingHandle handle)
+        => handle is ValueBindingHandle { Value: SDK.Model.Values.Runtime.VBRuntimeValue<SDK.Model.Values.Runtime.VBRuntimeUserDefinedTypeValue> { StoredValue.UserDefinedType: var record } }
+            ? record
+            : null;
+
+    // the block of an array that an address falls in, and where in it.
+    private bool TryFindArrayBlock(MemoryAddress address, [NotNullWhen(true)] out ArrayBlock? block, out int offset)
+    {
+        block = null;
+        offset = 0;
+        if (_arrayBlocks.Count == 0 || !allocator.TryFindBlock(address, out var found) || !_arrayBlocks.TryGetValue(found.Address, out block))
+        {
+            return false;
+        }
+
+        offset = address.Value - found.Address.Value;
+        return true;
+    }
+
+    /// <summary>
+    /// How many times what is bound at an address has changed: an allocation, a deallocation, a rebinding (a <c>POKE</c>). A binding read through an
+    /// address is the binding there for as long as this has not changed (IR lowering S1.5).
+    /// </summary>
+    public int Generation { get; private set; }
 
     public bool TryAllocate(int size, IBindingHandle handle, out MemoryAddress address)
     {
-        if (size <= 0)
+        // a value whose Size is 0 (vbNullString, Null, an array with no elements yet, an empty ParamArray) is held by a variable all the same, and a
+        // variable has an address a program can take (VarPtr): MS-VBA's String or dynamic array is a pointer that is 0, which is a pointer's size. A record
+        // occupies its layout for the session's pointer width, which its own Size is not (VBUserDefinedTypeLayout.DefaultPointerWidth).
+        if (handle is ValueBindingHandle { Value: SDK.Model.Values.Runtime.VBRuntimeValue<SDK.Model.Values.Runtime.VBRuntimeUserDefinedTypeValue> { StoredValue.UserDefinedType: var record } })
         {
-            address = new MemoryAddress(_nextInertAddress--);
-            _handleByAddress[address] = handle;
-            return true;
+            size = Math.Max(size, SDK.Model.Types.VBUserDefinedTypeLayout.Of(record, pointerSize).Size);
         }
 
-        if (!allocator.TryAllocate(size, out address))
+        // a Variant is a VARIANT, whatever it holds (V16).
+        if (handle is ValueBindingHandle { Value: VBRuntimeVariantValue })
+        {
+            size = Math.Max(size, VariantSize);
+        }
+
+        if (!allocator.TryAllocate(size <= 0 ? pointerSize : size, out address))
         {
             return false;
         }
 
         _handleByAddress[address] = handle;
+        Bind(handle, address);
+        Generation++;
         return true;
     }
 
+    // a cell knows the address it is bound at, so that a second name for its variable - a ByRef parameter given the cell (Frames.CellReference) - finds the
+    // address the variable has, whichever of them was asked for it first.
+    private static void Bind(IBindingHandle handle, MemoryAddress address)
+    {
+        if (handle is Frames.ScalarCell cell)
+        {
+            cell.Address = address;
+        }
+    }
+
+    private void Unbind(MemoryAddress address)
+    {
+        if (_handleByAddress.TryGetValue(address, out var handle) && handle is Frames.ScalarCell { Address: { } bound } cell && bound == address)
+        {
+            cell.Address = null;
+        }
+    }
+
     public bool TryRead(MemoryAddress address, [NotNullWhen(true)][MaybeNullWhen(false)] out IBindingHandle? handle)
-        => _handleByAddress.TryGetValue(address, out handle);
+    {
+        if (_handleByAddress.TryGetValue(address, out handle))
+        {
+            return true;
+        }
+
+        // an element of an array, at its place in the array's block.
+        handle = TryFindArrayBlock(address, out var block, out var offset) ? block.CellAt(offset) : null;
+        return handle is not null;
+    }
 
     public bool TryDeallocate(MemoryAddress address)
     {
-        if (address.Value < 0)
+        Generation++;
+        if (allocator.TryFindBlock(address, out var freed) && freed.Address == address)
         {
-            return _handleByAddress.Remove(address);
+            FreeStringBlocksIn(address, freed.Size);
+            FreeDescriptorsIn(address, freed.Size);
         }
 
-        return (_handleByAddress.Remove(address) || _bytesByAddress.Remove(address)) && allocator.TryDeallocate(address, out _);
+        _stringVariables.Remove(address);
+        _objectVariables.Remove(address);
+        Unbind(address);
+        return (_handleByAddress.Remove(address) || _bytesByAddress.Remove(address) || _arrayBlocks.Remove(address)) && allocator.TryDeallocate(address, out _);
     }
 
     public bool TryRebind(MemoryAddress address, IBindingHandle handle)
@@ -62,7 +172,10 @@ internal sealed class SessionStorage(ISessionMemoryAllocator allocator) : ISessi
             return false;
         }
 
+        Unbind(address);
         _handleByAddress[address] = handle;
+        Bind(handle, address);
+        Generation++;
         return true;
     }
 
@@ -122,7 +235,32 @@ internal sealed class SessionStorage(ISessionMemoryAllocator allocator) : ISessi
             return false;
         }
 
+        // the pointer a String or an object is, a VARIANT: what the session lays out, the value being what the bytes say (StringBlock, ObjectHeader).
+        if (TryFindSlot(address, out var holder, out var within, out var slotType))
+        {
+            return TryPokeSlot(holder, within, slotType, value);
+        }
+
+        // an object's interface, and a procedure's address, are the session's, which a program does not write.
+        if (_headers.ContainsKey(block) || _vtables.ContainsValue(block) || _stubs.ContainsKey(block))
+        {
+            return false;
+        }
+
+        // a SAFEARRAY: the array is what its bounds say now (ArrayDescriptor).
+        if (_descriptors.TryGetValue(block, out var descriptor))
+        {
+            image[offset] = value;
+            return TryPokeDescriptor(descriptor, image);
+        }
+
         image[offset] = value;
+
+        // a BSTR: the String it is held as is what its length says of its characters now, at the same address (oracle\s17 S12, grid-p3 L01).
+        if (_stringBlocks.TryGetValue(block, out var characters))
+        {
+            return TryPokeCharacters(characters, image);
+        }
 
         // a raw byte buffer takes the mutated image as it is. A bound value is rebuilt from it, and
         // this is where being unchecked bites: the image is whatever the caller just made it, so the
@@ -133,9 +271,16 @@ internal sealed class SessionStorage(ISessionMemoryAllocator allocator) : ISessi
             return true;
         }
 
+        // the element of an array the byte is part of, which the array holds.
+        if (_arrayBlocks.TryGetValue(block, out var elements))
+        {
+            Generation++;
+            return elements.Write(image, offset);
+        }
+
         return _handleByAddress.TryGetValue(block, out var handle)
             && CanRead(handle)
-            && RuntimeValueBytes.From(handle.Value, image) is { } rebuilt
+            && RuntimeValueBytes.From(handle.Value, image, pointerSize) is { } rebuilt
             && TryRebind(block, new ValueBindingHandle(rebuilt));
     }
 
@@ -163,8 +308,64 @@ internal sealed class SessionStorage(ISessionMemoryAllocator allocator) : ISessi
             return true;
         }
 
-        if (_handleByAddress.TryGetValue(block, out var handle) && CanRead(handle)
-            && RuntimeValueBytes.Of(handle.Value) is { } valueImage)
+        if (_arrayBlocks.TryGetValue(block, out var elements))
+        {
+            var start = block;
+            image = elements.Image(at => HostBytesAt(new MemoryAddress(start.Value + at)));
+            return true;
+        }
+
+        if (_stringBlocks.TryGetValue(block, out var characters))
+        {
+            image = (byte[])characters.Bytes.Clone();
+            return true;
+        }
+
+        if (_headers.TryGetValue(block, out var header))
+        {
+            image = header.Image(pointerSize);
+            return true;
+        }
+
+        if (_vtables.ContainsValue(block))
+        {
+            image = new byte[VTableSize];
+            return true;
+        }
+
+        if (_stubs.ContainsKey(block))
+        {
+            image = new byte[StubSize];
+            return true;
+        }
+
+        if (_descriptors.TryGetValue(block, out var descriptor))
+        {
+            image = DescriptorImage(descriptor);
+            return true;
+        }
+
+        if (!_handleByAddress.TryGetValue(block, out var handle) || !CanRead(handle))
+        {
+            return false;
+        }
+
+        // a String variable is the address of its characters, an object variable its interface's, a Variant its VARIANT; a record its fields, those of these
+        // types laid out as they are.
+        if (_stringVariables.Contains(block) || _objectVariables.ContainsKey(block) || handle.Value is VBRuntimeVariantValue)
+        {
+            image = HostBytesAt(block) ?? [];
+            return true;
+        }
+
+        if (RecordOf(handle) is { } record)
+        {
+            var start = block;
+            image = SDK.Model.Types.VBUserDefinedTypeImage.Of(record, pointerSize, at => HostBytesAt(new MemoryAddress(start.Value + at)));
+            return true;
+        }
+
+        if (RuntimeValueBytes.Of(handle.Value, pointerSize) is { } valueImage)
         {
             image = valueImage;
             return true;

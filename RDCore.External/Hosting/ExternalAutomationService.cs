@@ -21,8 +21,14 @@ namespace RDCore.External.Hosting;
 /// </para>
 /// </remarks>
 /// <param name="platform">The automation servers of the platform.</param>
-public sealed class ExternalAutomationService(IAutomationServer platform)
+/// <param name="forms">
+/// The form host of the platform, whose forms are objects of <paramref name="platform"/> like any other: they share its handles, and a member of a form is an
+/// <see cref="ExternalProtocol.AutomationInvoke"/> of one. A platform that hosts no forms is told so when one is asked for.
+/// </param>
+public sealed class ExternalAutomationService(IAutomationServer platform, Forms.IFormHost? forms = null)
 {
+    private readonly Forms.IFormHost _forms = forms ?? Forms.UnavailableFormHost.Instance;
+
     private readonly ExternalHandles _handles = new();
     private readonly ConcurrentDictionary<long, EventWait> _events = new();
     private long _lastEvent;
@@ -40,28 +46,176 @@ public sealed class ExternalAutomationService(IAutomationServer platform)
     {
         channel.Handle<AutomationStatusParams, AutomationStatusResult>(ExternalProtocol.AutomationStatus, Status);
         channel.Handle<AutomationCreateParams, AutomationObjectResult>(ExternalProtocol.AutomationCreate, Create);
+        channel.Handle<AutomationObtainParams, AutomationObjectResult>(ExternalProtocol.AutomationObtain, Obtain);
         channel.Handle<AutomationInvokeParams, AutomationInvokeResult>(ExternalProtocol.AutomationInvoke, Invoke);
         channel.Handle<AutomationClassNameParams, AutomationClassNameResult>(ExternalProtocol.AutomationClassName, ClassName);
+        channel.Handle<AutomationIsInstanceOfParams, AutomationIsInstanceOfResult>(ExternalProtocol.AutomationIsInstanceOf, IsInstanceOf);
         channel.Handle<AutomationMoveNextParams, AutomationMoveNextResult>(ExternalProtocol.AutomationMoveNext, MoveNext);
         channel.Handle<AutomationResetParams, ExternalDoneResult>(ExternalProtocol.AutomationReset, Reset);
         channel.Handle<AutomationAdviseParams, ExternalDoneResult>(ExternalProtocol.AutomationAdvise, Advise);
         channel.Handle<AutomationUnadviseParams, ExternalDoneResult>(ExternalProtocol.AutomationUnadvise, Unadvise);
         channel.Handle<AutomationReleaseParams, ExternalDoneResult>(ExternalProtocol.AutomationRelease, Release);
+        channel.Handle<FormCreateParams, AutomationObjectResult>(ExternalProtocol.FormCreate, CreateForm);
+        channel.Handle<FormShowParams, ExternalDoneResult>(ExternalProtocol.FormShow, ShowForm);
+        channel.Handle<FormParams, ExternalDoneResult>(ExternalProtocol.FormHide, HideForm);
+        channel.Handle<FormParams, FormIsShownResult>(ExternalProtocol.FormIsShown, IsFormShown);
+        channel.Handle<FormCaptionParams, FormCaptionResult>(ExternalProtocol.FormCaption, FormCaption);
+        channel.Handle<FormParams, ExternalDoneResult>(ExternalProtocol.FormLeave, LeaveForm);
+        channel.Handle<FormHoldParams, ExternalDoneResult>(ExternalProtocol.FormHold, HoldForms);
+        channel.Handle<FormDoEventsParams, ExternalDoneResult>(ExternalProtocol.FormDoEvents, DoEvents);
         RaiseOnClient = raised => channel.CallAsync<AutomationEventParams, AutomationEventResult>(ExternalProtocol.AutomationEvent, raised);
+        InvokeOnClient = call => channel.CallAsync<SessionInvokeParams, SessionInvokeResult>(ExternalProtocol.SessionInvoke, call);
+        ReleaseOnClient = released => channel.CallAsync<SessionReleaseParams, ExternalDoneResult>(ExternalProtocol.SessionRelease, released);
+    }
+
+    /// <summary>
+    /// Calls an object of the environment host's session, as a server called its stand-in, and completes once it is answered; set once the connection is up.
+    /// </summary>
+    public Func<SessionInvokeParams, Task<SessionInvokeResult>>? InvokeOnClient { get; set; }
+
+    /// <summary>
+    /// Tells the environment host that a stand-in of an object of its session was let go of; set once the connection is up.
+    /// </summary>
+    public Func<SessionReleaseParams, Task<ExternalDoneResult>>? ReleaseOnClient { get; set; }
+
+    // an object of the environment host's session, as this end gives it to a server: the server's side makes the stand-in, whose calls go back over the channel.
+    private object SessionObjectOf(string sessionObject) => new SessionObjectReference(sessionObject, _sessionObjects ??= new ForwardingSessionObjectHost(this));
+
+    private ISessionObjectHost? _sessionObjects;
+
+    // what answers for the objects of the environment host's session, on this end: the calls go back over the channel, as an event does - and the calls the session
+    // makes meanwhile are made on the thread that waits.
+    private sealed class ForwardingSessionObjectHost(ExternalAutomationService service) : ISessionObjectHost
+    {
+        public object? Invoke(SessionObjectCall call) => service.CallSession(call);
+
+        public void Release(string sessionObject, int crossings)
+            => _ = service.ReleaseOnClient?.Invoke(new SessionReleaseParams { SessionObject = sessionObject, Crossings = crossings });
+    }
+
+    // sends a call to the environment host, and waits for the answer on the thread the server called the stand-in on.
+    private object? CallSession(SessionObjectCall call)
+    {
+        if (InvokeOnClient is not { } send)
+        {
+            throw new AutomationException(unchecked((int)0x80004005), "The environment host is not connected.");
+        }
+
+        var number = Interlocked.Increment(ref _lastEvent);
+        var waiting = new EventWait();
+        _events[number] = waiting;
+        try
+        {
+            var reply = send(new SessionInvokeParams
+            {
+                Event = number,
+                SessionObject = call.SessionObject,
+                Name = call.Name,
+                DispatchId = call.DispatchId,
+                Invocation = call.Invocation,
+                Arguments = [.. call.Arguments.Select(argument => ExternalValues.ToWire(argument, _handles.HandleOf))],
+                IsSynchronous = call.IsSynchronous,
+            });
+
+            waiting.Serve(reply, call.IsSynchronous ? null : call.Serve);
+            if (!reply.IsCompletedSuccessfully)
+            {
+                throw new AutomationException(unchecked((int)0x80004005), "The environment host did not answer the call.");
+            }
+
+            if (reply.Result.Failure is { } failure)
+            {
+                throw failure.ToException();
+            }
+
+            var answered = reply.Result.Arguments;
+            for (var index = 0; index < answered.Length && index < call.Arguments.Length; index++)
+            {
+                call.Arguments[index] = ExternalValues.FromWire(answered[index], _handles.ObjectOf, SessionObjectOf);
+            }
+
+            return ExternalValues.FromWire(reply.Result.Returned, _handles.ObjectOf, SessionObjectOf);
+        }
+        finally
+        {
+            _ = _events.TryRemove(number, out _);
+        }
     }
 
     /// <summary>Answers <see cref="ExternalProtocol.AutomationStatus"/>.</summary>
-    public AutomationStatusResult Status(AutomationStatusParams request) => new() { IsAvailable = platform.IsAvailable };
+    public AutomationStatusResult Status(AutomationStatusParams request) => new() { IsAvailable = platform.IsAvailable, IsFormHostAvailable = _forms.IsAvailable };
+
+    /// <summary>Answers <see cref="ExternalProtocol.FormCreate"/>.</summary>
+    public AutomationObjectResult CreateForm(FormCreateParams request)
+        => Answer(request.HandlingEvent, () => new AutomationObjectResult { Handle = _handles.HandleOf(_forms.Create(request.ToDefinition())) }, Failed<AutomationObjectResult>);
+
+    /// <summary>Answers <see cref="ExternalProtocol.FormShow"/>: a modal form is answered once it is hidden.</summary>
+    public ExternalDoneResult ShowForm(FormShowParams request) => Answer(request.HandlingEvent, () =>
+    {
+        _forms.Show(_handles.ObjectOf(request.Target), request.Modal);
+        return new ExternalDoneResult();
+    }, Failed<ExternalDoneResult>);
+
+    /// <summary>Answers <see cref="ExternalProtocol.FormHide"/>.</summary>
+    public ExternalDoneResult HideForm(FormParams request) => Answer(request.HandlingEvent, () =>
+    {
+        _forms.Hide(_handles.ObjectOf(request.Target));
+        return new ExternalDoneResult();
+    }, Failed<ExternalDoneResult>);
+
+    /// <summary>Answers <see cref="ExternalProtocol.FormLeave"/>.</summary>
+    public ExternalDoneResult LeaveForm(FormParams request) => Answer(request.HandlingEvent, () =>
+    {
+        _forms.Leave(_handles.ObjectOf(request.Target));
+        return new ExternalDoneResult();
+    }, Failed<ExternalDoneResult>);
+
+    /// <summary>Answers <see cref="ExternalProtocol.FormHold"/>.</summary>
+    public ExternalDoneResult HoldForms(FormHoldParams request) => Answer(request.HandlingEvent, () =>
+    {
+        _forms.Hold(request.Running);
+        return new ExternalDoneResult();
+    }, Failed<ExternalDoneResult>);
+
+    /// <summary>Answers <see cref="ExternalProtocol.FormDoEvents"/>.</summary>
+    public ExternalDoneResult DoEvents(FormDoEventsParams request) => Answer(request.HandlingEvent, () =>
+    {
+        _forms.DoEvents();
+        return new ExternalDoneResult();
+    }, Failed<ExternalDoneResult>);
+
+    /// <summary>Answers <see cref="ExternalProtocol.FormIsShown"/>.</summary>
+    public FormIsShownResult IsFormShown(FormParams request)
+        => Answer(request.HandlingEvent, () => new FormIsShownResult { IsShown = _forms.IsShown(_handles.ObjectOf(request.Target)) }, Failed<FormIsShownResult>);
+
+    /// <summary>Answers <see cref="ExternalProtocol.FormCaption"/>.</summary>
+    public FormCaptionResult FormCaption(FormCaptionParams request) => Answer(request.HandlingEvent, () =>
+    {
+        var form = _handles.ObjectOf(request.Target);
+        if (request.Caption is { } caption)
+        {
+            _forms.SetCaption(form, caption);
+        }
+
+        return new FormCaptionResult { Caption = _forms.GetCaption(form) };
+    }, Failed<FormCaptionResult>);
 
     /// <summary>Answers <see cref="ExternalProtocol.AutomationCreate"/>.</summary>
     public AutomationObjectResult Create(AutomationCreateParams request)
         => Answer(request.HandlingEvent, () => new AutomationObjectResult { Handle = _handles.HandleOf(platform.CreateObject(request.ProgId)) }, Failed<AutomationObjectResult>);
 
+    /// <summary>Answers <see cref="ExternalProtocol.AutomationObtain"/>.</summary>
+    public AutomationObjectResult Obtain(AutomationObtainParams request)
+        => Answer(request.HandlingEvent, () => new AutomationObjectResult
+        {
+            Handle = _handles.HandleOf(platform.GetObject(new SDK.Runtime.Abstract.Execution.ExternalObjectRequest(request.Source, request.ProgId, request.PathName, request.ServerName))),
+        }, Failed<AutomationObjectResult>);
+
     /// <summary>Answers <see cref="ExternalProtocol.AutomationInvoke"/>.</summary>
     public AutomationInvokeResult Invoke(AutomationInvokeParams request) => Answer(request.HandlingEvent, () =>
     {
         var target = _handles.ObjectOf(request.Target);
-        var arguments = request.Arguments.Select(argument => ExternalValues.FromWire(argument, _handles.ObjectOf)).ToArray();
+        var arguments = request.Arguments.Select(argument => ExternalValues.FromWire(argument, _handles.ObjectOf, SessionObjectOf)).ToArray();
         var returned = platform.Invoke(target, request.Member, request.Invocation, arguments, request.ByReference, CultureInfo.GetCultureInfo(request.Culture));
 
         // what the server wrote to an argument passed by reference is all the caller reads of the arguments.
@@ -77,6 +231,13 @@ public sealed class ExternalAutomationService(IAutomationServer platform)
     /// <summary>Answers <see cref="ExternalProtocol.AutomationClassName"/>.</summary>
     public AutomationClassNameResult ClassName(AutomationClassNameParams request)
         => Answer(request.HandlingEvent, () => new AutomationClassNameResult { Name = platform.ClassNameOf(_handles.ObjectOf(request.Target)) }, Failed<AutomationClassNameResult>);
+
+    /// <summary>Answers <see cref="ExternalProtocol.AutomationIsInstanceOf"/>.</summary>
+    public AutomationIsInstanceOfResult IsInstanceOf(AutomationIsInstanceOfParams request)
+        => Answer(request.HandlingEvent, () => new AutomationIsInstanceOfResult
+        {
+            IsInstance = platform.IsInstanceOf(_handles.ObjectOf(request.Target), request.Library, request.ClassName),
+        }, Failed<AutomationIsInstanceOfResult>);
 
     /// <summary>Answers <see cref="ExternalProtocol.AutomationMoveNext"/>.</summary>
     public AutomationMoveNextResult MoveNext(AutomationMoveNextParams request) => Answer(request.HandlingEvent, () =>
@@ -152,6 +313,7 @@ public sealed class ExternalAutomationService(IAutomationServer platform)
                 Name = raised.Name,
                 Arguments = [.. raised.Arguments.Select(argument => ExternalValues.ToWire(argument, _handles.HandleOf))],
                 IsSynchronous = raised.IsSynchronous,
+                DispatchId = raised.DispatchId,
             });
 
             waiting.Serve(reply, raised.IsSynchronous ? null : raised.Serve);
@@ -164,7 +326,7 @@ public sealed class ExternalAutomationService(IAutomationServer platform)
             var answered = reply.Result.Arguments;
             for (var index = 0; index < answered.Length && index < raised.Arguments.Length; index++)
             {
-                raised.Arguments[index] = ExternalValues.FromWire(answered[index], _handles.ObjectOf);
+                raised.Arguments[index] = ExternalValues.FromWire(answered[index], _handles.ObjectOf, SessionObjectOf);
             }
         }
         catch (AutomationException)

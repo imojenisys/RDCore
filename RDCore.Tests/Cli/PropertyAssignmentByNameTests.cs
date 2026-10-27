@@ -45,7 +45,114 @@ public sealed class PropertyAssignmentByNameTests
     public Task APropertyOfAClass_AssignedByNameFromItsOwnCode_IsAssignedOnTheObject()
         => AssertPrintsAsync("42", "Dim h As New Holder", "h.Grow", "Debug.Print CStr(h.Current)");
 
+    // MS-VBA (Excel-verified, oracle\s28 W1): a property of a module with no Property Let, of a type that is neither a Variant nor an object, is no target
+    // at all; one of a Variant is called, and what it returns that is no object is error 424 (FunctionTargetTests).
     [TestMethod]
-    public Task APropertyWithNoPropertyLet_ThatReturnsNoObject_IsError451()
-        => AssertPrintsAsync("Error 451", "ReadOnly = 2");
+    public async Task APropertyWithNoPropertyLet_ThatReturnsNoObject_IsCantAssignToReadOnlyProperty()
+    {
+        var errors = await ModuleWorkspace.LoadErrorsAsync([], "Attribute VB_Name = \"Program\"\r\nPublic Property Get ReadOnly() As Long\r\nReadOnly = 1\r\nEnd Property\r\nPublic Sub Main()\r\nReadOnly = 2\r\nEnd Sub\r\n");
+
+        Assert.HasCount(1, errors, string.Join(" | ", errors));
+        StringAssert.StartsWith(errors[0], "Can't assign to read-only property");
+    }
+
+    private static readonly (string, string) Wrapper = ("Wrapper", ModuleWorkspace.ClassModule("Wrapper",
+        "Option Explicit",
+        "Private mValue As Variant",
+        "Public Property Get Value() As Variant", "Attribute Value.VB_UserMemId = 0", "    Value = mValue", "End Property",
+        "Public Property Let Value(ByVal v As Variant)", "    mValue = v", "End Property"));
+
+    // MS-VBAL §5.4.3.9: a Set of a property that has no Property Set is invalid, written by its bare name in another procedure of its module as through an
+    // object (MS-VBA, Excel-measured, oracle\s30 C32, C35: "Invalid use of property").
+    [TestMethod]
+    public Task ASetOfAPropertyWithNoPropertySet_ByItsName_IsAnInvalidUseOfProperty()
+        => AssertSetIsInvalidAsync("Set Items = Nothing");
+
+    // MS-VBA, Excel-measured, oracle\s44 V01: qualified by its module, as by its bare name.
+    [TestMethod]
+    public Task ASetOfAPropertyWithNoPropertySet_QualifiedByItsModule_IsAnInvalidUseOfProperty()
+        => AssertSetIsInvalidAsync("Set Program.Items = Nothing");
+
+    // MS-VBA, Excel-measured, oracle\s44 W02, W03: another module's property, qualified by its module or by its bare name.
+    [TestMethod]
+    [DataRow("Store.")]
+    [DataRow("")]
+    public async Task ASetOfAnotherModulesProperty_IsCheckedAgainstThatModulesAccessors(string qualifier)
+    {
+        var program = string.Join("\r\n", "Attribute VB_Name = \"Program\"", "Public Sub Main()", $"Set {qualifier}Items = Nothing", $"Set {qualifier}Fixed = Nothing", "End Sub") + "\r\n";
+        var store = ModuleWorkspace.StandardModule("Store",
+            "Public Property Get Items() As Collection", "End Property", "Public Property Set Items(ByVal c As Collection)", "End Property",
+            "Public Property Get Fixed() As Collection", "End Property");
+
+        var errors = await ModuleWorkspace.LoadErrorsAsync([], [("Store", store)], program);
+
+        Assert.HasCount(1, errors, string.Join(" | ", errors));
+        StringAssert.StartsWith(errors[0], "Invalid use of property");
+        StringAssert.Contains(errors[0], "Fixed");
+    }
+
+    // MS-VBAL §5.4.3.9: a Set of another module's property invokes its Property Set, by its bare name or through its module (MS-VBA, oracle\s44 W01).
+    [TestMethod]
+    [DataRow("Store.")]
+    [DataRow("")]
+    public async Task ASetOfAnotherModulesProperty_InvokesItsPropertySet(string qualifier)
+    {
+        var program = string.Join("\r\n", "Attribute VB_Name = \"Program\"", "Public Sub Main()",
+            $"Set {qualifier}Items = New Collection", "Debug.Print CStr(Store.Items Is Nothing)", "Debug.Print CStr(Store.Count)",
+            $"Set {qualifier}Items = Nothing", "Debug.Print CStr(Store.Items Is Nothing)", "Debug.Print CStr(Store.Count)", "End Sub") + "\r\n";
+        var store = ModuleWorkspace.StandardModule("Store",
+            "Private mItems As Collection",
+            "Public Count As Long",
+            "Public Property Get Items() As Collection", "    Set Items = mItems", "End Property",
+            "Public Property Set Items(ByVal c As Collection)", "    Set mItems = c", "    Count = Count + 1", "End Property");
+
+        var printed = await ModuleWorkspace.RunAsync([], [("Store", store)], program);
+
+        Assert.AreEqual("False | 1 | True | 2", string.Join(" | ", printed));
+    }
+
+    // MS-VBAL §5.4.3.9: a class's property Set by its bare name from the class's own code invokes its Property Set on the object whose code it is.
+    [TestMethod]
+    public async Task ASetOfAClassesProperty_ByNameFromItsOwnCode_InvokesItsPropertySetOnTheObject()
+    {
+        var keeper = ("Keeper", ModuleWorkspace.ClassModule("Keeper",
+            "Option Explicit",
+            "Private mItems As Collection",
+            "Public Count As Long",
+            "Public Property Get Items() As Collection", "    Set Items = mItems", "End Property",
+            "Public Property Set Items(ByVal c As Collection)", "    Set mItems = c", "    Count = Count + 1", "End Property",
+            "Public Sub Fill()", "    Set Items = New Collection", "End Sub"));
+        var program = string.Join("\r\n", "Attribute VB_Name = \"Program\"", "Public Sub Main()",
+            "Dim k As New Keeper", "k.Fill", "Debug.Print CStr(k.Items Is Nothing)", "Debug.Print CStr(k.Count)", "End Sub") + "\r\n";
+
+        var printed = await ModuleWorkspace.RunAsync([keeper], program);
+
+        Assert.AreEqual("False | 1", string.Join(" | ", printed));
+    }
+
+    private static async Task AssertSetIsInvalidAsync(string statement)
+    {
+        var errors = await ModuleWorkspace.LoadErrorsAsync([], string.Join("\r\n",
+            "Attribute VB_Name = \"Program\"",
+            "Public Property Get Items() As Collection", "End Property",
+            "Public Sub Main()", statement, "End Sub") + "\r\n");
+
+        StringAssert.StartsWith(Assert.ContainsSingle(errors), "Invalid use of property");
+    }
+
+    // MS-VBAL §5.4.3.8: a Let of a property that has no Property Let is invalid only when the Property Get's type is not a class, Object or Variant: what an
+    // object property returns has its default member assigned (MS-VBA, Excel-measured, oracle\s30 C31, C36).
+    [TestMethod]
+    [DataRow("Box = 42")]
+    [DataRow("Program.Box = 42")]
+    public async Task ALetOfAnObjectPropertyWithNoPropertyLet_AssignsItsDefaultMember(string statement)
+    {
+        var errors = await ModuleWorkspace.LoadErrorsAsync([Wrapper], string.Join("\r\n",
+            "Attribute VB_Name = \"Program\"",
+            "Private mBox As New Wrapper",
+            "Public Property Get Box() As Wrapper", "    Set Box = mBox", "End Property",
+            "Public Sub Main()", statement, "End Sub") + "\r\n");
+
+        Assert.IsEmpty(errors, string.Join(" | ", errors));
+    }
 }

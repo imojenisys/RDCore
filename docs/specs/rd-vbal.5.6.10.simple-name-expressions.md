@@ -48,6 +48,16 @@ The name of a class that is not predeclared, used in an expression, is an undefi
 - A `Sub`'s own symbol already carries `VBVoidType` as its type. See
   [**RD-VBAL §5.3.1.6** Subroutine and Function Declarations](rd-vbal.5.3.1.6.subroutine-and-function-declarations.md).
 
+### Type Characters
+
+**MS-VBAL §5.6.10** makes a name invalid when its type character does not match the declared type of what it names: `x$` of a variable declared `As Long`
+is [`VBC09335`](../diagnostics/vbc09335.md) _Type-declaration character does not match declared data type_, as it is in MS-VBA. A function of the library
+that has a form with the character in its name (`Left$`) is that form.
+
+🎯 A reserved function of the library takes any type character, which **MS-VBA** ignores (recorded in Excel): `Len$("abc")` is `3`, a `Long`, and `CVar$(5)`,
+`Abs%(-3)` and `CInt$(2.6)` are the functions without it. RD-VBA does as MS-VBA does, and [`RDC11019`](../diagnostics/rdc11019.md) warns where the character
+is not the function's type. Any other function of the library refuses a character that does not match: `Asc$("A")`, `Sqr$(4)` are `VBC09335`.
+
 ### Resolution Outcomes
 
 The static semantics of a simple name expression have three outcomes, depending on the resolver's result. Each
@@ -68,6 +78,35 @@ The static-semantics layer consumes [ModuleDirectives](../api/RDCore.SDK.Model.S
 decide whether an unresolved simple name is a deferred `VBUnknownType` or a **VBC09302** _Variable not defined_
 compile-time error. See [**RD-VBAL §5.2.1** Option Directives](rd-vbal.5.2.1.option-directives.md) and
 [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md#module-directives).
+
+### A Name That Is No Value
+
+A project, a procedural module and an Enum type qualify the names of what they declare (`VBA.Len`, `Strings.Left`,
+`Color.Red`): as the owner of a member access they are what they are, and by themselves they are no value, variable or
+procedure. Written bare or qualified (`VBA.Strings`, `Globals.Color`) where an expression is, each is an error of what it
+is, as **MS-VBA** reports it (recorded in Excel), with a verbose message that says what the name is
+([NameClassificationStaticSemantics](../api/RDCore.SDK.Semantics.Static.NameClassificationStaticSemantics.html)):
+
+|The name is|Error|
+|---|---|
+|A project or a library (`VBA`)|[VBC09376](../diagnostics/vbc09376.md) _Expected variable or procedure, not project_|
+|A procedural module, of the project or of a library (`Globals`, `Strings`)|[VBC09363](../diagnostics/vbc09363.md) _Expected variable or procedure, not module_|
+|An Enum type (`Color`)|[VBC09377](../diagnostics/vbc09377.md) _Expected variable or procedure, not enum type_|
+
+That is the error wherever the name is: a value, an argument, the target of a `Let` or a `Set`, the operand of `Not`,
+of a negation or of parentheses, a condition, a statement by itself. A few places report it as what they require of the
+name instead:
+
+|Where|Example|Error|
+|---|---|---|
+|The operand of a binary operator|`Strings + 1`, `VBA & "x"`, `Color = 1`, `Strings Is Nothing`|[VBC09310](../diagnostics/vbc09310.md) _Type mismatch_|
+|The value a `Set` statement assigns|`Set o = Strings`, `Set o = Color`|`VBC09310` _Type mismatch_|
+|What `Len` and `LenB` measure|`Len(Globals)`, `LenB(Strings)`|[VBC09333](../diagnostics/vbc09333.md) _Variable required_|
+|What a `With` block is about|`With Strings`|[VBC09378](../diagnostics/vbc09378.md) ([**RD-VBAL §5.4.2.21**](rd-vbal.5.4.2.21.with-statement.md))|
+|What a `For Each` loop iterates|`For Each v In VBA`|[VBC09379](../diagnostics/vbc09379.md) ([**RD-VBAL §5.4.2.4**](rd-vbal.5.4.2.4.for-each-statement.md))|
+
+A user-defined type or a class is no candidate of `ResolveValue` at all: its name is an undefined variable
+(`x = Pair`), and _Method or data member not found_ qualified by its module (`Program.Pair`).
 
 ### Unresolved Names
 
@@ -90,6 +129,15 @@ resolves to:
 
 See [**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)
 for the invocation itself.
+
+### Members of the Current Instance
+
+A member of a class module named bare in the module's own code is a member of the _current instance_: the call is
+made on `Me`. This holds for every form of the call: a `Sub` named alone (`Helper`) or with `Call` (`Call Helper`), a
+`Function` given arguments (`Twice(3)`), a `Property Get` read by its name (`If IsEmptyBox Then`), and a `Property Let`
+assigned by it (`Size = 3`). A member called on one object therefore reads and writes that object's state, and no
+other's, whichever object it is, the class's default instance included
+([**RD-VBAL §5.2.4.1.2** Default Instance Variables Static Semantics](rd-vbal.5.2.4.class-module-declarations.md#52412-default-instance-variables-static-semantics)).
 
 ### Implicit Calls
 

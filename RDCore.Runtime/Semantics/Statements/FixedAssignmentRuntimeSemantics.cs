@@ -67,13 +67,16 @@ public sealed record class FixedAssignmentRuntimeSemantics(
     public RuntimeExecutionOutcome Execute(
         IRuntimeSession session, RuntimeEvaluationContext context, AssignmentStatementNode assignment)
     {
-        if (!Assignments.TryResolveTarget(session, context, assignment.Target, out var symbol))
+        // a variable is bound once, and read through the slot it is bound to (IR lowering S0.11).
+        var bound = Expressions.BoundVariableOf(session, assignment.Target, context);
+        var symbol = bound?.Variable;
+        if (symbol is null && !Assignments.TryResolveTarget(session, context, assignment.Target, out symbol))
         {
             return RuntimeExecutionOutcome.InternalError;
         }
 
-        var current = ((SDK.Model.Symbols.Abstract.ITypedSymbol)symbol!).ResolvedType
-            .CreateValue(session.Symbols.Resolver.GetValue(symbol!).ForReading());
+        var handle = bound is not null ? Expressions.BindingOf(session, bound).Handle : session.Symbols.Resolver.GetValue(symbol!);
+        var current = ((SDK.Model.Symbols.Abstract.ITypedSymbol)symbol!).ResolvedType.CreateValue(handle.ForReading());
 
         var evaluated = Expressions.Evaluate(session, assignment.Value, context);
         if (!evaluated.IsSuccess)
@@ -84,6 +87,26 @@ public sealed record class FixedAssignmentRuntimeSemantics(
         }
 
         var source = evaluated.Result!;
+
+        // a Variant that holds a value of another type is fitted as the String it reads as, and holds that String after: `v = 12345: RSet v = "x"` gives
+        // "    x" (MS-VBA, Excel-verified), where MS-VBAL §5.4.3.6 would have the value type be String or a record.
+        if (current is VBVariantValue && Unwrapped(current) is { IsIndeterminate: false } held and not (VBStringValue or VBUserDefinedTypeValue or VBObjectValue or VBArrayValue))
+        {
+            var text = LetCoercion.EvaluateLetCoercionSemantics(session.Symbols.Resolver, assignment.Target, new()
+            {
+                NodeId = assignment.Identity,
+                SourceValue = held,
+                DestinationTypeDesc = new(VBStringType.TypeInfo),
+                Site = ConversionSite.StringStatement,
+            });
+            if (!text.IsSuccess)
+            {
+                return text.IsApplicable ? RuntimeExecutionOutcome.Error(text.ErrorInfo!) : RuntimeExecutionOutcome.InternalError;
+            }
+
+            current = text.Result!;
+        }
+
         var builder = new SemanticContextFlagsBuilder<FixedAssignmentSemanticContext, FixedAssignmentSemanticFlags>();
         Analyze(session, new ConversionOperationSemanticContext(), builder, assignment, current, source);
         var semantics = builder.Build();

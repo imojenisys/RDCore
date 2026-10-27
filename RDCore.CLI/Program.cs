@@ -8,6 +8,7 @@ using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
 using OmniSharp.Extensions.LanguageServer.Protocol.Models;
 using OmniSharp.Extensions.LanguageServer.Protocol.Server;
 using RDCore.CLI.App.Commands;
+using RDCore.CLI.App.Configuration;
 using RDCore.CLI.App.Console;
 using RDCore.CLI.App.Repl;
 using RDCore.CLI.App.Repl.Commands;
@@ -20,6 +21,7 @@ using RDCore.External.Client;
 using RDCore.External.Hosting;
 using RDCore.External.Native;
 using RDCore.External.Windows.Automation;
+using RDCore.External.Windows.Forms;
 using RDCore.External.Windows.Native;
 using RDCore.SDK;
 using RDCore.SDK.Client;
@@ -129,10 +131,12 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
             ("Configuration:Workspace:Language", SupportedLanguages.BASIC.Id),
         ];
 
+    protected override SettingsSchema Settings => SettingsSchema.Platform.Combine(AppOptions.Schema);
+
     protected override void ConfigureAdditionalExternalServices(IServiceCollection services, IConfiguration configuration)
     {
         services
-            .Configure<AppOptions>(configuration.GetSection("Configuration:CLI"))
+            .Configure<AppOptions>(configuration.GetSection($"{SettingsSchema.Root}:{AppOptions.Section}"))
             .AddSingleton<IAppThemeService, AppThemeService>()
             .AddSingleton<IAppThemeLoaderService, AppThemeLoaderService>()
             .AddSingleton(Spectre.Console.AnsiConsole.Console)
@@ -146,7 +150,11 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
             .AddSingleton<IReplConsole, ReplConsole>()
             // the dialogs a program opens are asked at the shell's console.
             .AddSingleton<IConsoleKeys, SystemConsoleKeys>()
-            .AddSingleton(provider => new ReplUserInteraction(provider.GetRequiredService<IConsoleKeys>(), System.Console.Out))
+            .AddSingleton(provider => new ReplUserInteraction(
+                provider.GetRequiredService<IConsoleKeys>(),
+                System.Console.Out,
+                ansi: provider.GetRequiredService<Spectre.Console.IAnsiConsole>().Profile.Capabilities.Ansi,
+                consoleWidth: () => System.Console.IsOutputRedirected ? 0 : System.Console.WindowWidth))
             .AddSingleton<IReplPlatformClient>(provider => new ReplPlatformClient(provider.GetRequiredService<RDCoreConsoleClientApp>()))
             .AddSingleton<IReplCommand, HelpReplCommand>()
             .AddSingleton<IReplCommand, ShowSplashReplCommand>()
@@ -159,6 +167,7 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
             .AddSingleton<IReplCommand, FrameReplCommand>()
             .AddSingleton<IReplCommand, RunReplCommand>()
             .AddSingleton<IReplCommand, AnalyzeReplCommand>()
+            .AddSingleton<IReplCommand, DuckyReplCommand>()
             .AddSingleton<IReplCommand, PeekReplCommand>()
             .AddSingleton<IReplCommand, PokeReplCommand>()
             .AddSingleton<IReplCommand, NewReplCommand>()
@@ -168,6 +177,10 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
             .AddSingleton<IReplCommand, ShowMemoryReplCommand>()
             .AddSingleton<IReplCommand, ThemeReplCommand>()
             .AddSingleton<IReplCommand, ClearReplCommand>()
+            .AddSingleton<IPlatformSettings, PlatformSettings>()
+            // the shell is the client of a running platform: a live setting takes effect as it is set.
+            .AddSingleton(provider => new ConfigCommand(provider.GetRequiredService<IPlatformSettings>(), appliesLive: true))
+            .AddSingleton<IReplCommand, ConfigReplCommand>()
             .AddSingleton<IReplCommandDispatcher, ReplCommandDispatcher>()
             .AddSingleton<ReplShell>()
             // the shell owns the break keys - Ctrl+C is BREAK, not quit - so the default console
@@ -178,6 +191,33 @@ internal class RDCoreConsoleClientHost(ReplWorkspace? scratchWorkspace = null) :
         {
             // where the program is a document while it is no file's.
             services.AddSingleton(scratchWorkspace);
+        }
+
+        // the prompt is a line editor, with completion lists that drop down under it, where it is typed at a console that can draw them; a script piped to the
+        // shell, or a console that cannot, reads its lines as they come.
+        if (!System.Console.IsInputRedirected && !System.Console.IsOutputRedirected && Spectre.Console.AnsiConsole.Console.Profile.Capabilities.Ansi)
+        {
+            services
+                .AddSingleton<ReplCompletion>()
+                .AddSingleton(provider => new ConsolePromptEditor(
+                    provider.GetRequiredService<IConsoleKeys>(),
+                    System.Console.Out,
+                    () => System.Console.WindowWidth,
+                    provider.GetRequiredService<ReplCompletion>().CompleteAsync,
+                    ConsoleBorder.For(System.Console.Out) == ConsoleBorder.Ascii ? ConsoleBorder.Ascii : ConsoleBorder.Single)
+                {
+                    // a numbered line typed at the prompt is offered the line of the program it numbers, in ghost text.
+                    Ghost = new ReplGhostText(provider.GetRequiredService<ReplProgram>()).For,
+                    // what the call being typed takes is shown under the line, as it is typed.
+                    Signature = provider.GetRequiredService<ReplCompletion>().SignatureHelpAsync,
+                })
+                // the progress of the work the language server reports, drawn under the prompt's line, or where a command's output is about to be written.
+                .AddSingleton(provider => new ReplProgressDisplay(
+                    provider.GetRequiredService<RDCoreConsoleClientApp>().WorkProgress,
+                    System.Console.Out,
+                    () => System.Console.WindowWidth,
+                    provider.GetRequiredService<ConsolePromptEditor>(),
+                    unicode: ConsoleBorder.For(System.Console.Out) != ConsoleBorder.Ascii));
         }
     }
 
@@ -255,6 +295,9 @@ internal class RDCoreConsoleClientApp(
 {
     public override CoreServerComponent PlatformComponent => CoreServerComponent.ClientApp;
 
+    // the shell shows the progress of the work the language server does, where its console can draw it.
+    protected override bool SupportsWorkDoneProgress => !System.Console.IsOutputRedirected;
+
     // what rdc.exe asks the language server to serve beyond LSP. The language server records these
     // and refuses a request family the client never advertised, so the negotiation is real in both
     // directions: PlatformInfo tells us back what it actually provides.
@@ -267,6 +310,10 @@ internal class RDCoreConsoleClientApp(
             SessionDiscard = new SessionDiscard(true),
             ProgramDebugging = new ProgramDebugging(true),
             SessionAnalyze = new SessionAnalyze(true),
+            // the line at the prompt is completed as it is typed.
+            SessionCompletion = new SessionCompletion(true),
+            // and what the call being typed at it takes is shown under it.
+            SessionSignatureHelp = new SessionSignatureHelp(true),
             SessionMemoryAccess = new SessionMemoryAccess(true),
             // the shell answers the dialogs a program opens, at its console.
             SessionInteraction = new SessionInteraction(true),
@@ -325,10 +372,12 @@ internal class RDCoreConsoleCommandHost : AppHost<RDCoreConsoleCommandApp>
     protected override async Task BeforeAppStartAsync(IServiceProvider provider)
         => await provider.GetRequiredService<IAppThemeService>().InitializeAsync(CancellationToken.None);
 
+    protected override SettingsSchema Settings => SettingsSchema.Platform.Combine(AppOptions.Schema);
+
     protected override void ConfigureAdditionalExternalServices(IServiceCollection services, IConfiguration configuration)
     {
         services
-            .Configure<AppOptions>(configuration.GetSection("Configuration:CLI"))
+            .Configure<AppOptions>(configuration.GetSection($"{SettingsSchema.Root}:{AppOptions.Section}"))
             .AddSingleton<IAppThemeService, AppThemeService>()
             .AddSingleton<IConsoleShellFrame, ConsoleShellFrame>()
             .AddSingleton<IAppThemeLoaderService, AppThemeLoaderService>()
@@ -340,6 +389,9 @@ internal class RDCoreConsoleCommandHost : AppHost<RDCoreConsoleCommandApp>
             .AddSingleton<ICliCommand, NewWorkspaceCommand>()
             .AddSingleton<ICliCommand, ExportLibraryCommand>()
             .AddSingleton<ICliCommand, BenchCommand>()
+            .AddSingleton<IPlatformSettings, PlatformSettings>()
+            .AddSingleton<ConfigCommand>()
+            .AddSingleton<ICliCommand, ConfigCliCommand>()
             // rdc bench runs a workspace in-process, as the environment host runs one: it needs what the host's errors are described with.
             .Configure<VerboseMessageOptions>(configuration.GetSection("Configuration:VerboseMessages"))
             .AddVerboseMessages()
@@ -416,12 +468,16 @@ internal class RDCoreConsoleEnvironmentHost : RDCorePlatformServerHost<RDCoreCon
                 provider.GetRequiredService<ILogger<ExternalHost>>()))
             // the dialogs and the desktop are the machine's, and are not reached through the external host: nothing about showing a message box can take a
             // process down. Whether the client answers the dialogs instead is the session's to say (EnvironmentSessionProvider).
-            .AddSingleton(provider => new ExternalWorld(
-                new RemoteAutomationServer(provider.GetRequiredService<ExternalHost>()),
-                new RemoteNativeLibraryHost(provider.GetRequiredService<ExternalHost>()))
+            // the forms are objects of the external host's servers, hosted there: the remote server is the form host too.
+            .AddSingleton(provider =>
             {
-                Interaction = MachinePlatform.Interaction,
-                Desktop = MachinePlatform.Desktop,
+                var servers = new RemoteAutomationServer(provider.GetRequiredService<ExternalHost>());
+                return new ExternalWorld(servers, new RemoteNativeLibraryHost(provider.GetRequiredService<ExternalHost>()))
+                {
+                    Forms = servers,
+                    Interaction = MachinePlatform.Interaction,
+                    Desktop = MachinePlatform.Desktop,
+                };
             })
             .AddSingleton<IEnvironmentSessionProvider, EnvironmentSessionProvider>();
     }
@@ -430,7 +486,7 @@ internal class RDCoreConsoleEnvironmentHost : RDCorePlatformServerHost<RDCoreCon
     {
         builder.AddFile(
             System.IO.Path.Combine(PlatformEnvironment.Default.LogsDirectory, "RDCore.EnvironmentHost.log"),
-            ResolveTraceLevel(configuration));
+            LogLevel.Trace);
         base.ConfigureExternalLogging(services, builder, configuration);
     }
 }
@@ -445,17 +501,28 @@ internal class RDCoreConsoleExternalHost : RDCorePlatformServerHost<ExternalHost
     {
         base.ConfigureAdditionalExternalServices(services, configuration);
         services
-            .AddSingleton(new ExternalAutomationService(
-                OperatingSystem.IsWindows() ? new ComAutomationServer() : UnavailableAutomationServer.Instance))
+            .AddSingleton(AutomationService())
             .AddSingleton(new NativeCallService(
                 OperatingSystem.IsWindows() ? new WindowsNativePlatform() : UnsupportedNativePlatform.Instance));
+    }
+
+    // on Windows, the servers and the form host live on one apartment: a form's controls are objects of the servers, called on the thread its window is pumped on.
+    private static ExternalAutomationService AutomationService()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return new ExternalAutomationService(UnavailableAutomationServer.Instance);
+        }
+
+        var apartment = new ComApartment();
+        return new ExternalAutomationService(new ComAutomationServer(apartment), new WindowsFormHost(apartment));
     }
 
     protected override void ConfigureExternalLogging(IServiceCollection services, ILoggingBuilder builder, IConfiguration configuration)
     {
         builder.AddFile(
             System.IO.Path.Combine(PlatformEnvironment.Default.LogsDirectory, "RDCore.ExternalHost.log"),
-            ResolveTraceLevel(configuration));
+            LogLevel.Trace);
         base.ConfigureExternalLogging(services, builder, configuration);
     }
 }

@@ -14,9 +14,9 @@ namespace RDCore.External.Windows.Automation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every call is made from one thread of its own, a single-threaded apartment, whatever thread the pipeline runs a program on. That is the apartment a
-/// server written for a desktop expects its client to be in, and it keeps an object on the one thread that created it: a program is a sequence of calls, and
-/// nothing about it is concurrent.
+/// Every call is made from one thread, a single-threaded apartment (<see cref="ComApartment"/>), whatever thread the pipeline runs a program on. That is the
+/// apartment a server written for a desktop expects its client to be in, and it keeps an object on the one thread that created it: a program is a sequence of
+/// calls, and nothing about it is concurrent. The forms of the program live there too, so that their controls are objects of this server like any other.
 /// </para>
 /// <para>
 /// The call itself is the runtime's own <c>IDispatch</c> binder (<see cref="Type.InvokeMember(string, BindingFlags, Binder, object, object[], ParameterModifier[], CultureInfo, string[])"/>),
@@ -31,22 +31,29 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
     private const int TypeMismatch = unchecked((int)0x80020005);
     private const int ClassNotRegistered = unchecked((int)0x80040154);
     private const int Unspecified = unchecked((int)0x80004005);
+    private const int BadParameterCount = unchecked((int)0x8002000E);
 
-    private readonly BlockingCollection<Action> _work = [];
-    private readonly Lazy<Thread> _apartment;
+    private readonly ComApartment _apartment;
+    private readonly bool _ownsApartment;
 
     /// <summary>
-    /// Creates the server; the apartment is started by the first call that needs one.
+    /// Creates the server, on an apartment of its own; the apartment is started by the first call that needs one.
     /// </summary>
     public ComAutomationServer()
+        : this(new ComApartment())
     {
-        _apartment = new Lazy<Thread>(() =>
-        {
-            var thread = new Thread(Pump) { IsBackground = true, Name = "RDCore automation apartment" };
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            return thread;
-        });
+        _ownsApartment = true;
+    }
+
+    /// <summary>
+    /// Creates the server, on <paramref name="apartment"/>: the one its objects share with whatever else lives there - the forms that host Microsoft Forms, whose
+    /// controls are its objects too.
+    /// </summary>
+    /// <param name="apartment">The apartment; whoever made it ends it.</param>
+    public ComAutomationServer(ComApartment apartment)
+    {
+        _apartment = apartment;
+        _apartment.RaiseEvent = RaiseFor;
     }
 
     /// <inheritdoc/>
@@ -61,31 +68,285 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
         return Activator.CreateInstance(type) ?? throw new AutomationException(ClassNotRegistered, $"'{progId}' could not be created.");
     })!;
 
+    // what GetObject asks for that COM says the file, or the moniker, cannot be opened as: MS-VBA's 432 (recorded in Excel, oracle\s25 G02).
+    private const int CannotOpenFile = unchecked((int)0x800401EA);
+
+    /// <inheritdoc/>
+    public object GetObject(SDK.Runtime.Abstract.Execution.ExternalObjectRequest request) => OnApartment(() =>
+    {
+        try
+        {
+            return request.Source switch
+            {
+                SDK.Runtime.Abstract.Execution.ExternalObjectSource.Create => CreateOn(request.ProgId ?? string.Empty, request.ServerName),
+                SDK.Runtime.Abstract.Execution.ExternalObjectSource.Running => Running(request.ProgId ?? string.Empty),
+                _ => FromFile(request.PathName ?? string.Empty, request.ProgId),
+            };
+        }
+        catch (COMException failure)
+        {
+            throw new AutomationException(failure.HResult, failure.Message);
+        }
+    })!;
+
+    // a new object of the class, on the machine named - this one when none is.
+    private static object CreateOn(string progId, string? serverName)
+    {
+        var type = (serverName is { Length: > 0 } ? Type.GetTypeFromProgID(progId, serverName, throwOnError: false) : Type.GetTypeFromProgID(progId, throwOnError: false))
+            ?? throw new AutomationException(ClassNotRegistered, $"'{progId}' is not registered on this machine.");
+
+        return Activator.CreateInstance(type) ?? throw new AutomationException(ClassNotRegistered, $"'{progId}' could not be created.");
+    }
+
+    // the object of the class that is running: the one the running object table has for its class identifier.
+    private static object Running(string progId)
+    {
+        var status = CLSIDFromProgID(progId, out var classId);
+        if (status < 0)
+        {
+            throw new AutomationException(status, $"'{progId}' is not registered on this machine.");
+        }
+
+        status = GetActiveObject(ref classId, IntPtr.Zero, out var running);
+        return status < 0 ? throw new AutomationException(status, $"No object of '{progId}' is running.") : running;
+    }
+
+    // the object a file is, or a moniker names: the one its own class opens it as, or the class named (IPersistFile.Load).
+    private static object FromFile(string pathName, string? progId)
+    {
+        if (progId is not { Length: > 0 })
+        {
+            var dispatch = new Guid("00020400-0000-0000-C000-000000000046");
+            var status = CoGetObject(pathName, IntPtr.Zero, ref dispatch, out var named);
+            return status < 0 ? throw new AutomationException(status is unchecked((int)0x800401E4) ? CannotOpenFile : status, $"'{pathName}' cannot be opened.") : named;
+        }
+
+        var created = CreateOn(progId, serverName: null);
+        if (created is not IPersistFile file)
+        {
+            throw new AutomationException(CannotOpenFile, $"'{progId}' does not open files.");
+        }
+
+        file.Load(pathName, 0);
+        return created;
+    }
+
+    [DllImport("ole32.dll", CharSet = CharSet.Unicode)]
+    private static extern int CLSIDFromProgID(string progId, out Guid classId);
+
+    [DllImport("oleaut32.dll")]
+    private static extern int GetActiveObject(ref Guid classId, IntPtr reserved, [MarshalAs(UnmanagedType.IUnknown)] out object running);
+
+    [DllImport("ole32.dll", CharSet = CharSet.Unicode)]
+    private static extern int CoGetObject(string name, IntPtr bindOptions, ref Guid interfaceId, [MarshalAs(UnmanagedType.IUnknown)] out object named);
+
     /// <inheritdoc/>
     public object? Invoke(object target, string member, AutomationInvocation invocation, object?[] arguments, bool[] byReference, CultureInfo culture)
-        => OnApartment(() => InvokeMember(target, member, invocation, arguments, byReference, culture));
+        => OnApartment(() =>
+        {
+            // an object of the session is given to the server as its stand-in; what the server leaves in an argument passed by reference comes back as it is.
+            for (var index = 0; index < arguments.Length; index++)
+            {
+                arguments[index] = ToServer(arguments[index]);
+            }
+
+            return InvokeMember(target, member, invocation, arguments, byReference, culture);
+        });
 
     /// <inheritdoc/>
     public string? ClassNameOf(object target) => OnApartment(() =>
     {
         try
         {
-            if (target is not IDispatchTypeInformation dispatch || dispatch.GetTypeInfoCount(out var count) != 0 || count == 0)
+            // the class the object says it is, or the class its library makes the interface it answers to the default one of: the class MS-VBA's TypeName
+            // names (`Dictionary`, of an object that answers to `IDictionary`; recorded in Excel, oracle\s25).
+            if (TypeInfoOf(target) is not { } typeInfo)
             {
                 return null;
             }
 
-            dispatch.GetTypeInfo(0, 0, out var typeInfo);
-            typeInfo.GetDocumentation(-1, out var className, out _, out _, out _);
             typeInfo.GetContainingTypeLib(out var library, out _);
             library.GetDocumentation(-1, out var libraryName, out _, out _, out _);
-            return $"{libraryName}.{className}";
+            return $"{libraryName}.{ClassNameOf(typeInfo, library)}";
         }
         catch (COMException)
         {
             return null;
         }
     });
+
+    /// <inheritdoc/>
+    public bool? IsInstanceOf(object target, string library, string className) => OnApartment(() =>
+    {
+        try
+        {
+            if (TypeInfoOf(target) is not { } typeInfo)
+            {
+                return null;
+            }
+
+            typeInfo.GetContainingTypeLib(out var containing, out _);
+            containing.GetDocumentation(-1, out var libraryName, out _, out _, out _);
+            if (!string.Equals(libraryName, library, StringComparison.OrdinalIgnoreCase) || InterfaceNamed(containing, className) is not { } interfaceIdentifier)
+            {
+                return (bool?)null;
+            }
+
+            // MS-VBA asks the object itself, as QueryInterface does: what it answers to is what it is.
+            var unknown = Marshal.GetIUnknownForObject(target);
+            try
+            {
+                if (Marshal.QueryInterface(unknown, in interfaceIdentifier, out var answered) != 0)
+                {
+                    return false;
+                }
+
+                _ = Marshal.Release(answered);
+                return true;
+            }
+            finally
+            {
+                _ = Marshal.Release(unknown);
+            }
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    });
+
+    // the interface a library's type of a name is: the interface itself, or the default one of a class.
+    private static Guid? InterfaceNamed(ITypeLib library, string name)
+    {
+        for (var index = 0; index < library.GetTypeInfoCount(); index++)
+        {
+            library.GetDocumentation(index, out var candidateName, out _, out _, out _);
+            if (!string.Equals(candidateName, name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            library.GetTypeInfo(index, out var candidate);
+            var (kind, identifier, implemented) = AttributesOf(candidate);
+            if (kind is not TYPEKIND.TKIND_COCLASS)
+            {
+                return kind is TYPEKIND.TKIND_INTERFACE or TYPEKIND.TKIND_DISPATCH ? identifier : null;
+            }
+
+            for (var implementation = 0; implementation < implemented; implementation++)
+            {
+                candidate.GetImplTypeFlags(implementation, out var flags);
+                if (flags.HasFlag(IMPLTYPEFLAGS.IMPLTYPEFLAG_FDEFAULT) && !flags.HasFlag(IMPLTYPEFLAGS.IMPLTYPEFLAG_FSOURCE))
+                {
+                    candidate.GetRefTypeOfImplType(implementation, out var reference);
+                    candidate.GetRefTypeInfo(reference, out var defaultInterface);
+                    return AttributesOf(defaultInterface).Identifier;
+                }
+            }
+
+            return null;
+        }
+
+        return null;
+    }
+
+    // the type an object describes itself as: its class, or the interface its IDispatch is of.
+    private static ITypeInfo? TypeInfoOf(object target)
+    {
+        if (ClassInfoOf(target) is { } classInfo)
+        {
+            return classInfo;
+        }
+
+        if (target is not IDispatchTypeInformation dispatch || dispatch.GetTypeInfoCount(out var count) != 0 || count == 0)
+        {
+            return null;
+        }
+
+        dispatch.GetTypeInfo(0, 0, out var typeInfo);
+        return typeInfo;
+    }
+
+    // IProvideClassInfo, which not every object answers to, nor answers when it does.
+    private static ITypeInfo? ClassInfoOf(object target)
+    {
+        if (target is not IProvideClassInformation provider)
+        {
+            return null;
+        }
+
+        try
+        {
+            provider.GetClassInfo(out var classInfo);
+            return classInfo;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    }
+
+    // the name of the class an interface is the default one of, by the interface's identifier: a library's classes are looked through once for each.
+    private readonly ConcurrentDictionary<Guid, string> _classesByInterface = new();
+
+    private string ClassNameOf(ITypeInfo typeInfo, ITypeLib library)
+    {
+        typeInfo.GetDocumentation(-1, out var name, out _, out _, out _);
+        var (kind, identifier, _) = AttributesOf(typeInfo);
+        if (kind is TYPEKIND.TKIND_COCLASS)
+        {
+            return name;
+        }
+
+        return _classesByInterface.GetOrAdd(identifier, _ => DefaultClassOf(library, identifier) ?? name);
+    }
+
+    private static string? DefaultClassOf(ITypeLib library, Guid interfaceIdentifier)
+    {
+        for (var index = 0; index < library.GetTypeInfoCount(); index++)
+        {
+            library.GetTypeInfoType(index, out var kind);
+            if (kind is not TYPEKIND.TKIND_COCLASS)
+            {
+                continue;
+            }
+
+            library.GetTypeInfo(index, out var candidate);
+            var (_, _, implemented) = AttributesOf(candidate);
+            for (var implementation = 0; implementation < implemented; implementation++)
+            {
+                candidate.GetImplTypeFlags(implementation, out var flags);
+                if (!flags.HasFlag(IMPLTYPEFLAGS.IMPLTYPEFLAG_FDEFAULT) || flags.HasFlag(IMPLTYPEFLAGS.IMPLTYPEFLAG_FSOURCE))
+                {
+                    continue;
+                }
+
+                candidate.GetRefTypeOfImplType(implementation, out var reference);
+                candidate.GetRefTypeInfo(reference, out var implementedInterface);
+                if (AttributesOf(implementedInterface).Identifier == interfaceIdentifier)
+                {
+                    candidate.GetDocumentation(-1, out var className, out _, out _, out _);
+                    return className;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static (TYPEKIND Kind, Guid Identifier, int Implemented) AttributesOf(ITypeInfo typeInfo)
+    {
+        typeInfo.GetTypeAttr(out var pointer);
+        try
+        {
+            var attributes = Marshal.PtrToStructure<TYPEATTR>(pointer);
+            return (attributes.typekind, attributes.guid, attributes.cImplTypes);
+        }
+        finally
+        {
+            typeInfo.ReleaseTypeAttr(pointer);
+        }
+    }
 
     /// <inheritdoc/>
     public bool MoveNext(object enumerator, out object? current)
@@ -150,7 +411,7 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
 
     private readonly Dictionary<object, Connection> _connections = new(ReferenceEqualityComparer.Instance);
 
-    private sealed record Connection(IConnectionPoint Point, int Cookie, object Receiver);
+    private sealed record Connection(IConnectionPoint Point, int Cookie, object Receiver, Action<string, object?[]> Raise);
 
     /// <inheritdoc/>
     public void Advise(object source, IAutomationEventSink sink) => OnApartment<object?>(() =>
@@ -161,14 +422,26 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
             return null;
         }
 
-        var receiver = new EventReceiver(
-            declaring,
-            events,
-            (name, arguments) => sink.OnEvent(new AutomationEvent(name, arguments, Volatile.Read(ref _inCall) > 0, Serve)));
+        void Raise(string name, object?[] arguments, int? dispatchId)
+            => sink.OnEvent(new AutomationEvent(name, arguments, _apartment.IsInCall, _apartment.Serve) { DispatchId = dispatchId });
+        var receiver = new EventReceiver(declaring, events, (name, dispatchId, arguments) => Raise(name, arguments, dispatchId));
         point.Advise(receiver, out var cookie);
-        _connections[source] = new Connection(point, cookie, receiver);
+        _connections[source] = new Connection(point, cookie, receiver, (name, arguments) => Raise(name, arguments, null));
         return null;
     });
+
+    // an event the object did not raise through its connection point, but something else of the apartment raises for it - the form host, for the window a form is
+    // in: it goes to whatever listens to the object's events. Called on the apartment.
+    private bool RaiseFor(object source, string name, object?[] arguments)
+    {
+        if (!_connections.TryGetValue(source, out var connection))
+        {
+            return false;
+        }
+
+        connection.Raise(name, arguments);
+        return true;
+    }
 
     // The connection point to listen to, and the events it raises by the identifier they are raised with. An object that says which interface is its default source
     // (IProvideClassInfo2) is asked; one that does not - Excel's do not - has the connection points it has, each of an interface its own type library describes.
@@ -201,14 +474,28 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
         while (points.Next(1, found, IntPtr.Zero) == 0)
         {
             found[0].GetConnectionInterface(out var interfaceId);
-            library.GetTypeInfoOfGuid(ref interfaceId, out var declaring);
-            if (declaring is not null)
+            if (DeclaringOf(library, interfaceId) is { } declaring)
             {
                 return (found[0], EventsOfInterface(declaring), interfaceId);
             }
         }
 
         return null;
+    }
+
+    // the interface of a connection point, if the object's own library describes it. A Microsoft Forms control's first connection point is IDispatch itself, and its
+    // library answers TYPE_E_ELEMENTNOTFOUND for it - as it does for IPropertyNotifySink: neither is the control's events interface, which comes after them.
+    private static ITypeInfo? DeclaringOf(ITypeLib library, Guid interfaceId)
+    {
+        try
+        {
+            library.GetTypeInfoOfGuid(ref interfaceId, out var declaring);
+            return declaring;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
     }
 
     /// <inheritdoc/>
@@ -333,7 +620,7 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
 
     [ComVisible(true)]
     [ClassInterface(ClassInterfaceType.None)]
-    private sealed class EventReceiver(Guid declaring, IReadOnlyDictionary<int, string> events, Action<string, object?[]> raise) : IEventDispatch, ICustomQueryInterface
+    private sealed class EventReceiver(Guid declaring, IReadOnlyDictionary<int, string> events, Action<string, int, object?[]> raise) : IEventDispatch, ICustomQueryInterface
     {
         // A server asks a sink for the interface its events are declared by, not for IDispatch, and refuses one that does not have it. That interface is a dispinterface, which
         // is nothing but IDispatch with the names a type library gives it: the sink is IDispatch, and says so for that identifier.
@@ -403,7 +690,7 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
             _handlingEvent = true;
             try
             {
-                raise(name, arguments);
+                raise(name, member, arguments);
             }
             catch (Exception failure)
             {
@@ -430,7 +717,7 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
 
         public static Exception? LastFailure { get; private set; }
 
-        private static void WriteBack(IntPtr location, object? value, ushort byReference)
+        internal static void WriteBack(IntPtr location, object? value, ushort byReference)
         {
             var kind = (ushort)Marshal.ReadInt16(location);
             if ((kind & byReference) == 0)
@@ -463,10 +750,186 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
         }
     }
 
+    // the stand-ins of the session's objects, by identity: one object is one stand-in for as long as anything holds it, which is what the server compares
+    // (`d.Exists(o)`, `d(k) Is o`). Read and written on the apartment.
+    private readonly Dictionary<string, WeakReference<SessionObjectStandIn>> _standIns = [];
+
+    // what a server is given for an object of the session: its stand-in, which counts the crossing. Anything else is given as it is.
+    private object? ToServer(object? value)
+    {
+        switch (value)
+        {
+            case SessionObjectReference reference:
+                if (!_standIns.TryGetValue(reference.SessionObject, out var known) || !known.TryGetTarget(out var standIn))
+                {
+                    standIn = new SessionObjectStandIn(reference.SessionObject, reference.Host, _apartment, ToServer);
+                    _standIns[reference.SessionObject] = new WeakReference<SessionObjectStandIn>(standIn);
+                }
+
+                standIn.Crossed();
+                return standIn;
+
+            case object?[] elements:
+                for (var index = 0; index < elements.Length; index++)
+                {
+                    elements[index] = ToServer(elements[index]);
+                }
+
+                return elements;
+
+            default:
+                return value;
+        }
+    }
+
+    /// <summary>
+    /// What a server holds for an object of the session: an <c>IDispatch</c> whose calls are the object's members, called in the session
+    /// (<see cref="ISessionObjectHost.Invoke"/>), and which is the session's object again when it comes back (<see cref="ISessionObjectStandIn"/>).
+    /// </summary>
+    /// <remarks>
+    /// A name the server asks for is given an identifier of the stand-in's own, and called by that name; an identifier it calls without asking - the default
+    /// member's 0, an enumerator's -4, a connection point's - is the session's to read. When nothing holds it any more, the session is told how many times the
+    /// object was handed over to it, which is when the session lets go of the object (<see cref="ISessionObjectHost.Release"/>).
+    /// </remarks>
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    private sealed class SessionObjectStandIn(string sessionObject, ISessionObjectHost host, ComApartment apartment, Func<object?, object?> toServer)
+        : IEventDispatch, ICustomQueryInterface, ISessionObjectStandIn
+    {
+        private static readonly Guid Dispatch = new("00020400-0000-0000-C000-000000000046");
+        private const ushort ByReference = 0x4000;
+        private const ushort PropertyPut = 4;
+        private const ushort PropertyPutReference = 8;
+        private const ushort Method = 1;
+        private const ushort PropertyGet = 2;
+
+        // an identifier the stand-in gives a name of its own: far above the members' own (0x60030000 and up), so that one called without asking is not one of these.
+        private const int FirstNamed = 0x7F000000;
+
+        private readonly Dictionary<string, int> _identifiers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, string> _names = [];
+        private int _crossings;
+
+        public string SessionObject { get; } = sessionObject;
+
+        public void Crossed() => Interlocked.Increment(ref _crossings);
+
+        // nothing holds it any more: the session lets go of the object once every crossing is accounted for.
+        ~SessionObjectStandIn()
+        {
+            try
+            {
+                host.Release(SessionObject, Volatile.Read(ref _crossings));
+            }
+            catch (Exception exception) when (exception is AutomationException or InvalidOperationException or ObjectDisposedException or IOException)
+            {
+                // a session that is gone has nothing left to let go of.
+            }
+        }
+
+        public CustomQueryInterfaceResult GetInterface(ref Guid iid, out IntPtr interfacePointer)
+        {
+            // the runtime offers no IDispatch of its own for a managed object, so the one the class implements is the only one there is.
+            if (iid == Dispatch)
+            {
+                interfacePointer = Marshal.GetComInterfaceForObject(this, typeof(IEventDispatch), CustomQueryInterfaceMode.Ignore);
+                return CustomQueryInterfaceResult.Handled;
+            }
+
+            interfacePointer = IntPtr.Zero;
+            return CustomQueryInterfaceResult.NotHandled;
+        }
+
+        public int GetTypeInfoCount(out int count)
+        {
+            count = 0;
+            return 0;
+        }
+
+        public int GetTypeInfo(int index, int locale, out IntPtr typeInfo)
+        {
+            typeInfo = IntPtr.Zero;
+            return unchecked((int)0x80004001); // E_NOTIMPL
+        }
+
+        // every name is given an identifier: whether the object has the member is the session's to say when it is called.
+        public int GetIDsOfNames(ref Guid identifier, IntPtr names, int count, int locale, IntPtr identifiers)
+        {
+            for (var index = 0; index < count; index++)
+            {
+                var name = Marshal.PtrToStringUni(Marshal.ReadIntPtr(names, index * IntPtr.Size)) ?? string.Empty;
+                if (!_identifiers.TryGetValue(name, out var assigned))
+                {
+                    assigned = FirstNamed + _identifiers.Count;
+                    _identifiers[name] = assigned;
+                    _names[assigned] = name;
+                }
+
+                Marshal.WriteInt32(identifiers, index * sizeof(int), assigned);
+            }
+
+            return 0;
+        }
+
+        public int Invoke(int member, ref Guid identifier, int locale, ushort flags, ref DispatchParameters parameters, IntPtr result, IntPtr exception, IntPtr argumentError)
+        {
+            // the arguments are in the order they are written in, last first: an assignment's value, which the caller names, is the last of them.
+            var size = IntPtr.Size == 8 ? 24 : 16;
+            var count = parameters.ArgumentCount;
+            var first = parameters.Arguments;
+            var locations = Enumerable.Range(0, count).Select(index => first + ((count - 1 - index) * size)).ToArray();
+            var arguments = locations.Select(Marshal.GetObjectForNativeVariant).ToArray();
+            var sent = (object?[])arguments.Clone();
+
+            var invocation = (flags & PropertyPutReference) != 0 ? AutomationInvocation.Set
+                : (flags & PropertyPut) != 0 ? AutomationInvocation.Let
+                : (flags & Method) != 0 && (flags & PropertyGet) == 0 ? AutomationInvocation.Method
+                : AutomationInvocation.Get;
+
+            object? returned;
+            var outer = _handlingEvent;
+            _handlingEvent = true;
+            try
+            {
+                returned = host.Invoke(new SessionObjectCall(
+                    SessionObject, _names.GetValueOrDefault(member), member, invocation, arguments, apartment.IsInCall, apartment.Serve));
+            }
+            catch (AutomationException failure)
+            {
+                return failure.HResult;
+            }
+            catch (Exception failure) when (failure is InvalidOperationException or ObjectDisposedException or IOException)
+            {
+                // a session that is gone answers nothing: the server's call fails.
+                return unchecked((int)0x80004005);
+            }
+            finally
+            {
+                _handlingEvent = outer;
+            }
+
+            for (var index = 0; index < count; index++)
+            {
+                if (!Equals(sent[index], arguments[index]))
+                {
+                    EventReceiver.WriteBack(locations[index], toServer(arguments[index]), ByReference);
+                }
+            }
+
+            if (result != IntPtr.Zero)
+            {
+                Marshal.GetNativeVariantForObject(toServer(returned), result);
+            }
+
+            return 0;
+        }
+    }
+
     /// <inheritdoc/>
     public void Release(object handle) => OnApartment<object?>(() =>
     {
         StopListening(handle);
+        _apartment.OnReleasing(handle);
         if (Marshal.IsComObject(handle))
         {
             _ = Marshal.FinalReleaseComObject(handle);
@@ -476,9 +939,15 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
     });
 
     /// <summary>
-    /// Ends the apartment. Every object that was made on it has been let go of by whatever held it.
+    /// Ends the apartment, when it is the server's own. Every object that was made on it has been let go of by whatever held it.
     /// </summary>
-    public void Dispose() => _work.CompleteAdding();
+    public void Dispose()
+    {
+        if (_ownsApartment)
+        {
+            _apartment.Dispose();
+        }
+    }
 
     // what the locale of a call is to a COM server: a language it has installed. The invariant culture's is not one - Excel answers "old format or invalid type
     // library" to it - so the neutral locale of the environment is the one that every server has, American English.
@@ -539,6 +1008,15 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
         {
             throw new AutomationException(MemberNotFound, $"The object has no member '{member}'.");
         }
+        // the binder's DISP_E_BADPARAMCOUNT: `v = d` of a Dictionary, whose default member takes the key.
+        catch (TargetParameterCountException miscounted)
+        {
+            throw new AutomationException(BadParameterCount, miscounted.Message);
+        }
+        catch (TargetInvocationException exception) when (exception.InnerException is TargetParameterCountException miscounted)
+        {
+            throw new AutomationException(BadParameterCount, miscounted.Message);
+        }
         catch (Exception exception) when (exception is ArgumentException or InvalidCastException or FormatException)
         {
             throw new AutomationException(TypeMismatch, exception.Message);
@@ -546,56 +1024,6 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
         catch (TargetInvocationException exception)
         {
             throw new AutomationException(Unspecified, exception.InnerException?.Message ?? exception.Message);
-        }
-    }
-
-    // A program makes its calls one after the other, so the next one comes as soon as the last one is answered: the apartment looks for it for a moment before it
-    // sleeps, so that a call that comes at once does not have to wake it. A wait that sleeps is the CLR's, which pumps what COM sends the apartment meanwhile.
-    private static readonly TimeSpan Spin = TimeSpan.FromMicroseconds(250);
-
-    private void Pump()
-    {
-        while (!_work.IsCompleted)
-        {
-            var idle = System.Diagnostics.Stopwatch.GetTimestamp();
-            Action? action;
-            while (!_work.TryTake(out action) && System.Diagnostics.Stopwatch.GetElapsedTime(idle) < Spin)
-            {
-                Thread.SpinWait(20);
-            }
-
-            if (action is null && !_work.TryTake(out action, Timeout.Infinite))
-            {
-                return;
-            }
-
-            action();
-        }
-    }
-
-    // how many calls the program has made that are being made: an event the server raises while there is one is the answer to a call, and is handled inside it.
-    private int _inCall;
-
-    private T? Counted<T>(Func<T?> call)
-    {
-        _ = Interlocked.Increment(ref _inCall);
-        try
-        {
-            return call();
-        }
-        finally
-        {
-            _ = Interlocked.Decrement(ref _inCall);
-        }
-    }
-
-    // What the thread of the server does with the time it waits for the session to be open to an event that no call is waiting for: the program's own calls, which are made on this
-    // thread, and which it must not be kept from making.
-    private void Serve(TimeSpan time)
-    {
-        if (_work.TryTake(out var action, time))
-        {
-            action();
         }
     }
 
@@ -608,47 +1036,7 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
     private static bool _handlingEvent;
 
     private T? OnApartment<T>(Func<T?> call)
-    {
-        _ = _apartment.Value;
-        if (_handlingEvent || Environment.CurrentManagedThreadId == _apartment.Value.ManagedThreadId)
-        {
-            return Counted(call);
-        }
-
-        T? result = default;
-        Exception? failure = null;
-        using var done = new ManualResetEventSlim();
-        _work.Add(() =>
-        {
-            try
-            {
-                result = Counted(call);
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
-            finally
-            {
-                done.Set();
-            }
-        });
-
-        // most calls are answered at once: the caller looks for the answer for a moment before it sleeps, so that the apartment does not have to wake it.
-        var started = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (!done.IsSet && System.Diagnostics.Stopwatch.GetElapsedTime(started) < Spin)
-        {
-            Thread.SpinWait(20);
-        }
-
-        done.Wait();
-        if (failure is not null)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        }
-
-        return result;
-    }
+        => _handlingEvent ? _apartment.Counted(call) : _apartment.Invoke(() => _apartment.Counted(call));
 
     // IDispatch, for the one thing the runtime's binder does not offer: asking an object what it is. The members it is declared with are in the order of the
     // interface's table, and the ones that are not called are only there to keep the later ones where they belong.
@@ -680,5 +1068,13 @@ public sealed class ComAutomationServer : IAutomationServer, IDisposable
         int GetTypeInfoCount(out int count);
 
         void GetTypeInfo(int index, int lcid, out ITypeInfo typeInfo);
+    }
+
+    [ComImport]
+    [Guid("B196B283-BAB4-101A-B69C-00AA00341D07")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IProvideClassInformation
+    {
+        void GetClassInfo(out ITypeInfo typeInfo);
     }
 }

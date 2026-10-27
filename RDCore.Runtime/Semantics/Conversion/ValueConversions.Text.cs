@@ -4,6 +4,7 @@ using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
+using RDCore.SDK.Runtime;
 using System.Globalization;
 
 namespace RDCore.Runtime.Semantics.Conversion;
@@ -17,22 +18,31 @@ public static partial class ValueConversions
     /// </summary>
     /// <remarks>
     /// A number is written with the regional decimal symbol, and a date in the regional Short Date and Long Time
-    /// formats: §5.5.1.2.4's "host-defined regional settings", which are <paramref name="culture"/>'s. The thread's
-    /// own culture is never read.
+    /// formats: §5.5.1.2.4's "host-defined regional settings". The thread's own culture is never read.
+    /// <para>
+    /// The decimal symbol is <paramref name="regional"/>'s: the same settings a <c>String</c> is read by as a number
+    /// (<see cref="ToNumeric"/>), so that a number written as text reads back as itself, as it does in MS-VBA, whose
+    /// regional settings are one set both ways. A date's formats are still <paramref name="culture"/>'s.
+    /// </para>
     /// </remarks>
     /// <param name="source">The value, unwrapped from any <c>Variant</c> that held it.</param>
-    /// <param name="culture">The regional settings to write a number or a date in; the invariant culture when none is given.</param>
-    public static ValueConversionResult ToText(VBTypedValue source, CultureInfo? culture = null) => source switch
+    /// <param name="culture">The culture a date is written in; the invariant culture when none is given.</param>
+    /// <param name="regional">
+    /// The regional settings a number is written in; when none are given, <paramref name="culture"/>'s decimal symbol.
+    /// </param>
+    public static ValueConversionResult ToText(VBTypedValue source, CultureInfo? culture = null, RegionalSettings? regional = null) => source switch
     {
         // result is a copy of the source string: its runtime value, which is immutable, so the copy has every byte of
         // its data - a trailing byte included - and a copy of vbNullString is vbNullString.
         VBStringValue text => ValueConversionResult.Success(new VBStringValue(new ValueBindingHandle(text.RuntimeValue))),
 
-        VBNumericTypedValue number => ValueConversionResult.Success(new VBStringValue(NumberToText(number, culture ?? CultureInfo.InvariantCulture))),
+        VBNumericTypedValue number => ValueConversionResult.Success(new VBStringValue(NumberToText(number,
+            regional?.DecimalSymbol ?? (culture ?? CultureInfo.InvariantCulture).NumberFormat.NumberDecimalSeparator))),
 
         VBBooleanValue boolean => ValueConversionResult.Success(new VBStringValue((bool)boolean.Value ? Tokens.True : Tokens.False)),
 
-        VBDateValue date => ValueConversionResult.Success(new VBStringValue(FormatDate(date.Value, culture ?? CultureInfo.InvariantCulture))),
+        VBDateValue date => ValueConversionResult.Success(new VBStringValue(FormatDate(date.Value,
+            regional?.DateFormat ?? DateFormatOf(culture ?? CultureInfo.InvariantCulture)))),
 
         // MS-VBAL 5.5.1.2.11: "The result is a 0-length string."
         VBEmptyValue => ValueConversionResult.Success(VBStringValue.ZeroLengthString),
@@ -60,9 +70,8 @@ public static partial class ValueConversions
     // full date and time value is converted (Short Date format); when the time-of-day is exactly midnight that
     // full value has nothing to add, so only the date prints — real VBA drops a trailing "12:00:00 AM" from a
     // date-only value.
-    private static string FormatDate(DateTime value, CultureInfo culture)
+    private static string FormatDate(DateTime value, DateTimeFormatInfo format)
     {
-        var format = DateFormatOf(culture);
         return value.Date == VBDateType.Zero.Value.Date
             ? value.ToString("T", format)
             : value.TimeOfDay == TimeSpan.Zero
@@ -88,7 +97,7 @@ public static partial class ValueConversions
         return format;
     }
 
-    private static string NumberToText(VBNumericTypedValue value, CultureInfo cultureInfo)
+    private static string NumberToText(VBNumericTypedValue value, string decimalSymbol)
     {
         // MS-VBAL 5.5.1.2.4: the maximum number of integral significant figures of "any integral or fixed-point type" is infinite - normal notation, with
         // every digit of the integer part, which a Double does not have of a LongLong past 2^53, nor of a Decimal.
@@ -99,7 +108,7 @@ public static partial class ValueConversions
 
         if (FixedValueOf(value) is { } fixedPoint)
         {
-            return FixedPointToText(fixedPoint, cultureInfo.NumberFormat.NumberDecimalSeparator);
+            return FixedPointToText(fixedPoint, decimalSymbol);
         }
 
         // BoxedValue's CLR type tracks the source's own numeric type (int for Long, short for
@@ -122,13 +131,14 @@ public static partial class ValueConversions
             return VBStringValue.NegativeInfinity;
         }
 
+        // MS-VBA shows the sign of a NaN: the one an invalid operation makes is negative, and Abs clears it (recorded in Excel, grid oracle\s16 H06).
         if (double.IsNaN(numericValue))
         {
-            return VBStringValue.NaN;
+            return double.IsNegative(numericValue) ? VBStringValue.NaN : VBStringValue.PositiveNaN;
         }
 
         var absoluteValue = Math.Abs(numericValue);
-        var dot = cultureInfo.NumberFormat.NumberDecimalSeparator;
+        var dot = decimalSymbol;
 
         // MS-VBAL 5.5.1.2.4: scientific notation is used whenever the integer part has more than the
         // source type's maximum significant integral digits, regardless of whether the value also has
@@ -136,7 +146,7 @@ public static partial class ValueConversions
         // part without .NET's default ToString() collapsing a very large/small magnitude into its own
         // scientific notation first (which would otherwise hide the decimal separator this method used
         // to gate on, undercounting whole-number values entirely).
-        var integerPartDigitCount = absoluteValue < 1 ? 1 : absoluteValue.ToString("F0", cultureInfo).Length;
+        var integerPartDigitCount = absoluteValue < 1 ? 1 : absoluteValue.ToString("F0", CultureInfo.InvariantCulture).Length;
         var significantIntegerDigits = value is VBSingleValue
             ? VBSingleType.SignificantIntegerDigits
             : VBDoubleType.SignificantIntegerDigits;
@@ -146,37 +156,16 @@ public static partial class ValueConversions
             : ToNormalNotation(numericValue, significantIntegerDigits, dot);
     }
 
-    // MS-VBAL 5.5.1.2.4, for a Currency or a Decimal: every digit of the integer part, then "as many digits as possible of the fractional part of the
-    // number such that a maximum of 15 integer and fractional digits are printed total with trailing zeros removed" - counted, for a number with no integer
-    // part, from its first digit that is not 0, as a Double's are. The last digit is rounded half away from zero, as a Double's is.
+    // a Currency or a Decimal is every digit it has, with trailing zeros removed: MS-VBA prints 922337203685477.5807 and 0.1234567890123456789 whole
+    // (recorded in Excel, through CStr, &, Str and Format alike), where MS-VBAL 5.5.1.2.4 caps any number at 15 digits - RD-VBA is MS-VBA (author's ruling).
     private static string FixedPointToText(decimal value, string decimalSeparator)
     {
-        const int maximumDigits = 15;
         if (value == 0)
         {
             return VBStringValue.Zero;
         }
 
-        var absoluteValue = Math.Abs(value);
-        var integerPart = decimal.Truncate(absoluteValue);
-        int fractionalDigits;
-        if (integerPart > 0)
-        {
-            fractionalDigits = Math.Max(0, maximumDigits - integerPart.ToString(CultureInfo.InvariantCulture).Length);
-        }
-        else
-        {
-            var leadingZeros = 0;
-            for (var scaled = absoluteValue * 10; scaled < 1; scaled *= 10)
-            {
-                leadingZeros++;
-            }
-
-            fractionalDigits = Math.Min(28, leadingZeros + maximumDigits);
-        }
-
-        var rounded = Math.Round(absoluteValue, fractionalDigits, MidpointRounding.AwayFromZero);
-        var digits = rounded.ToString(fractionalDigits == 0 ? "0" : $"0.{new string('#', fractionalDigits)}", CultureInfo.InvariantCulture);
+        var digits = Math.Abs(value).ToString("0.############################", CultureInfo.InvariantCulture);
         return $"{(value < 0 ? "-" : string.Empty)}{digits.Replace(".", decimalSeparator)}";
     }
 

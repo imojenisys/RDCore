@@ -37,7 +37,8 @@ public static class ModuleNodeExtensions
     }
 
     /// <summary>
-    /// The <see cref="ModuleDirectives"/> a module declares, read from its <c>Option</c> directives.
+    /// The <see cref="ModuleDirectives"/> a module declares, read from its <c>Option</c> directives and its <c>Attribute VB_PredeclaredId</c>,
+    /// <c>VB_Creatable</c> and <c>VB_Extensible</c> declarations.
     /// </summary>
     /// <param name="module">The module, or <c>null</c> for a module that did not parse.</param>
     /// <returns>
@@ -55,7 +56,10 @@ public static class ModuleNodeExtensions
             Explicit: module.HasOptionExplicit(),
             Compare: module.GetOptionCompare(),
             Base: module.GetOptionBase(),
-            PrivateModule: module.HasOptionPrivateModule());
+            PrivateModule: module.HasOptionPrivateModule(),
+            PredeclaredId: module.IsPredeclared(),
+            Creatable: module.IsCreatable(),
+            Extensible: module.IsExtensible());
 
     /// <summary>
     /// Whether the module declares <c>Option Private Module</c> (<strong>MS-VBAL §5.2.1.4</strong>).
@@ -199,6 +203,21 @@ public static class ModuleNodeExtensions
     /// searches the named member's <c>Children</c>, not <see cref="ModuleNode.Children"/> directly.
     /// </remarks>
     public static int? GetMemberUserMemId(this ModuleNode module, string memberName)
+        => int.TryParse(module.GetMemberAttribute(memberName, Tokens.VB_UserMemId)?.Trim(), out var value) ? value : null;
+
+    /// <summary>
+    /// The text of a member's own <c>Attribute &lt;member&gt;.VB_Description</c> directive - what the member does, as the VBE's Object Browser and a completion
+    /// list show it - or <c>null</c> when the module declares none for that member.
+    /// </summary>
+    /// <remarks>The value is a string literal: its quotes are not part of the text, and a doubled quote in it is one.</remarks>
+    public static string? GetMemberDescription(this ModuleNode module, string memberName)
+    {
+        var value = module.GetMemberAttribute(memberName, Tokens.VB_Description)?.Trim();
+        return value is { Length: >= 2 } && value[0] == '"' && value[^1] == '"' && value[1..^1].Replace("\"\"", "\"") is { Length: > 0 } text ? text : null;
+    }
+
+    // the value of a member's own attribute, as it is written; the attribute is written in the member's body (see GetMemberUserMemId).
+    private static string? GetMemberAttribute(this ModuleNode module, string memberName, string attributeName)
     {
         foreach (var member in module.Children.OfType<MemberDeclarationNode>())
         {
@@ -210,10 +229,9 @@ public static class ModuleNodeExtensions
             {
                 if (attribute.Binding is not null
                     && string.Equals(attribute.Binding, memberName, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(attribute.Name, Tokens.VB_UserMemId, StringComparison.OrdinalIgnoreCase)
-                    && int.TryParse(attribute.Value.Trim(), out var value))
+                    && string.Equals(attribute.Name, attributeName, StringComparison.OrdinalIgnoreCase))
                 {
-                    return value;
+                    return attribute.Value;
                 }
             }
         }

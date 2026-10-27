@@ -99,6 +99,18 @@ public static partial class ValueConversions
                 ? ValueConversionResult.Success(destination.CreateValue(VBNumericType.BankersRounding((VBNumericTypedValue)source)))
                 : ValueConversionResult.Failure(VBRuntimeErrorId.Overflow),
 
+        // MS-VBAL §2.4: an infinity and a NaN are values of a Single and of a Double, and one is the other's as it is (Single inf -> Double, no error;
+        // recorded in Excel, grid oracle\s16 F20). Of any other type it is no value: an overflow, below.
+        IFloatingPointNumericType when destination is VBSingleType or VBDoubleType && !double.IsFinite(((VBNumericTypedValue)source).AsDouble)
+            => ValueConversionResult.Success(destination.CreateValue(((VBNumericTypedValue)source).AsDouble)),
+
+        // a Single made a Decimal is its value to 7 significant digits, ties to even, as MS-VBA has it: CDec(CSng(0.1)) is 0.1, and a Single of 16777217
+        // is 16777220 - where a Double keeps the 15 digits a Double's conversion does (recorded in Excel, grid oracle\s43 K01-K26, J01).
+        VBSingleType when destination is VBDecimalType
+            => Ranged(((VBSingleValue)source).Value, destination)
+                ? ValueConversionResult.Success(new VBDecimalValue((decimal)((VBSingleValue)source).Value))
+                : ValueConversionResult.Failure(VBRuntimeErrorId.Overflow),
+
         // Double -> Single, Single -> Currency, and so on.
         IFloatingPointNumericType
             => Ranged(((VBNumericTypedValue)source).AsDouble, destination)

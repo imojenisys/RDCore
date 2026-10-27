@@ -11,8 +11,11 @@ using RDCore.SDK.Model.Errors;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Symbols.VBProject;
+using RDCore.SDK.Model.Types;
+using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
+using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
@@ -196,13 +199,60 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
     // they read share with it.
     private RuntimeExecutionOutcome ExecuteLetAssignment(IRuntimeSession session, RuntimeEvaluationContext context, AssignmentStatementNode assignment)
     {
-        var valueResult = _expressionEvaluator.Evaluate(session, assignment.Value, context);
+        // a scalar variable, or the result of a function of a scalar type, assigned an expression of them is assigned on payloads (IR lowering S1.2,
+        // S1.3), which make no value of the expression.
+        if (_expressionEvaluator.TryAssignUnboxed(session, assignment.Target, assignment.Value, context))
+        {
+            return RuntimeExecutionOutcome.Next;
+        }
+
+        // a Single, Double or Date expression, computed in the extended format, is converted to the declared type of the target from it (MS-VBAL §5.6.9.3).
+        var valueResult = _expressionEvaluator.EvaluateAssigned(session, assignment.Target, assignment.Value, context);
         if (!valueResult.IsSuccess)
         {
+            if (valueResult is { IsError: true, Result: VBSingleValue or VBDoubleValue } overflowed)
+            {
+                AssignFloatingPointValue(session, context, assignment, (VBNumericTypedValue)overflowed.Result!);
+            }
+
             return valueResult.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Error(valueResult.ErrorInfo!);
         }
 
-        return _assignments.Assign(session, context, assignment, assignment.Target, assignment.Value, valueResult.Result!);
+        // what a call returned, a scalar, is written to a scalar variable as its payload (S1.3).
+        if (_expressionEvaluator.TryAssignValueUnboxed(session, assignment.Target, valueResult.Result!, context))
+        {
+            return RuntimeExecutionOutcome.Next;
+        }
+
+        var outcome = _assignments.Assign(session, context, assignment, assignment.Target, assignment.Value, valueResult.Result!);
+
+        // a Double past the range of a Single, assigned to one, overflows - and leaves the Single infinite (MS-VBA, grid oracle\s16 D02, F07).
+        if (outcome is { Kind: RuntimeExecutionOutcomeKind.Error, ErrorInfo.ErrorId: (int)VBRuntimeErrorId.Overflow } && valueResult.Result is VBDoubleValue { Value: var wide }
+            && double.IsFinite(wide))
+        {
+            AssignFloatingPointValue(session, context, assignment, new VBDoubleValue(wide));
+        }
+
+        return outcome;
+    }
+
+    // MS-VBA assigns what IEEE 754 arithmetic made of an operation that raised an error - an infinity, a NaN - to the Single or Double variable the
+    // operation is assigned to, then raises it: `s = s * 10` leaves s infinite, `d = 0 / 0` a NaN. MS-VBAL §5.6.9.3.5 says so of a division of operands
+    // declared Double; MS-VBA does it for any Single or Double arithmetic, and for a Double let-coerced to a Single. A variable of any other type - a
+    // Variant, a Long, a Currency - is left as it was (recorded in Excel, grid oracle\s16 D01-D09, F01-F15). The error is raised either way.
+    private void AssignFloatingPointValue(IRuntimeSession session, RuntimeEvaluationContext context, AssignmentStatementNode assignment, VBNumericTypedValue ieee)
+    {
+        VBTypedValue? assigned = _expressionEvaluator.DeclaredTypeOf(session, assignment.Target, context) switch
+        {
+            VBSingleType => new VBSingleValue((float)ieee.AsDouble),
+            VBDoubleType => new VBDoubleValue(ieee.AsDouble),
+            _ => null,
+        };
+
+        if (assigned is not null)
+        {
+            _ = _assignments.Assign(session, context, assignment, assignment.Target, assignment.Value, assigned);
+        }
     }
 
     // MS-VBAL §5.4.3.9. The target is a variable, or a member of an object: a public variable of its class, or a property,
@@ -218,6 +268,15 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
         var isElementOfAQualifiedArray = assignment.Target is IndexExpressionNode { Callee: MemberAccessExpressionNode calleeAccess }
             && _expressionEvaluator.ResolveNamespaceQualified(session, context, calleeAccess) is not null;
 
+        // `Set G() = x`: a call of a function, Set-assigned through what it returns.
+        if (_assignments.IsACallOfAFunction(session, context, assignment.Target))
+        {
+            var called = _expressionEvaluator.Evaluate(session, assignment.Value, context);
+            return called.IsSuccess
+                ? _assignments.AssignThroughFunction(session, context, assignment, assignment.Target, assignment.Value, called.Result!, isSet: true)
+                : called.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Error(called.ErrorInfo!);
+        }
+
         if (qualified is null && !isElementOfAQualifiedArray && assignment.Target is MemberAccessExpressionNode or IndexExpressionNode { Callee: MemberAccessExpressionNode })
         {
             var memberValue = _expressionEvaluator.Evaluate(session, assignment.Value, context);
@@ -230,11 +289,14 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
         {
             var elementValue = _expressionEvaluator.Evaluate(session, assignment.Value, context);
             return elementValue.IsSuccess
-                ? _assignments.AssignArrayElement(session, context, element.Callee, element.Arguments, assignment.Value, elementValue.Result!, isSet: true)
+                ? _assignments.AssignArrayElement(session, context, assignment, element.Callee, element.Arguments, assignment.Value, elementValue.Result!, isSet: true)
                 : elementValue.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Error(elementValue.ErrorInfo!);
         }
 
-        var targetSymbol = qualified ?? (assignment.Target is SimpleNameExpressionNode simpleName
+        // a variable is bound once, and written through the slot it is bound to (IR lowering S0.11); a variable named through its module, and a
+        // function's result, are resolved.
+        var bound = qualified is null ? _expressionEvaluator.BoundVariableOf(session, assignment.Target, context) : null;
+        var targetSymbol = qualified ?? bound?.Variable ?? (assignment.Target is SimpleNameExpressionNode simpleName
             ? session.Symbols.Resolver.ResolveValue(simpleName, ScopeKind.Local, context.Scope).Symbol
             : null);
         if (targetSymbol is not ITypedSymbol target)
@@ -249,7 +311,34 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
         }
 
         // MS-VBAL §5.3.1.11: a Variant reference parameter bound to a variable of another type is Set-assigned as that variable is declared.
-        var declared = session.CallStack.Current is { } frame && frame.TryGetReferencedType((Symbol)target, out var referenced) ? referenced : target.ResolvedType;
+        var (boundHandle, referenced) = bound is not null
+            ? _expressionEvaluator.BindingOf(session, bound)
+            : ((IBindingHandle?)null, session.CallStack.Current is { } frame && frame.TryGetReferencedType((Symbol)target, out var referencedType) ? referencedType : null);
+        var declared = referenced ?? target.ResolvedType;
+
+        // MS-VBAL §5.4.3.9: a function named outside its own body is called, and what it returns is Set-assigned through its default member - and so is a
+        // property of a module that has no Property Set (MS-VBA, oracle\s28 W4, W5: `Set Now = Nothing` is error 424). The value is Set-coerced to what the
+        // default member's Property Set takes, and not to what the function returns: `Set One = New Collection` sets One's default member to the collection
+        // (oracle\s31 D01, D04).
+        var isOwnResult = target is VBFunctionMemberSymbol or VBPropertyGetMemberSymbol && ((Symbol)target).Uri.AbsoluteUri == context.Scope.AbsoluteUri;
+        if (!isOwnResult
+            && (target is VBFunctionMemberSymbol
+                || target is VBPropertyGetMemberSymbol property && RuntimeProcedureInvoker.GetParameters(property) is not [{ Name: Tokens.Me }, ..]
+                    && !session.Symbols.MembersOf(property.ParentUri).OfType<VBPropertySetMemberSymbol>()
+                        .Any(candidate => string.Equals(candidate.Name, property.Name, StringComparison.OrdinalIgnoreCase))))
+        {
+            return _assignments.AssignThroughFunction(session, context, assignment, assignment.Target, assignment.Value, valueResult.Result!, isSet: true);
+        }
+
+        // MS-VBAL §5.4.3.9: a property is Set by invoking its Property Set with the value - one of a standard module on nothing, from anywhere, by its bare
+        // name or through its module (MS-VBA, oracle\s44 W01); one of a class, from the class's own code, on the object whose code it is. It has no storage of
+        // its own for the value to be written to.
+        if (!isOwnResult && target is IVBPropertyMemberSymbol && ((Symbol)target).Uri.AbsoluteUri != context.Scope.AbsoluteUri
+            && (target as VBPropertySetMemberSymbol ?? session.Symbols.MembersOf(((Symbol)target).ParentUri).OfType<VBPropertySetMemberSymbol>()
+                .FirstOrDefault(candidate => string.Equals(candidate.Name, ((Symbol)target).Name, StringComparison.OrdinalIgnoreCase))) is { } setter)
+        {
+            return SetProperty(session, context, assignment, setter, valueResult.Result!);
+        }
 
         // Set-coercion (MS-VBAL §5.5.2.2) is not an operator - the same direct entry point
         // WithStatementRuntimeSemantics already uses for its own With-target coercion.
@@ -270,7 +359,7 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
             return RuntimeExecutionOutcome.Next;
         }
 
-        var handle = session.Symbols.Resolver.GetValue((Symbol)target);
+        var handle = boundHandle ?? session.Symbols.Resolver.GetValue((Symbol)target);
         if (!handle.BindingCapabilities.HasFlag(BindingCapabilities.SetValue))
         {
             // MS-VBAL static semantics should already have rejected an assignment to a read-only
@@ -304,5 +393,28 @@ public sealed class StatementRuntimeSemanticsProvider : IStatementRuntimeSemanti
         }
 
         return RuntimeExecutionOutcome.Next;
+    }
+
+    // the Property Set invoked with the value, which it Set-coerces to its value parameter's type: on the object whose code this is when it is a class's, and
+    // on nothing when it is a standard module's.
+    private RuntimeExecutionOutcome SetProperty(
+        IRuntimeSession session, RuntimeEvaluationContext context, AssignmentStatementNode assignment, VBPropertySetMemberSymbol setter, VBTypedValue value)
+    {
+        IRuntimeValue? receiver = null;
+        if (RuntimeProcedureInvoker.GetParameters(setter) is [{ Name: Tokens.Me }, ..])
+        {
+            var me = _expressionEvaluator.Evaluate(session, new InstanceExpressionNode(assignment.Target.Identity, assignment.Target.Location), context);
+            if (!me.IsSuccess)
+            {
+                return me.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Error(me.ErrorInfo!);
+            }
+
+            receiver = me.Result!.RuntimeValue;
+        }
+
+        var invocation = _expressionEvaluator.InvokeAssignment(session, context, setter, receiver, [], value, assignment.Value, isSet: true);
+        return invocation.IsSuccess ? RuntimeExecutionOutcome.Next
+            : invocation.IsInternalError ? RuntimeExecutionOutcome.InternalError
+            : RuntimeExecutionOutcome.Error(invocation.ErrorInfo!);
     }
 }

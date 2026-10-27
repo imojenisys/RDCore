@@ -1,10 +1,14 @@
+using RDCore.Runtime.Execution.Frames;
 using RDCore.Runtime.Semantics.Statements;
+using RDCore.SDK.Semantics.Static;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
+using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Values.Abstract;
+using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Runtime.Abstract.Execution;
 
@@ -27,8 +31,9 @@ namespace RDCore.Runtime.Semantics;
 /// by the same fold a <c>Const</c>'s is; one that declares none starts as Missing when it is a <c>Variant</c>.
 /// </para>
 /// <para>
-/// 🚧 TODO a bound that cannot be reduced - a non-constant expression, an upper bound below the lower - is a compile error that
-/// nothing reports yet; the array is left with no dimensions, which is what it was before bounds reached the host at all.
+/// A bound that cannot be reduced - a non-constant expression, one past the range of a <c>Long</c>, an upper bound below the lower - is a
+/// compile error of the module (<see cref="RDCore.SDK.Semantics.Static.ConstantExpressionStaticSemantics"/>, <see cref="DeclaredSizeStaticSemantics"/>),
+/// which is then not loaded; were one to reach this all the same, the array is left with no dimensions.
 /// </para>
 /// </remarks>
 /// <param name="session">The session the variables are allocated in, which resolves what the bounds name.</param>
@@ -48,10 +53,11 @@ public sealed class DeclaredVariableDefaults(IRuntimeSession session, ArrayBound
         }
 
         var type = ((ITypedSymbol)variable).ResolvedType;
-        if (type is VBUserDefinedType record)
+        if (type is VBUserDefinedType declaredRecord)
         {
-            // each field starts as a variable declared as it is: a fixed-size array field with the dimensions its declaration gives it.
-            return new VBUserDefinedTypeValue(record, this);
+            // each field starts as a variable declared as it is: a fixed-size array field with the dimensions its declaration gives it. The fields are the
+            // type's as the session has it now, not as it was when the variable was bound (CurrentTypes): a nested record's own fields come the same way.
+            return new VBUserDefinedTypeValue(CurrentTypes.Of(session.Symbols.Resolver, declaredRecord), this);
         }
 
         if (type is not VBArrayType array || array is VBResizableByteArrayType)
@@ -67,9 +73,19 @@ public sealed class DeclaredVariableDefaults(IRuntimeSession session, ArrayBound
         return variable.TryGetProperty(SymbolProperties.ArrayBounds, out var declared)
             && !declared.IsDefaultOrEmpty
             && TryReduce(variable, declared) is { } dimensions
-                ? new VBFixedSizeArrayValue(dimensions, array.ItemType, ((IVariableDefaults)this).ElementDefaultOf(array.ItemType))
+                ? new VBFixedSizeArrayValue(dimensions, array.ItemType, ((IVariableDefaults)this).ElementDefaultOf(array.ItemType), ElementCellOf(array.ItemType))
                 : new VBFixedSizeArrayValue([], array.ItemType);
     }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// An element of a scalar type is kept in a cell that holds it as a payload (IR lowering S1.6), as a scalar variable is: an expression of it is
+    /// evaluated on the payload, and an assignment to it writes one, with no value made of it either way.
+    /// </remarks>
+    public Func<IBindingHandle>? ElementCellOf(VBType itemType)
+        => UnboxedEvaluation.IsEnabled && ScalarPayload.TryOf(itemType, itemType.DefaultValue.RuntimeValue, out var initial)
+            ? () => ScalarCell.Of(initial)
+            : null;
 
     private (int, int)[]? TryReduce(Symbol variable, IReadOnlyList<ArrayDimensionBound> declared)
     {

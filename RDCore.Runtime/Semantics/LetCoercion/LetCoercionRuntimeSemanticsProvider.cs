@@ -55,6 +55,16 @@ public interface ILetCoercionRuntimeSemanticsProvider
         ILetCoercionSemanticContextBuilder builder,
         ExpressionNode expression,
         LetCoercionStackFrame frame);
+
+    /// <summary>
+    /// Evaluates a let-coercion as <see cref="EvaluateLetCoercionSemantics"/> does, without stating it as a fact: a question the semantics of an operation
+    /// ask before deciding how to evaluate it, which is not a conversion the code makes.
+    /// </summary>
+    /// <param name="resolver">A symbol lookup service.</param>
+    /// <param name="expression">The <c>ExpressionNode</c> that is being evaluated.</param>
+    /// <param name="frame">The coercion that is asked about.</param>
+    LetCoercionResult EvaluateUnstated(ISymbolResolver resolver, ExpressionNode expression, LetCoercionStackFrame frame)
+        => EvaluateLetCoercionSemantics(resolver, expression, frame);
 }
 
 /// <summary>
@@ -246,6 +256,21 @@ public class LetCoercionRuntimeSemanticsProvider(
         return result;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>A coercion a strategy evaluates for it (a <c>Variant</c>'s value, coerced first) is not stated either.</remarks>
+    public LetCoercionResult EvaluateUnstated(ISymbolResolver resolver, ExpressionNode expression, LetCoercionStackFrame frame)
+    {
+        if (observation is null)
+        {
+            return EvaluateUnobserved(resolver, expression, frame);
+        }
+
+        using (observation.Suspend())
+        {
+            return EvaluateUnobserved(resolver, expression, frame);
+        }
+    }
+
     // States the coercion that has just been evaluated as a fact: the types and the site are the code's, the flags are the
     // analysis of the coercion, and the error is the evaluation's own.
     private void Observe(
@@ -290,17 +315,31 @@ public class LetCoercionRuntimeSemanticsProvider(
         LetCoercionStackFrame frame)
     {
         var result = Coerce(resolver, expression, frame);
+        if (!frame.SourceValue.IsIndeterminate || result.ErrorInfo?.ErrorId == (int)VBRuntimeErrorId.InternalError)
+        {
+            return result;
+        }
+
+        // a type mismatch the type of the source decides is raised whatever value it holds: it is known to happen, and is kept.
+        if (result.ErrorInfo is VBRuntimeErrorInfo { ErrorId: (int)VBRuntimeErrorId.TypeMismatch } mismatch && IsDecidedByType(frame))
+        {
+            return result with { ErrorInfo = mismatch with { IsDecidedByTypes = true } };
+        }
 
         // an indeterminate source coerces to an indeterminate value; what it raises for the value it assumes is not known to happen.
-        return frame.SourceValue.IsIndeterminate && result.ErrorInfo?.ErrorId != (int)VBRuntimeErrorId.InternalError
-            ? result with
-            {
-                IsApplicable = true,
-                Result = (result.IsSuccess ? result.Result! : frame.DestinationTypeDesc.Target.DefaultValue).AsIndeterminate(),
-                ErrorInfo = null,
-            }
-            : result;
+        return result with
+        {
+            IsApplicable = true,
+            Result = (result.IsSuccess ? result.Result! : frame.DestinationTypeDesc.Target.DefaultValue).AsIndeterminate(),
+            ErrorInfo = null,
+        };
     }
+
+    // whether the type of a source that is not known is enough to say the coercion is a type mismatch: its plan is one (MS-VBAL 5.5.1.2) - but for a Variant
+    // whose value is not known, whose type is not either, and an object, which is let-coerced by what its default member returns.
+    private static bool IsDecidedByType(LetCoercionStackFrame frame)
+        => frame.SourceValue is not (VBVariantValue or VBObjectValue)
+            && ConversionPlanner.ForValue(ValueTypeOf(frame.SourceValue), frame.DestinationTypeDesc.Target).IsTypeMismatch;
 
     private LetCoercionResult Coerce(
         ISymbolResolver resolver,

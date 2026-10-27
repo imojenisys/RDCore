@@ -4,10 +4,15 @@ using Microsoft.Extensions.Options;
 using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
 using OmniSharp.Extensions.LanguageServer.Protocol.Models;
 using OmniSharp.Extensions.LanguageServer.Protocol.Server;
+using OmniSharp.Extensions.LanguageServer.Protocol.Window;
+using OmniSharp.Extensions.LanguageServer.Protocol.Workspace;
+using RDCore.LanguageServer.Completion;
+using RDCore.LanguageServer.Refactoring;
 using RDCore.LanguageServer.Debugging;
 using RDCore.LanguageServer.Diagnostics;
 using RDCore.LanguageServer.Folding;
 using RDCore.LanguageServer.Parsing;
+using RDCore.LanguageServer.Progress;
 using RDCore.LanguageServer.Runtime;
 using RDCore.LanguageServer.SemanticTokens;
 using RDCore.LanguageServer.Server.Handlers.Document;
@@ -20,6 +25,7 @@ using RDCore.SDK.Platform;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Server;
 using RDCore.SDK.Server.Configuration;
+using RDCore.SDK.Server.Progress;
 using RDCore.SDK.Server.Services;
 using RDCore.SDK.Server.Services.States;
 
@@ -47,6 +53,7 @@ internal sealed class CoreLanguageServerApp(
     IDocumentDiagnosticsService diagnostics,
     IDiagnosticsPublisher publisher,
     IClientInteractionRelay interaction,
+    IWorkProgressReporter progress,
     ILogger<CoreLanguageServerApp> logger)
     : RDCoreServerApp(options, serverStateProvider, healthCheckService, transportLayer, logger)
 {
@@ -89,7 +96,28 @@ internal sealed class CoreLanguageServerApp(
         builder.WithHandler<DocumentDiagnosticHandler>();
         builder.WithHandler<DocumentSymbolHandler>();
         builder.WithHandler<FoldingRangeHandler>();
+        builder.WithHandler<SelectionRangeHandler>();
         builder.WithHandler<SemanticTokensHandler>();
+        builder.WithHandler<CompletionHandler>();
+        builder.WithHandler<SignatureHelpHandler>();
+        builder.WithHandler<RenameHandler>();
+        builder.WithHandler<PrepareRenameHandler>();
+        builder.WithHandler<Navigation.DefinitionHandler>();
+        builder.WithHandler<Navigation.DeclarationHandler>();
+        builder.WithHandler<Navigation.ReferencesHandler>();
+        builder.WithHandler<Navigation.DocumentHighlightHandler>();
+        builder.WithHandler<Navigation.TypeDefinitionHandler>();
+        builder.WithHandler<Navigation.ImplementationHandler>();
+        builder.WithHandler<Navigation.CallHierarchyPrepareHandler>();
+        builder.WithHandler<Navigation.CallHierarchyIncomingHandler>();
+        builder.WithHandler<Navigation.CallHierarchyOutgoingHandler>();
+        builder.WithHandler<Navigation.TypeHierarchyPrepareHandler>();
+        builder.WithHandler<Navigation.TypeHierarchySupertypesHandler>();
+        builder.WithHandler<Navigation.TypeHierarchySubtypesHandler>();
+        builder.WithHandler<WorkspaceSymbolHandler>();
+        builder.WithHandler<Navigation.HoverHandler>();
+        builder.WithHandler<CodeActionHandler>();
+        builder.WithHandler<InlayHintHandler>();
         builder.WithHandler<SessionStatusHandler>();
         builder.WithHandler<SessionExecuteHandler>();
         builder.WithHandler<SessionDiscardHandler>();
@@ -103,6 +131,9 @@ internal sealed class CoreLanguageServerApp(
         builder.WithHandler<SessionDebugEvaluateHandler>();
         builder.WithHandler<SessionDebugExecuteHandler>();
         builder.WithHandler<SessionAnalyzeHandler>();
+        builder.WithHandler<SessionCompletionHandler>();
+        builder.WithHandler<SessionSignatureHelpHandler>();
+        builder.WithHandler<SessionCommandsHandler>();
         builder.WithHandler<SessionPeekHandler>();
         builder.WithHandler<SessionPokeHandler>();
 
@@ -122,6 +153,10 @@ internal sealed class CoreLanguageServerApp(
         services.AddSingleton(_ => ExternalServices.GetRequiredService<IDocumentDiagnosticsService>());
         services.AddSingleton(_ => ExternalServices.GetRequiredService<IParsingClientService>());
         services.AddSingleton(_ => ExternalServices.GetRequiredService<ISemanticTokensService>());
+        services.AddSingleton(_ => ExternalServices.GetRequiredService<ICompletionService>());
+        services.AddSingleton(_ => ExternalServices.GetRequiredService<IRenameService>());
+        services.AddSingleton(_ => ExternalServices.GetRequiredService<IClientVerbRegistry>());
+        services.AddSingleton(_ => ExternalServices.GetRequiredService<IWorkProgressReporter>());
         services.AddSingleton(_ => ExternalServices.GetRequiredService<IWorkspaceDocumentService>());
         services.AddSingleton(_ => ExternalServices.GetRequiredService<ISymbolResolver>());
         services.AddSingleton(_ => ExternalServices.GetRequiredService<IPlatformOrchestrationService>());
@@ -193,16 +228,17 @@ internal sealed class CoreLanguageServerApp(
     {
         // a client that pulls diagnostics is not pushed them as well: it would show each finding twice.
         publisher.Attach(server, enabled: request.Capabilities?.TextDocument?.Diagnostic is null);
-        await LoadWorkspaceAsync(request);
+        await LoadWorkspaceAsync(server, request);
         await base.OnLanguageServerInitializeAsync(server, request, cancellationToken);
     }
 
     /// <summary>
     /// Loads the project file and its documents. Runs here because the server is still
     /// <c>Initializing</c> — the window <see cref="IWorkspaceService.LoadAsync"/> requires. A load
-    /// failure is logged, not fatal: the server still completes the LSP handshake.
+    /// failure is not fatal: the server still completes the LSP handshake, and tells the client why
+    /// (<c>window/showMessage</c>, which LSP allows before <c>initialize</c> is answered).
     /// </summary>
-    private async Task LoadWorkspaceAsync(InitializeParams request)
+    private async Task LoadWorkspaceAsync(ILanguageServer server, InitializeParams request)
     {
         if (request.RootUri is null)
         {
@@ -218,6 +254,14 @@ internal sealed class CoreLanguageServerApp(
         catch (Exception exception)
         {
             LogIfEnabled(LogLevel.Error, $"❌ Workspace could not be loaded:\n{exception}");
+
+            // a project file that is not JSON, or is missing, otherwise only showed later, as a didOpen error that did not say what was wrong (HexIDE's
+            // findings desk #26).
+            server.Window.ShowMessage(new ShowMessageParams
+            {
+                Type = MessageType.Error,
+                Message = string.Format(DebuggerMessages.WorkspaceCouldNotBeLoaded, request.RootUri.GetFileSystemPath(), exception.Message),
+            });
         }
     }
 
@@ -233,6 +277,9 @@ internal sealed class CoreLanguageServerApp(
 
         // the dialogs of the program that runs in the environment host are relayed to this client, if it answers them.
         interaction.Attach(new LanguageServerInteractionClient(server));
+
+        // and the progress of the work the server does is reported to it, if it shows it.
+        progress.Attach(server.WorkDoneManager);
 
         // Bring up the core child components once the client<->LS connection is live. Each runs as a
         // supervised background task (not awaited): a child that is slow or fails to attach must not
@@ -280,24 +327,36 @@ internal sealed class CoreLanguageServerApp(
 
     private async Task ParseWorkspaceThenSyncSymbolsAsync(CancellationToken token)
     {
-        await parsing.ParseWorkspaceAsync(token);
-        await symbolSync.SyncWorkspaceAsync(token);
-        await RunDiagnosticsBringUpAsync(token);
+        // the work the server does of its own as it brings the workspace up is reported to the client, each part of it.
+        using (var parsingWork = progress.Begin(ProgressMessages.ParsingWorkspace))
+        {
+            await parsing.ParseWorkspaceAsync(token, parsingWork);
+        }
+
+        using (var composingWork = progress.Begin(ProgressMessages.ComposingProject))
+        {
+            await symbolSync.SyncWorkspaceAsync(token, composingWork);
+        }
+
+        using var analyzingWork = progress.Begin(ProgressMessages.AnalyzingWorkspace);
+        await RunDiagnosticsBringUpAsync(token, analyzingWork);
     }
 
     /// <summary>
     /// Pulls diagnostics for every loaded document once, exercising the provider fan-out without an
     /// editor. Not a push — nothing is sent to the client; it is the seam the future push hangs off.
     /// </summary>
-    private async Task RunDiagnosticsBringUpAsync(CancellationToken token)
+    private async Task RunDiagnosticsBringUpAsync(CancellationToken token, IProgress<WorkProgressStep>? progress = null)
     {
         try
         {
             var total = 0;
-            foreach (var document in workspaceDocuments.GetAllDocuments())
+            var all = workspaceDocuments.GetAllDocuments().ToList();
+            for (var index = 0; index < all.Count; index++)
             {
                 token.ThrowIfCancellationRequested();
-                var uri = document.Id.Uri.ToUri();
+                var uri = all[index].Id.Uri.ToUri();
+                progress?.Report(new WorkProgressStep(string.Format(ProgressMessages.ItemOf, all[index].Name, index + 1, all.Count), 100 * index / all.Count));
                 var result = await diagnostics.GetAsync(uri, previousResultId: null, token);
                 total += result.Diagnostics.Count;
                 LogIfEnabled(LogLevel.Information, $"🔎 {uri}: {result.Diagnostics.Count} diagnostic(s)");
@@ -341,6 +400,34 @@ internal sealed class CoreLanguageServerApp(
         catch (Exception exception)
         {
             LogIfEnabled(LogLevel.Error, $"❌ Failed to bring up {label}:\n{exception}");
+        }
+    }
+
+    // what the client said is said to every component: each asks the language server, which answers with what the client said. A client that pulls its
+    // diagnostics is asked to pull them again - a diagnostic's settings are among the live ones.
+    protected override async Task OnLiveSettingsChangedAsync(ILanguageServer server)
+    {
+        var components = new[] { orchestration.ParsingService, orchestration.RuntimeEnvironment }
+            .Concat(orchestration.Extensions)
+            .Where(component => component is not null)
+            .ToList();
+        foreach (var component in components)
+        {
+            try
+            {
+                await component.NotifyLiveSettingsChangedAsync(_componentsCts.Token);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or OperationCanceledException)
+            {
+                // a component that is not up yet asks for the settings when it is.
+                LogIfEnabled(LogLevel.Debug, $"⚙️ A component was not told the live settings changed: {exception.Message}");
+            }
+        }
+
+        if (server.ClientSettings.Capabilities?.Workspace?.Diagnostics.IsSupported == true
+            && server.ClientSettings.Capabilities.Workspace.Diagnostics.Value.RefreshSupport)
+        {
+            server.Workspace.SendDiagnosticRefresh(new DiagnosticRefreshParams());
         }
     }
 

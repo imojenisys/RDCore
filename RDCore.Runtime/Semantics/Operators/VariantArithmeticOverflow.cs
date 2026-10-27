@@ -16,8 +16,9 @@ namespace RDCore.Runtime.Semantics.Operators;
 /// Double, runtime error 6 (Overflow) is raised." With no Variant operand, and for any other effective type, the overflow is error 6.
 /// </para>
 /// <para>
-/// 👉 Only an integral effective type overflows by raising, which is what this is for: a Single or a Double operation that leaves its range yields an
-/// infinity, as IEEE 754 arithmetic does. The specification lists no rule for a Byte effective type, which has none here: it is error 6.
+/// The specification lists no rule for a Byte effective type, and MS-VBA widens it as it does an Integer: a Variant Byte result that overflows is an Integer
+/// (<c>200 + 100</c> = Integer 300), or wider (recorded in Excel). An integral effective type overflows by raising, which is what <see cref="Widens"/> is
+/// for; a Single operation that leaves its range yields an infinity, as IEEE 754 arithmetic does, which <see cref="WidensSingle"/> is for.
 /// </para>
 /// </remarks>
 internal static class VariantArithmeticOverflow
@@ -28,7 +29,26 @@ internal static class VariantArithmeticOverflow
     /// <param name="frame">The frame of the operation: what it says of its operands as they were given (<see cref="OperatorEvaluationFrame.HasVariantOperand"/>).</param>
     /// <param name="effectiveType">The effective type of the operation.</param>
     public static bool Widens(OperatorEvaluationFrame frame, VBType effectiveType)
-        => frame.HasVariantOperand && effectiveType is VBIntegerType or VBLongType;
+        => frame.HasVariantOperand && effectiveType is VBByteType or VBIntegerType or VBLongType;
+
+    /// <summary>
+    /// Whether a Single operation whose value is not finite - outside the range of a Single - is evaluated again, in a wider type: with a Variant operand, a
+    /// Double (<c>3E+38 * 10</c> = Double 3.00000000549776E+39), with no error even when that is not finite either (an infinity plus one is a Double
+    /// infinity; recorded in Excel, grid oracle\s16 H01).
+    /// </summary>
+    /// <param name="frame">The frame of the operation.</param>
+    /// <param name="value">The value of the operation, as a Single.</param>
+    public static bool WidensSingle(OperatorEvaluationFrame frame, float value)
+        => frame.HasVariantOperand && !float.IsFinite(value);
+
+    /// <summary>
+    /// Whether a Double operation whose value is not finite is an overflow because an operand is a Variant: MS-VBA's Variant arithmetic raises 6 for any
+    /// such Double - of an infinity, of a NaN - where a typed one is IEEE 754's, and assigns nothing (recorded in Excel, grid oracle\s16 G09, H02-H03).
+    /// </summary>
+    /// <param name="frame">The frame of the operation.</param>
+    /// <param name="value">The value of the operation.</param>
+    public static bool OverflowsDouble(OperatorEvaluationFrame frame, double value)
+        => frame.HasVariantOperand && !double.IsFinite(value);
 
     /// <summary>
     /// The value of an operation that overflowed its effective type, computed as a Double, in the narrowest of Integer, Long and Double that holds it; or

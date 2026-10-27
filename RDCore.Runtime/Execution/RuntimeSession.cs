@@ -49,6 +49,7 @@ internal sealed class RuntimeSession(
     public ISessionHalt Halt { get; init; } = halt;
     public IReadOnlyList<ReferencePriorityInfo> References { get; init; } = references;
     public IRuntimeOutput Output { get; init; } = output;
+    public RDCore.SDK.Runtime.Libraries.ILibrarySource? Libraries { get; init; }
 
     public IObjectLifecycle? Lifecycle { get; set; }
 
@@ -78,15 +79,18 @@ internal sealed class RuntimeSession(
         }
 
         // MS-VBAL §5.3.1.10: Terminate runs while the object is still whole, and may give it a reference again; an
-        // object that has one is not destroyed, and is a candidate again when it next loses its last.
-        // 🚧 TODO an error the handler leaves unhandled is dropped here: a release has no operation to fail, and
-        // the callers of this have no result to carry it in. It belongs to whatever dropped the reference.
+        // object that has one is not destroyed, and is a candidate again when it next loses its last. An error the
+        // handler leaves unhandled ends the program, whatever handler the code that let go of the object has (MS-VBA,
+        // grid oracle\s44): a release has no result to carry it in, so it is recorded, and the executor stops with it.
         if (Lifecycle is { } lifecycle && Objects.TryBeginTerminate(instance))
         {
             _terminating.Add(instance);
             try
             {
-                _ = lifecycle.Terminate(instance);
+                if (lifecycle.Terminate(instance) is { IsError: true, ErrorInfo: { } unhandled })
+                {
+                    Errors.RaiseUntrappable(unhandled);
+                }
             }
             finally
             {
@@ -124,6 +128,12 @@ internal sealed class RuntimeSession(
             => member is VBModuleFieldVariableMemberSymbol or VBInstanceFieldVariableMemberSymbol))
         {
             ObjectReferences.Release(this, live.GetValue(field));
+        }
+
+        // the Static locals of its members are the object's too (MS-VBA).
+        foreach (var local in live.StaticLocals)
+        {
+            ObjectReferences.Release(this, live.GetValue(local));
         }
 
         // what the object holds that is no variable of its class: the members of a collection.
@@ -306,9 +316,7 @@ internal sealed class SessionObjects : ISessionObjects
             return 0;
         }
 
-        // a handle is a root by identity: handles are records, and two variables holding the same object compare
-        // equal by value while being two references.
-        var held = roots.FindIndex(root => ReferenceEquals(root, handle));
+        var held = IndexOfRoot(roots, handle);
         if (held >= 0)
         {
             roots.RemoveAt(held);
@@ -318,7 +326,23 @@ internal sealed class SessionObjects : ISessionObjects
     }
 
     public bool IsHeldBy(VBRuntimeObjectId instance, IBindingHandle handle)
-        => _roots.TryGetValue(instance, out var roots) && roots.Any(root => ReferenceEquals(root, handle));
+        => _roots.TryGetValue(instance, out var roots) && IndexOfRoot(roots, handle) >= 0;
+
+    // a handle is a root by identity: handles are records, and two variables holding the same object compare equal by value while being two references.
+    // Searched without a predicate, which would be made for each reference counted (IR lowering S1.3), from the last: the cell that lets go of an object is
+    // most often the last that took it - a parameter, a local, a temporary (S1.4c).
+    private static int IndexOfRoot(List<IBindingHandle> roots, IBindingHandle handle)
+    {
+        for (var i = roots.Count - 1; i >= 0; i--)
+        {
+            if (ReferenceEquals(roots[i], handle))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 
     public int RefCount(VBRuntimeObjectId instance) => _roots.TryGetValue(instance, out var roots) ? roots.Count : 0;
 
@@ -481,7 +505,7 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
         // Anything else is a different variable - or no variable - and is replaced the long way.
         var sameDeclaration = existing is ITypedSymbol { ResolvedType: var before }
             && symbol is ITypedSymbol { ResolvedType: var after }
-            && Equals(before, after)
+            && IsSameType(before, after)
             && SessionBindings.TryGetAddress(existing, out _);
         if (!sameDeclaration)
         {
@@ -492,6 +516,45 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
         // symbol itself leaves what it holds where it is.
         table.Replace(symbol, scope);
         return true;
+    }
+
+    // a record type is the type it was only if its fields are of the types they were: one whose field was of a type not resolved yet when the variable was first
+    // defined - a record of another record of the module, defined in a later pass (DefineSymbolsHandler) - is another, and the variable is given a record of it.
+    // A pair of record types met again on the way down is taken as the same: a type that contains itself, which no compile check stops yet, ends there.
+    private static bool IsSameType(VBType? before, VBType? after, HashSet<(VBUserDefinedType, VBUserDefinedType)>? comparing = null)
+    {
+        if (!Equals(before, after))
+        {
+            return false;
+        }
+
+        if (before is not VBUserDefinedType beforeRecord || after is not VBUserDefinedType afterRecord)
+        {
+            return true;
+        }
+
+        comparing ??= new(ReferenceTupleComparer.Instance);
+        if (!comparing.Add((beforeRecord, afterRecord)))
+        {
+            return true;
+        }
+
+        var beforeFields = beforeRecord.Fields().ToList();
+        var afterFields = afterRecord.Fields().ToList();
+        return beforeFields.Count == afterFields.Count
+            && beforeFields.Zip(afterFields).All(pair => IsSameType(pair.First.ResolvedType, pair.Second.ResolvedType, comparing));
+    }
+
+    // pairs of record types by identity: a record type's own equality is its name's, which is what the comparison looks past.
+    private sealed class ReferenceTupleComparer : IEqualityComparer<(VBUserDefinedType, VBUserDefinedType)>
+    {
+        public static readonly ReferenceTupleComparer Instance = new();
+
+        public bool Equals((VBUserDefinedType, VBUserDefinedType) x, (VBUserDefinedType, VBUserDefinedType) y)
+            => ReferenceEquals(x.Item1, y.Item1) && ReferenceEquals(x.Item2, y.Item2);
+
+        public int GetHashCode((VBUserDefinedType, VBUserDefinedType) pair)
+            => HashCode.Combine(RuntimeHelpers.GetHashCode(pair.Item1), RuntimeHelpers.GetHashCode(pair.Item2));
     }
 
     public void ResetStorage()
@@ -585,6 +648,8 @@ internal sealed class SessionSymbols(ISessionStorage storage, RuntimeCallStack c
     }
 
     public ISymbolResolver Resolver => Bindings;
+
+    public bool TryGetModule(string moduleName, [NotNullWhen(true)] out VBModuleSymbol? module) => table.TryGetModule(moduleName, out module);
 
     public bool TryResolveValue(string name, Symbol scope, out Symbol? symbol)
     {

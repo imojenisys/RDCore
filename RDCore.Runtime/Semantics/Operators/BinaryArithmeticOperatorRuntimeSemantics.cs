@@ -10,6 +10,7 @@ using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Values;
 using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Intrinsic;
+using RDCore.SDK.Model.Values.Numerics;
 using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
@@ -62,6 +63,16 @@ public abstract record class BinaryArithmeticOperatorRuntimeSemantics(
         VBNumericTypedValue lhs, VBNumericTypedValue rhs,
         ExpressionNode expression)
     {
+        if (effectiveType is VBSingleType)
+        {
+            return SingleResult(frame, (VBSingleValue)lhs, (VBSingleValue)rhs, expression);
+        }
+
+        if (effectiveType is VBDoubleType)
+        {
+            return DoubleResult(frame, (VBDoubleValue)lhs, (VBDoubleValue)rhs, expression);
+        }
+
         try
         {
             VBTypedValue result = effectiveType switch
@@ -70,8 +81,6 @@ public abstract record class BinaryArithmeticOperatorRuntimeSemantics(
                 VBIntegerType => new VBIntegerValue(EvaluateManagedNumericOp(((VBIntegerValue)lhs).Value, ((VBIntegerValue)rhs).Value)),
                 VBLongType => new VBLongValue(EvaluateManagedNumericOp(((VBLongValue)lhs).Value, ((VBLongValue)rhs).Value)),
                 VBLongLongType => new VBLongLongValue(EvaluateManagedNumericOp(((VBLongLongValue)lhs).Value, ((VBLongLongValue)rhs).Value)),
-                VBSingleType => new VBSingleValue(EvaluateManagedNumericOp(((VBSingleValue)lhs).Value, ((VBSingleValue)rhs).Value)),
-                VBDoubleType => new VBDoubleValue(EvaluateManagedNumericOp(((VBDoubleValue)lhs).Value, ((VBDoubleValue)rhs).Value)),
                 VBCurrencyType => new VBCurrencyValue(EvaluateManagedNumericOp(((VBCurrencyValue)lhs).Value.Value, ((VBCurrencyValue)rhs).Value.Value)),
                 VBDecimalType => new VBDecimalValue(EvaluateManagedNumericOp(((VBDecimalValue)lhs).Value, ((VBDecimalValue)rhs).Value)),
                 _ => throw new NotSupportedException($"Effective type '{effectiveType.Name}' is not a supported arithmetic numeric type."),
@@ -92,6 +101,82 @@ public abstract record class BinaryArithmeticOperatorRuntimeSemantics(
             return OnDivisionByZero(expression, Exceptions.VBDivisionOp_DivisionByZero);
         }
     }
+
+    // a Variant Single result outside the range of a Single is computed again as a Double (VariantArithmeticOverflow.WidensSingle), with no error; a typed
+    // one is an overflow (MS-VBAL §5.6.9.3; recorded in Excel, grid oracle\s16 D01-D10, H01).
+    private RuntimeSemanticsEvaluationResult SingleResult(OperatorEvaluationFrame frame, VBSingleValue lhs, VBSingleValue rhs, ExpressionNode expression)
+    {
+        if (!frame.HasVariantOperand && ExtendedIntermediates.IsArithmetic(Operator))
+        {
+            return ExtendedResult(VBSingleType.TypeInfo, Float80.FromSingle(lhs.Value), Float80.FromSingle(rhs.Value), expression);
+        }
+
+        var value = EvaluateManagedNumericOp(lhs.Value, rhs.Value);
+        if (VariantArithmeticOverflow.WidensSingle(frame, value))
+        {
+            var wide = EvaluateManagedNumericOp((double)lhs.Value, rhs.Value);
+            return RuntimeSemanticsEvaluationResult.Success(VariantArithmeticOverflow.Widened(wide) ?? new VBDoubleValue(wide));
+        }
+
+        return IsInvalid(value, lhs.Value, rhs.Value)
+            ? Overflowed(expression, new VBSingleValue(value))
+            : RuntimeSemanticsEvaluationResult.Success(new VBSingleValue(value));
+    }
+
+    // a Variant Double result that is not finite is an overflow, which assigns nothing (VariantArithmeticOverflow.OverflowsDouble); a typed one is IEEE 754's.
+    private RuntimeSemanticsEvaluationResult DoubleResult(OperatorEvaluationFrame frame, VBDoubleValue lhs, VBDoubleValue rhs, ExpressionNode expression)
+    {
+        if (!frame.HasVariantOperand && ExtendedIntermediates.IsArithmetic(Operator))
+        {
+            return ExtendedResult(VBDoubleType.TypeInfo, Float80.FromDouble(lhs.Value), Float80.FromDouble(rhs.Value), expression);
+        }
+
+        var value = EvaluateManagedNumericOp(lhs.Value, rhs.Value);
+        if (VariantArithmeticOverflow.OverflowsDouble(frame, value))
+        {
+            return OnOverflow(expression, Exceptions.VBRuntimeError_ArithmeticOverflow);
+        }
+
+        return IsInvalid(value, lhs.Value, rhs.Value)
+            ? Overflowed(expression, new VBDoubleValue(value))
+            : RuntimeSemanticsEvaluationResult.Success(new VBDoubleValue(value));
+    }
+
+    // MS-VBAL §5.6.9.3: a Single or Double operation of typed operands, on its own - not one of an expression the evaluator computes in the extended format
+    // (ExtendedIntermediates): a step of a For loop, a Case - is computed in that format too, and stored as its type: rounded twice, as MS-VBA rounds it. A
+    // division by zero is error 11, an invalid operation or an overflow 6, and the error carries the value IEEE 754 arithmetic gave, which a Let assignment
+    // assigns to a Single or Double variable before raising it (recorded in Excel, grid oracle\s16 D01-D10, F01-F15; oracle\s42).
+    private static RuntimeSemanticsEvaluationResult ExtendedResult(VBType type, Float80 lhs, Float80 rhs, string token, ExpressionNode expression)
+    {
+        var none = FloatingPointExceptions.None;
+        var wide = ExtendedIntermediates.Operate(token, new WideValue(lhs, type, none), new WideValue(rhs, type, none), type);
+        var stored = ExtendedIntermediates.Store(wide, out var error)!.Value;
+        var value = type is VBSingleType ? (VBTypedValue)new VBSingleValue((float)stored.Floating) : new VBDoubleValue(stored.Floating);
+        return error switch
+        {
+            VBRuntimeErrorId.DivisionByZero => RuntimeSemanticsEvaluationResult.Error(
+                OnDivisionByZero(expression, Exceptions.VBDivisionOp_DivisionByZero).ErrorInfo!, value),
+            not null => Overflowed(expression, value),
+            _ => RuntimeSemanticsEvaluationResult.Success(value),
+        };
+    }
+
+    private RuntimeSemanticsEvaluationResult ExtendedResult(VBType type, Float80 lhs, Float80 rhs, ExpressionNode expression)
+        => ExtendedResult(type, lhs, rhs, Operator, expression);
+
+    // MS-VBAL §5.6.9.3: Single and Double operations are IEEE 754's, which an overflow stops: finite operands whose result is not finite - and MS-VBA
+    // raises the invalid operation of operands that are no NaN, whose result is one (infinity less infinity), as an overflow too. An operation of an
+    // infinity is an infinity, with no error (recorded in Excel, grid oracle\s16 F11-F12).
+    private static bool IsInvalid(double value, double lhs, double rhs)
+        => (double.IsInfinity(value) && double.IsFinite(lhs) && double.IsFinite(rhs)) || (double.IsNaN(value) && !double.IsNaN(lhs) && !double.IsNaN(rhs));
+
+    /// <summary>
+    /// 💥 An overflow of a <c>Single</c> or <c>Double</c> operation, which carries the value IEEE 754 arithmetic gave it - an infinity, or a NaN: MS-VBA
+    /// assigns it to a <c>Single</c> or <c>Double</c> variable the operation is assigned to before it raises the error (<c>s = s * 10</c> leaves <c>s</c>
+    /// infinite; recorded in Excel, grid oracle\s16 D01-D09, F01-F15).
+    /// </summary>
+    protected static RuntimeSemanticsEvaluationResult Overflowed(ExpressionNode expression, VBTypedValue ieee)
+        => RuntimeSemanticsEvaluationResult.Error(OnOverflow(expression, Exceptions.VBRuntimeError_ArithmeticOverflow).ErrorInfo!, ieee);
 
     protected sealed override OperatorAnalysisContext<ArithmeticOperatorSemanticFlags> CreateAnalysisContext(
         SyntaxNode node,
@@ -180,10 +265,14 @@ public abstract record class BinaryArithmeticOperatorRuntimeSemantics(
     protected virtual RuntimeSemanticsEvaluationResult EvaluateBinaryExpressionResult(
         VBDateType effectiveType,
         VBNumericTypedValue lhs, VBNumericTypedValue rhs,
-        ExpressionNode expression) =>
-        RuntimeSemanticsEvaluationResult.Success(
-            new VBDateValue(
-                EvaluateManagedNumericOp(((VBDoubleValue)lhs).Value, ((VBDoubleValue)rhs).Value)));
+        ExpressionNode expression)
+    {
+        // a result that is not a date - #12/31/9999# + 1 - is an overflow (MS-VBA, recorded in Excel).
+        var serial = EvaluateManagedNumericOp(((VBDoubleValue)lhs).Value, ((VBDoubleValue)rhs).Value);
+        return VBDateType.IsValidSerial(serial)
+            ? RuntimeSemanticsEvaluationResult.Success(new VBDateValue(serial))
+            : OnOverflow(expression, Exceptions.VBRuntimeError_ArithmeticOverflow);
+    }
 
     /// <summary>
     /// 💥 Creates and returns a new <see cref="RuntimeSemanticsEvaluationResult"/> with a <see cref="VBRuntimeErrorId.InvalidProcedureCallOrArgument"/> error.

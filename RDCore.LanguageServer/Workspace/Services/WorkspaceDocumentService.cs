@@ -3,6 +3,8 @@ using OmniSharp.Extensions.LanguageServer.Protocol;
 using OmniSharp.Extensions.LanguageServer.Protocol.Models;
 using RDCore.LanguageServer.Workspace;
 using RDCore.LanguageServer.Workspace.States;
+using RDCore.SDK.Workspace.Forms;
+using System.Collections.Concurrent;
 using System.Text;
 using TextDocumentRange = OmniSharp.Extensions.LanguageServer.Protocol.Models.Range;
 
@@ -97,7 +99,9 @@ internal class WorkspaceDocumentService(IDocumentStateProvider documentStateProv
     System.IO.Abstractions.IPath ioPath,
     System.IO.Abstractions.IFile ioFile) : IWorkspaceDocumentService
 {
-    private readonly Dictionary<TextDocumentIdentifier, WorkspaceDocument> _documents = [];
+    // the workspace's documents are loaded in parallel (WorkspaceService.LoadAsync), while requests the server answers in parallel look them up: a plain
+    // dictionary written and read at once gave those requests an internal error (HexIDE's findings desk #24).
+    private readonly ConcurrentDictionary<TextDocumentIdentifier, WorkspaceDocument> _documents = [];
 
     public string WorkspaceRoot { get; private set; } = string.Empty;
 
@@ -134,7 +138,7 @@ internal class WorkspaceDocumentService(IDocumentStateProvider documentStateProv
                 }
 
                 var content = await ioFile.ReadAllTextAsync(path);
-                var document = new WorkspaceDocument(relativeUri, WorkspaceRoot, content);
+                var document = WithCompanion(new WorkspaceDocument(relativeUri, WorkspaceRoot, content), path);
                 _documents[document.Id] = document;
 
                 documentStateProvider.OnDocumentLoaded(document.Id);
@@ -201,7 +205,7 @@ internal class WorkspaceDocumentService(IDocumentStateProvider documentStateProv
                 logger.LogWarning("⚠️ Workspace document has unsaved changes being discarded.");
             }
 
-            if (_documents.Remove(id))
+            if (_documents.TryRemove(id, out _))
             {
                 documentStateProvider.OnDocumentUnloaded(id);
 
@@ -300,6 +304,31 @@ internal class WorkspaceDocumentService(IDocumentStateProvider documentStateProv
         return false;
     }
 
+    // a form module keeps its controls in a companion file next to it (a UserForm's .frx, which its text names), read with the text: it is the document's
+    // too, and no client has it to send. A companion that cannot be read leaves the form without controls, and the parse of its designer says so.
+    private WorkspaceDocument WithCompanion(WorkspaceDocument document, string path)
+    {
+        try
+        {
+            if (FormDesigner.CompanionOf(document.Text) is { } reference
+                && ioPath.Combine(ioPath.GetDirectoryName(path) ?? string.Empty, reference.FileName) is var companionPath
+                && ioFile.Exists(companionPath))
+            {
+                return document with { Companion = ioFile.ReadAllBytes(companionPath) };
+            }
+        }
+        catch (FormDesignerFormatException exception)
+        {
+            logger.LogWarning("⚠️ The designer block of '{path}' cannot be read: {reason}", path, exception.Message);
+        }
+        catch (IOException exception)
+        {
+            logger.LogWarning(exception, "⚠️ The companion file of '{path}' could not be read.", path);
+        }
+
+        return document;
+    }
+
     public WorkspaceDocument Open(Uri documentUri, string text, int version)
     {
         var id = new TextDocumentIdentifier(documentUri);
@@ -308,10 +337,13 @@ internal class WorkspaceDocumentService(IDocumentStateProvider documentStateProv
             logger.LogWarning("⚠️ Document '{uri}' was opened when it already was (v{existing}); the text the client sent is the document.", documentUri, existing.Version);
         }
 
-        // a document the client opens need not be in the workspace folder: its own path is what addresses it then.
+        // a document the client opens need not be in the workspace folder: its own path is what addresses it then - and so it is when no workspace could
+        // be loaded, which leaves no root to be relative to.
         var path = DocumentUri.From(documentUri).GetFileSystemPath();
-        var relativePath = ioPath.GetRelativePath(WorkspaceRoot, path);
-        var document = new WorkspaceDocument(relativePath.StartsWith("..", StringComparison.Ordinal) || ioPath.IsPathRooted(relativePath) ? path : relativePath, WorkspaceRoot, text, version);
+        var relativePath = WorkspaceRoot.Length == 0 ? path : ioPath.GetRelativePath(WorkspaceRoot, path);
+        var document = WithCompanion(
+            new WorkspaceDocument(relativePath.StartsWith("..", StringComparison.Ordinal) || ioPath.IsPathRooted(relativePath) ? path : relativePath, WorkspaceRoot, text, version),
+            path);
 
         _documents[id] = document;
         documentStateProvider.OnDocumentOpenedByClient(id);
@@ -379,7 +411,7 @@ internal class WorkspaceDocumentService(IDocumentStateProvider documentStateProv
                 // what is on disk is the document again, and it may not be what the client had: a later version, so that whatever was derived from the text of
                 // the client is derived again.
                 var content = await ioFile.ReadAllTextAsync(path);
-                var reloaded = new WorkspaceDocument(document.RelativePath, document.WorkspaceRoot, content, document.Version + 1);
+                var reloaded = WithCompanion(new WorkspaceDocument(document.RelativePath, document.WorkspaceRoot, content, document.Version + 1), path);
                 _documents[id] = reloaded;
                 documentStateProvider.OnDocumentOpenedByClient(id);
                 documentStateProvider.OnDocumentClosed(id);
@@ -394,7 +426,7 @@ internal class WorkspaceDocumentService(IDocumentStateProvider documentStateProv
         }
 
         // not the workspace's, not a file, or not one that can be read: there is no document without the client's text.
-        _documents.Remove(id);
+        _documents.TryRemove(id, out _);
         documentStateProvider.Forget(id);
         logger.LogInformation("📁 Document '{uri}' was closed by the client and is no longer tracked.", documentUri);
         return null;
@@ -416,8 +448,8 @@ internal class WorkspaceDocumentService(IDocumentStateProvider documentStateProv
                 logger.LogTrace("Renaming file '{oldPath}' to '{newPath}'...", relativePath, newRelativePath);
             }
 
-            _documents.Remove(id);
-            _documents[newId] = new WorkspaceDocument(newRelativePath, WorkspaceRoot, document.Text, document.Version) { IsDirty = document.IsDirty };
+            _documents.TryRemove(id, out _);
+            _documents[newId] = new WorkspaceDocument(newRelativePath, WorkspaceRoot, document.Text, document.Version) { IsDirty = document.IsDirty, Companion = document.Companion };
 
             documentStateProvider.OnDocumentUnloaded(id);
             documentStateProvider.OnDocumentLoaded(newId);

@@ -8,6 +8,7 @@ using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Semantics;
+using RDCore.SDK.Workspace.Forms;
 
 namespace RDCore.Symbols;
 
@@ -40,7 +41,13 @@ public sealed class SyntaxTreeSymbolProvider(
     bool withImplicitDeclarations = true,
     ImplicitDeclarationScope implicitScope = ImplicitDeclarationScope.Procedure) : ISymbolProvider
 {
-    public IEnumerable<Symbol> ProvideSymbols() => ProvideDeclaredSymbols().Select(WithUserMemId);
+    public IEnumerable<Symbol> ProvideSymbols() => ProvideDeclaredSymbols().Select(WithUserMemId).Select(WithDescription);
+
+    // what a member's own module says it does (`Attribute Item.VB_Description = "..."`): what a completion list and a signature help show of it.
+    private Symbol WithDescription(Symbol member)
+        => member is VBTypeMemberSymbol typeMember && parseResult.SyntaxTree?.GetMemberDescription(typeMember.Name) is { } description
+            ? typeMember.With(SymbolProperties.DocString, description)
+            : member;
 
     // the id a member's own module gave it (`Attribute Item.VB_UserMemId = 0`): what marks the default member of a class and its enumeration member
     // (`_NewEnum`, -4). It is stamped here, on what the provider yields, so that both of its consumers have it - the resolver that binds the workspace, and the
@@ -148,6 +155,8 @@ public sealed class SyntaxTreeSymbolProvider(
             }
         }
 
+        moduleScopeNames.UnionWith(parseResult.Designer?.DeclaredControls().Select(control => control.Name) ?? []);
+
         foreach (var child in module.Children)
         {
             switch (child)
@@ -172,7 +181,43 @@ public sealed class SyntaxTreeSymbolProvider(
                     break;
             }
         }
+
+        // a form's controls are members of its class that its designer declares, not its code. A name the code declares too is a compile error of the code's
+        // declaration (DeclarationStaticSemanticsEvaluator.CheckDesigner); the code's declaration is the symbol of that name, so that each name has one. The
+        // designer declares the form's own members alongside them: the VBA form object's and the Microsoft Forms UserForm's (SymbolBuilder.BuildFormMembers).
+        if (parseResult.Designer is not { } designer)
+        {
+            yield break;
+        }
+
+        var taken = DeclaredNamesOf(module);
+        foreach (var control in designer.DeclaredControls())
+        {
+            if (taken.Add(control.Name))
+            {
+                yield return builder.BuildDesignerControl(control, designer.Name);
+            }
+        }
+
+        // a VB6 form is VB6's, whose runtime is out of scope: only a UserForm has the VBA form object
+        if (designer.Kind == FormDesignerKind.MSForms)
+        {
+            foreach (var member in builder.BuildFormMembers(designer.Name, taken))
+            {
+                yield return member;
+            }
+        }
     }
+
+    private static HashSet<string> DeclaredNamesOf(ModuleNode module)
+        => new(module.Children.Select(child => child switch
+        {
+            VariableDeclarationNode variable => variable.Name,
+            ConstantDeclarationNode constant => constant.Name,
+            ExternalMemberDeclarationNode external => external.Name,
+            MemberDeclarationNode member => member.Name,
+            _ => string.Empty,
+        }).Where(name => name.Length > 0), StringComparer.OrdinalIgnoreCase);
 
     private static IEnumerable<Symbol> FromMember(
         SymbolBuilder builder, MemberDeclarationNode member, IReadOnlySet<string> moduleScopeNames,

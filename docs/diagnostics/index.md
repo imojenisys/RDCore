@@ -32,6 +32,19 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |---|---|
 |[VBC00001](vbc00001.md)|Syntax error — a token the grammar cannot place|
 |[VBC00042](vbc00042.md)|Numeric literal overflow — a literal outside the range of its type|
+|[VBC00043](vbc00043.md)|Next without For — a `Next` statement ends no `For` loop|
+|[VBC00044](vbc00044.md)|For without Next — a `For` loop is not ended before its procedure is|
+|[VBC00045](vbc00045.md)|Loop without Do — a `Loop` statement ends no `Do` loop|
+|[VBC00046](vbc00046.md)|Do without Loop — a `Do` loop is not ended before its procedure is|
+|[VBC00047](vbc00047.md)|End If without block If — an `End If` statement ends no block `If`|
+|[VBC00048](vbc00048.md)|Block If without End If — a block `If` is not ended before its procedure is|
+|[VBC00049](vbc00049.md)|Else without If — an `Else` statement belongs to no block `If`|
+|[VBC00050](vbc00050.md)|Case without Select Case — a `Case` clause belongs to no `Select Case` statement|
+|[VBC00051](vbc00051.md)|Select Case without End Select — a `Select Case` statement is not ended before its procedure is|
+|[VBC00052](vbc00052.md)|End With without With — an `End With` statement ends no `With` block|
+|[VBC00053](vbc00053.md)|Expected End With — a `With` block is not ended before its procedure is|
+|[VBC00054](vbc00054.md)|Invalid outside procedure — a statement that runs is written in the declarations section of a module|
+|[VBC00055](vbc00055.md)|Only comments may appear after End Sub, End Function, or End Property — a declaration or a statement is written after the first procedure of a module|
 
 ### Semantic compilation errors
 
@@ -43,6 +56,7 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[VBC09304](vbc09304.md)|Invalid use of object — an object is used where a value of another kind is required|
 |[VBC09305](vbc09305.md)|Invalid ParamArray use — a ParamArray passed to a ByRef parameter of your own code|
 |[VBC09306](vbc09306.md)|Invalid ReDim — a ReDim re-dimensions a member of an object declared As Object|
+|[VBC09307](vbc09307.md)|Expected array — LBound or UBound is asked the bounds of a variable that can never hold an array|
 |[VBC09309](vbc09309.md)|Label not defined — a jump names a line label or line number the procedure does not define|
 |[VBC09310](vbc09310.md)|Type mismatch — a value is of a type that cannot be let-coerced to the type it is used as|
 |[VBC09311](vbc09311.md)|User-defined type not defined — a declared type is a name that does not resolve to a type|
@@ -61,7 +75,7 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[VBC09324](vbc09324.md)|Invalid type for WithEvents variable — not a specific class with events, or the class of its own module|
 |[VBC09325](vbc09325.md)|Invalid event name — an Event declaration whose name has an underscore|
 |[VBC09326](vbc09326.md)|Invalid event handler — a procedure named for an event is not a subroutine with a compatible parameter list|
-|[VBC09327](vbc09327.md)|ByVal argument not allowed here — a ByVal argument in an argument list that is not an external procedure's|
+|[VBC09327](vbc09327.md)|ByVal argument not allowed here — no longer raised: a ByVal argument is the error MS-VBA reports (RD-VBAL §5.6.13.1)|
 |[VBC09328](vbc09328.md)|Invalid Implements directive — the class itself, a repeat, an underscore in a public member, or overlapping interface prefixes|
 |[VBC09329](vbc09329.md)|Object module needs to implement all members of its interface — a public member of the interface has no implemented name declaration|
 |[VBC09330](vbc09330.md)|Invalid implemented member — an implemented name declaration of another kind, parameters or type than its member|
@@ -74,6 +88,46 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[VBC09337](vbc09337.md)|Not allowed as a Public member of an object module — a class exposes a constant, fixed-length string, array, user-defined type or Declare|
 |[VBC09338](vbc09338.md)|Cannot define a Public user-defined type within an object module — a class module declares a public Type|
 |[VBC09339](vbc09339.md)|Argument not optional — an object whose default member takes an argument is where a value is expected|
+|[VBC09340](vbc09340.md)|Expected Function or variable — a subroutine is used where a value is expected|
+|[VBC09341](vbc09341.md)|Can't assign to read-only property — a property that can only be read is assigned with `Let`|
+|[VBC09342](vbc09342.md)|Wrong number of arguments or invalid property assignment — a procedure is called with arguments it does not declare|
+|[VBC09343](vbc09343.md)|LSet allowed only on strings and user-defined types — the target of an `LSet` statement is neither a `String` nor a user-defined type|
+|[VBC09344](vbc09344.md)|RSet allowed only on strings — the target of an `RSet` statement is not a `String`|
+|[VBC09345](vbc09345.md)|Invalid use of property — a property that can only be read is assigned with `Set`|
+|[VBC09346](vbc09346.md)|Assignment to constant not permitted — a constant is assigned|
+|[VBC09347](vbc09347.md)|Object required — a `Set` statement assigns to a variable that cannot hold an object|
+|[VBC09348](vbc09348.md)|Named argument already specified — a call gives the same parameter two arguments|
+|[VBC09349](vbc09349.md)|Named argument not found — a call names a parameter the procedure does not declare|
+|[VBC09350](vbc09350.md)|Constant expression required — the value of a constant reads something that has no value until the code runs|
+|[VBC09351](vbc09351.md)|Invalid data type for constant — the value of a constant is an object|
+|[VBC09352](vbc09352.md)|Overflow — the value of a constant does not fit its type|
+|[VBC09353](vbc09353.md)|Division by zero — the value of a constant divides by zero|
+|[VBC09354](vbc09354.md)|Invalid qualifier — a member is accessed on a value that has no members|
+|[VBC09355](vbc09355.md)|Function call on left-hand side of assignment must return Variant or Object — a call of a function is assigned|
+|[VBC09356](vbc09356.md)|Wrong number of dimensions — an element of an array is selected by the wrong number of subscripts|
+|[VBC09357](vbc09357.md)|Array already dimensioned — an array declared with fixed dimensions is given others|
+|[VBC09358](vbc09358.md)|For control variable already in use — a loop is controlled by the variable of a loop it is nested in|
+|[VBC09359](vbc09359.md)|Invalid Next control variable reference — a `Next` statement names a variable that is not the control variable of its loop|
+|[VBC09360](vbc09360.md)|Can't assign to array — an array declared with fixed dimensions is assigned an array|
+|[VBC09361](vbc09361.md)|ByRef argument type mismatch — a variable is passed to a `ByRef` parameter of another type|
+|[VBC09362](vbc09362.md)|Type mismatch: array or user-defined type expected — an array is passed to a parameter declared as an array of another type|
+|[VBC09363](vbc09363.md)|Expected variable or procedure, not module — the name of a standard module is used by itself, as a value or a procedure|
+|[VBC09364](vbc09364.md)|Expected Sub, Function, or Property — a call statement names a variable or a constant of the procedure, not a procedure|
+|[VBC09365](vbc09365.md)|Range has no values — an array is declared with an upper bound less than its lower bound|
+|[VBC09366](vbc09366.md)|A module is not a valid type — a declaration is typed with the name of a standard module|
+|[VBC09367](vbc09367.md)|Invalid use of AddressOf operator — an `AddressOf` expression names a method of a class module, or of an object|
+|[VBC09368](vbc09368.md)|Invalid use of New keyword — a variable is declared `As New` of a type that is no class, of a library's class that cannot be created, or `WithEvents`|
+|[VBC09369](vbc09369.md)|Can't change data types of array elements — a `ReDim` gives an array elements of another type than it is declared with|
+|[VBC09370](vbc09370.md)|Expected procedure, not variable — a call statement names a variable or a constant of a module, not a procedure|
+|[VBC09371](vbc09371.md)|Array argument must be ByRef — an argument of an array parameter is written `ByVal`|
+|[VBC09372](vbc09372.md)|Member already exists in an object module from which this object module derives — the code of a form declares something with the name of one of its controls|
+|[VBC09373](vbc09373.md)|Automation type not supported in Visual Basic — a type is written with the name of a library's module, `Strings`|
+|[VBC09374](vbc09374.md)|Expected user-defined type, not project — a type is written with the name of a project or a library, `VBA`|
+|[VBC09375](vbc09375.md)|Invalid length for fixed-length string — a `String * n` is declared with a length under 1 or past 65526|
+|[VBC09376](vbc09376.md)|Expected variable or procedure, not project — a project, `VBA`, is written where a value is|
+|[VBC09377](vbc09377.md)|Expected variable or procedure, not enum type — an enumeration, `Color`, is written where a value is|
+|[VBC09378](vbc09378.md)|With object must be user-defined type, Object, or Variant — a `With` block is about a value that has no members|
+|[VBC09379](vbc09379.md)|For Each may only iterate over a collection object or an array — a `For Each` loop iterates a value that has no elements|
 
 ### Runtime errors
 
@@ -126,6 +180,7 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[VBR00321](vbr00321.md)|Invalid file format — a file's format is not valid|
 |[VBR00322](vbr00322.md)|Can't create necessary temporary file — a temporary file the operation needs cannot be created|
 |[VBR00325](vbr00325.md)|Invalid format in resource file — a resource file's format is not valid|
+|[VBR00361](vbr00361.md)|Can't load or unload this object — `Load` or `Unload` is given an object that is no form|
 |[VBR00380](vbr00380.md)|Invalid property value — a property is given a value it does not accept|
 |[VBR00381](vbr00381.md)|Invalid property array index — a property array index is not valid|
 |[VBR00382](vbr00382.md)|Set not supported at runtime — a property cannot be set at run time|
@@ -144,6 +199,7 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[VBR00440](vbr00440.md)|Automation error — an Automation operation failed|
 |[VBR00442](vbr00442.md)|Connection to type library or object library for remote process has been lost. Press OK for dialog to remove reference. — the connection to a type library or object library is lost|
 |[VBR00443](vbr00443.md)|Automation object does not have a default value — an Automation object has no default value|
+|[VBR00444](vbr00444.md)|Method not applicable in this context — a form's `Controls.Remove` is given a control its designer declared|
 |[VBR00445](vbr00445.md)|Object doesn't support this action — an object does not support the action|
 |[VBR00446](vbr00446.md)|Object doesn't support named arguments — an object does not support named arguments|
 |[VBR00447](vbr00447.md)|Object doesn't support current locale setting — an object does not support the current locale setting|
@@ -180,6 +236,7 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[RDC00106](rdc00106.md)|Implicit Variant declaration — a variable or parameter declared without a type|
 |[RDC00107](rdc00107.md)|Implicit Variant return type — a function declared without a return type|
 |[RDC00112](rdc00112.md)|Implicit narrowing conversion — a value converted implicitly into a type that holds less of it|
+|[RDC00114](rdc00114.md)|Implicit array declaration — a `ReDim` that declares the array it re-dimensions|
 |[RDC00201](rdc00201.md)|Integer data type declaration — an As Integer clause|
 |[RDC00202](rdc00202.md)|Module-scope Dim declaration — a module-level variable declared with Dim|
 |[RDC00203](rdc00203.md)|Multiline parameter declaration — one parameter declared over several lines|
@@ -194,12 +251,26 @@ token, which literal, which type) are carried in the diagnostic's verbose detail
 |[RDC00307](rdc00307.md)|Obsolete type hint — a name written with a type-declaration character|
 |[RDC00308](rdc00308.md)|Obsolete While…Wend — a loop written While…Wend|
 |[RDC00309](rdc00309.md)|Obsolete On Local Error statement — an error handler set with On Local Error|
+|[RDC00310](rdc00310.md)|Redundant ByVal argument — an argument written `ByVal` for a parameter that is `ByVal` already|
+|[RDC00311](rdc00311.md)|Early binding opportunity — `CreateObject` of a class that a referenced library declares|
 |[RDC00405](rdc00405.md)|Implementations should be private — a Public implementation of an interface member or handler of an event|
+|[RDC00407](rdc00407.md)|Unmatched event handler — a handler of a form control's event that does not match the event, and that nothing calls|
 |[RDC01001](rdc01001.md)|Use meaningful identifier names — a name too short, ending with a digit, or without a vowel|
 |[RDC01002](rdc01002.md)|Hungarian notation — a name that begins with a prefix that states its type|
 |[RDC11005](rdc11005.md)|Bitwise operator — a logical operator given numbers, which works on their bits|
 |[RDC11006](rdc11006.md)|Ambiguous concatenation — two String values joined with +|
 |[RDC11011](rdc11011.md)|Variant number compared with a Variant String — the number is less, whatever the values|
+|[RDC11012](rdc11012.md)|Set of a call that always fails — a function whose default member has no Property Set, as the target of a Set|
+|[RDC11013](rdc11013.md)|Variant compared with a String as text — MS-VBA compares their text, where MS-VBAL specifies a type mismatch|
+|[RDC11014](rdc11014.md)|Case Is compared in the selector's type — MS-VBA converts the value first, where MS-VBAL states the comparison as an expression|
+|[RDC11015](rdc11015.md)|Object with no default member used as a value — MS-VBA raises 438 (91 for Nothing), where MS-VBAL specifies a compile error|
+|[RDC11016](rdc11016.md)|Empty or Null assigned to an array — compiles, and raises a type mismatch whenever it runs|
+|[RDC11017](rdc11017.md)|Like pattern MS-VBA matches otherwise than specified — a `[]`, a `[!]`, or an invalid list|
+|[RDC11018](rdc11018.md)|Integer arithmetic of Abs, Int or Fix that can overflow — MS-VBA types the call as its argument, where MS-VBAL declares a Variant|
+|[RDC11019](rdc11019.md)|Type character ignored on a function of the library — `Len$`, `CVar$`: MS-VBAL makes the name invalid, MS-VBA ignores the character|
+|[RDC11020](rdc11020.md)|Variant String that is no number, compared with a number — MS-VBA ranks the String above it, where MS-VBAL specifies a type mismatch|
+|[RDC11021](rdc11021.md)|Constant of a procedure valued with Len — MS-VBA accepts it there, and refuses it in a module|
+|[RDC11022](rdc11022.md)|ReDim of a variable declared implicitly — the specification and VB6 re-dimension it, MS-VBA refuses it (Invalid ReDim)|
 
 ---
 > ⏭️ [**VBC00001** Syntax error](vbc00001.md)

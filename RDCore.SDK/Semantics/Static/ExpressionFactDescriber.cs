@@ -38,7 +38,8 @@ internal static class ExpressionFactDescriber
                 var symbol = context.Resolver.ResolveValue(name, ScopeKind.Local, context.Scope.Uri).Symbol;
                 return symbol is null
                     ? new(expression.Identity, expression.Location, type, ExpressionClassification.Unknown, null, 0, error)
-                    : new(expression.Identity, expression.Location, type, ClassificationOf(symbol), symbol.SemanticId, FlagsOf(symbol, name.IdentifierName), error);
+                    : new(expression.Identity, expression.Location, type, ClassificationOf(symbol), symbol.SemanticId, FlagsOf(symbol, name.IdentifierName)
+                        | (Expressions.SimpleNameExpressionStaticSemantics.IgnoresTypeCharacter(name, symbol) ? ValueExpressionSemanticFlags.IgnoredTypeCharacter : 0), error);
             }
 
             case NewExpressionNode:
@@ -66,13 +67,13 @@ internal static class ExpressionFactDescriber
 
         if (ExpressionStaticSemanticsEvaluator.ProcedureNamedBy(context, index.Callee) is { } procedure)
         {
-            return Fact(procedure, ValueExpressionSemanticFlags.ProcedureCall);
+            return Fact(procedure, ValueExpressionSemanticFlags.ProcedureCall) with { Creates = ObjectCreationFacts.Of(context, index, procedure) };
         }
 
         // an object that is indexed is a call of its default member, and an object of no particular class has one that is found out when it runs.
         if (facts.TryGet(index.Callee.Identity, out var callee) && callee.DeclaredType is { } calleeType)
         {
-            if (calleeType is VBClassType { DefaultMember: { } defaultMember })
+            if (calleeType is VBClassType declaredClass && CurrentTypes.Of(context, declaredClass) is { DefaultMember: { } defaultMember })
             {
                 return Fact(defaultMember, ValueExpressionSemanticFlags.DefaultMember | ValueExpressionSemanticFlags.ProcedureCall);
             }
@@ -109,8 +110,9 @@ internal static class ExpressionFactDescriber
             ? context.EnclosingWithTargetType
             : facts.TryGet(owner.Identity, out var ownerFact) ? ownerFact.DeclaredType : null;
 
-        if (ownerType is IVBMemberOwnerType { Members: var members }
-            && members.FirstOrDefault(member => string.Equals(member.Name, memberName, StringComparison.OrdinalIgnoreCase)) is { } found)
+        // the members of the owner's type as the composition has it now, as the member access itself reads them.
+        if (ownerType is IVBMemberOwnerType memberOwner
+            && Expressions.MemberAccessExpressionStaticSemantics.CurrentMembersOf(context, memberOwner).FirstOrDefault(member => string.Equals(member.Name, memberName, StringComparison.OrdinalIgnoreCase)) is { } found)
         {
             return Fact(ClassificationOf(found), found, flags | FlagsOf(found, memberName));
         }

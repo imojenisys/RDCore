@@ -26,37 +26,45 @@ or `Object`, which is so of a constant, or is classified as a function that is n
 declared type is not a class, `Object` or `Variant`. Assigning to a constant - one the standard library declares
 (`vbCrLf`, `vbSunday`), a `Const` of a module or of a procedure, or a member of an `Enum`, by its name, qualified by its
 project or its module, or qualified by the `Enum` that declares it, a library's or the workspace's
-(`VbDayOfWeek.vbSunday`, `Colour.Red`) - or to a function of the library whose declared type is not a class, `Object`
-or `Variant` (`Left$ = "x"`, a `String`) is
-[`VBC09333`](../diagnostics/vbc09333.md) (`VariableRequired`), and the module does not load. So is a constant or a
-function of the library, whatever its declared type, as the target of a `Set` statement, which must be a variable, a
-property or an unbound member (**MS-VBAL §5.4.3.9**), and as the target of an `LSet` or an `RSet` statement or the
-control variable of a `For` or a `For Each` loop, each of which must be a variable (**MS-VBAL §5.6.16.6**; see
+(`VbDayOfWeek.vbSunday`, `Colour.Red`) - is [`VBC09346`](../diagnostics/vbc09346.md) (`AssignmentToConstantNotPermitted`),
+and the module does not load. A constant or a function of the library is [`VBC09333`](../diagnostics/vbc09333.md)
+(`VariableRequired`) as the target of an `LSet` or an `RSet` statement or the control variable of a `For` or a
+`For Each` loop, each of which must be a variable (**MS-VBAL §5.6.16.6**; see
 [**RD-VBAL §5.6.16.6** Bound Variable Expressions](rd-vbal.5.6.16.constrained-expressions.md#56166-bound-variable-expressions)):
-`Set Left = Nothing` and `LSet Err = "x"` are refused, though `Left` returns a `Variant` and `Err` an object.
+`LSet Err = "x"` is refused.
 
-A function of the library whose declared type is a class, `Object` or `Variant` is not refused as the target of a `Let`
-statement, since **MS-VBAL §5.4.3.8** admits it: it assigns the value to an object's default member (`Err = 5`), and
-has the statement raise error `450` when it runs for a `Variant` (`Left = "x"`, `Array = 5`). A function of the workspace
-assigned inside its own body is its result, and is not refused; nor is a property, nor a variable named like a member of
-the library. A name written with a type-declaration character is what its identifier names (**MS-VBAL §5.6.10**):
-after `Dim Left$`, or inside a `Function Left$`, `Left$ = "x"` is not refused, and assigns the variable or the result
-when it runs.
+A function named as the target outside its own body - one of the library, of the workspace, or a `Declare`, by its name
+or qualified by its module - is a call of it, and so is a property of a module that has no `Property Let`, the
+library's (`Now`, `Timer`) as the workspace's: what it returns is assigned through its default member. As in MS-VBA
+(recorded in Excel), what cannot be called so is a compile error, and the module does not load:
 
-> [!NOTE]
-> **Not implemented.** A function of the library whose declared type is `Variant`, let-assigned to (`Left = "x"`), does
-> not raise error `450` when it runs: the statement fails in the host rather than raising a run-time error, and
-> qualified by its module (`Strings.Left = "x"`) it stops as not yet implemented.
+|Target|Error|Example|
+|---|---|---|
+|A function whose declared type is neither a `Variant` nor an object|[`VBC09355`](../diagnostics/vbc09355.md) _Function call on left-hand side of assignment must return Variant or Object_ - before what its parameters are|`Left$ = "x"`, `F = 6` of a `Function F() As Long`, a `Declare`d function|
+|A property of a module of such a type|[`VBC09341`](../diagnostics/vbc09341.md) _Can't assign to read-only property_|`Timer = 5`|
+|One that takes an argument|[`VBC09339`](../diagnostics/vbc09339.md) _Argument not optional_|`Left = "x"`, `Strings.Left = "x"`, `Environ = "x"`|
 
-> [!NOTE]
-> **Not implemented.** A function of the library that returns an object, let-assigned to (`Err = 5`), does not
-> assign the object's default member yet: the statement raises error `438`.
+An array is assigned an array, or a `Variant` that may hold one (and a `Byte()` a `String`, **MS-VBAL §5.5.1.2.6**). A fixed-size array is assigned nothing,
+and a resizable array - declared (`Dim a() As Long`), or implicitly by a `ReDim` - no number, `String` (but a `Byte()`'s), `Boolean` or `Date`: both are
+[`VBC09360`](../diagnostics/vbc09360.md) _Can't assign to array_, as in MS-VBA (recorded in Excel), before what the value would be Let-coerced to: `a = 5` of a
+`Dim a() As Variant` is refused. A `Variant` that holds no array is error 13 when the statement runs.
 
-> [!NOTE]
-> **Not implemented.** A function of the workspace or a `Declare`d function assigned from outside its own body
-> (`F = 6` in another procedure) is not refused, though **MS-VBAL §5.4.3.8** makes the statement invalid when its
-> declared type is not a class, `Object` or `Variant`. It does not run: it fails in the host rather than raising a
-> run-time error.
+What passes is called when the statement runs, given the arguments written after it, if any (`G() = 6`,
+`Left("ab", 1) = "x"`): what it returns is assigned through its default member (`Err = 5` assigns `Err.Number`), and
+what returns no object is error `424` (`Command = "x"`, `Now = 5`, a `Variant` function of the workspace). A function of
+the workspace assigned inside its own body is its result; a variable named like a member of the library is the
+variable. A name written with a type-declaration character is what its identifier names (**MS-VBAL §5.6.10**): after
+`Dim Left$`, or inside a `Function Left$`, `Left$ = "x"` is not refused, and assigns the variable or the result when it
+runs.
+
+A member of an object is held to the same rules, early-bound, as in MS-VBA (recorded in Excel):
+
+|Target|Error|Example|
+|---|---|---|
+|A function of an object whose declared type is neither a `Variant` nor an object, with no argument|[`VBC09355`](../diagnostics/vbc09355.md) _Function call on left-hand side of assignment must return Variant or Object_|`c.Count = 3` of a `Collection`|
+|A `Sub` of an object, or of a module named through it, with arguments or without|[`VBC09340`](../diagnostics/vbc09340.md) _Expected Function or variable_|`Err.Clear = 1`, `c.Remove(1) = 5`, `Module1.DoIt = 1`|
+
+A `Sub` named by its bare name compiles in MS-VBA, and is not refused.
 
 ## Runtime Semantics
 
@@ -101,7 +109,10 @@ A Let-assignment to a bare reference to a procedure's own name, from within its 
 raises error 91. The member is the `Property Let` declared for it (an indexed one takes the index arguments before the value) or else a
 public variable of the class, found through the declared interface when `obj` is declared as one its object's class implements
 ([**RD-VBAL §5.3.1.9**](rd-vbal.5.3.1.9.implemented-name-declarations.md)). A public variable is assigned by Let-coercing the value to
-its declared type; with no such member, error 438 is raised. A `With` block assigns the same way.
+its declared type; with no such member, error 438 is raised. A `With` block assigns the same way. A member of an object of a standard-library class
+reached late-bound that has no `Property Let` is assigned as MS-VBA's `IDispatch` assigns it: 450 for a read-only property, 438 for a method, and a
+member written with arguments invoked, to assign the default member of what it returns
+([**RD-VBAL §6.0** Late-Bound Calls](rd-vbal.6.0.standard-library.md#late-bound-calls)).
 
 ### Elements of an array
 
@@ -109,6 +120,15 @@ its declared type; with no such member, error 438 is raised. A `With` block assi
 (`LetAssignmentEvaluator.AssignArrayElement`), assigns an element in place: the value is Let-coerced to the element type of the array and
 written to the element's own cell, and the array is never copied. A subscript outside the bounds of the array is error 9. `Set a(i) = obj` does
 the same with Set-coercion, and lets go of the object the element held and takes a reference to the one it is given.
+
+What is indexed can be an object - or a `Variant` holding one - rather than an array: `c(1) = value` assigns the object's default member with the
+arguments, as `c.Item(1) = value` does, and `Set c(1) = obj` its `Property Set` ([**RD-VBAL §5.6.13** Object
+Callee](rd-vbal.5.6.13.index-expressions.md#object-callee)).
+
+A member of an object that is a function - or a `Property Get` that takes no argument, given arguments that index what it returns - has no
+`Property Let` to assign through: it is called, with the arguments written after it, and what it returns is assigned through its default member, as
+a function of a module is. `c(1) = 5` and `c.Item(1) = 5`, with `Dim c As Collection` holding a number, are error 424; an item that is an object is
+assigned its own default member, and one that takes an argument is error 438.
 
 A `ReDim` of an array gives it the element type of the variable's declaration (`Dim a() As Long`), including a variable of an object.
 
@@ -122,6 +142,28 @@ assigns one. See [**RD-VBAL §5.6.12** Member Access Expressions](rd-vbal.5.6.12
 
 VBA copies a UDT on assignment. A copy of a UDT value gets a field store of its own, deep through a nested UDT;
 see [**RD-VBAL §2.5.2.1.3** User-Defined Type (UDT) Values](rd-vbal.2.5.2.1.3.udt-values.md).
+
+### A floating-point value that overflowed
+
+A `Single` or `Double` operation that raises 6 or 11 still has the value IEEE-754 arithmetic gave it: an infinity,
+or a NaN ([**RD-VBAL §5.6.9.3**](rd-vbal.5.6.9.3.arithmetic-operators.md)). A `Let` statement whose expression is such
+an operation assigns that value to its target, then raises the error, when the target is declared `Single` or
+`Double`. So does a `Double` past the range of a `Single`, assigned to one: the `Single` is infinite. A target of any
+other type, a `Variant` included, is left as it was. `^` raises before anything is assigned.
+
+```vb
+Dim s As Single, z As Single, v As Variant
+s = 3E+38
+On Error Resume Next
+s = s * 10        ' error 6; s is inf
+v = 5: v = s * 10 ' error 6; v is still 5
+s = 1 / z         ' error 11; s is inf
+s = z / z         ' error 6; s is -nan(ind)
+```
+
+MS-VBAL §5.6.9.3.5 states this for a division of two operands declared `Double` only. MS-VBA does it for every
+floating-point operation, and RD-VBA follows MS-VBA. As text, an infinity is `inf` or `-inf`, and a NaN is
+`-nan(ind)`: MS-VBAL §5.5.1.2.4 has `1.#INF` and `-1.#IND`, which MS-VBA doesn't show.
 
 ### Other statements that Let-assign
 

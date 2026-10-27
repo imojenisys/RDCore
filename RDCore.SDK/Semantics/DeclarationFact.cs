@@ -1,5 +1,6 @@
 using RDCore.SDK.Model;
 using RDCore.SDK.Model.Source;
+using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 
 namespace RDCore.SDK.Semantics;
@@ -78,6 +79,13 @@ public enum DeclarationRole
     /// It handles an event of a <c>WithEvents</c> variable of the class module, by being named <c>VariableName_EventName</c> (<strong>MS-VBAL §5.3.1.8</strong>).
     /// </summary>
     EventHandler,
+
+    /// <summary>
+    /// It is named as the handler of an event of one of a form's controls (<c>TextBox1_Change</c>), and does not match the event: it is not a subroutine, or
+    /// its parameter list is not compatible with the event's. MS-VBA compiles it, and the event never calls it: it is dead code, unless the module's own code
+    /// calls it as the procedure it also is.
+    /// </summary>
+    UnmatchedEventHandler,
 }
 
 /// <summary>
@@ -112,4 +120,10 @@ public sealed record class DeclarationFact(
     /// module whose interfaces and event sources the pass resolved; <see cref="DeclarationRole.None"/> is not a statement that it has none otherwise.
     /// </summary>
     public DeclarationRole Role { get; init; }
+
+    /// <summary>
+    /// How a local variable came to be declared: a <c>Dim</c> or a <c>Static</c> statement, a <c>ReDim</c> statement whose name matched nothing
+    /// (<strong>MS-VBAL §5.4.3.3</strong>), or a reference to a name that matched nothing (§5.6.10). <see langword="null"/> for any other declaration.
+    /// </summary>
+    public LocalDeclarationKind? DeclaredBy { get; init; }
 }

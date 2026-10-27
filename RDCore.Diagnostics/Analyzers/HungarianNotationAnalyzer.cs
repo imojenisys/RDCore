@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using OmniSharp.Extensions.LanguageServer.Protocol.Models;
 using RDCore.Diagnostics.Model;
+using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.Diagnostics;
 
@@ -32,16 +33,24 @@ internal sealed class HungarianNotationAnalyzer(IOptions<DiagnosticsOptions> opt
         "arr", "bln", "byt", "col", "cur", "dbl", "dic", "dtm", "int", "lng", "lst", "obj", "rng", "rs", "sng", "str", "var", "vnt", "wb", "ws",
     ];
 
-    private readonly HashSet<string> _allowed = new(options.Value.HungarianNotation.AllowedNames ?? [], StringComparer.OrdinalIgnoreCase);
-
+    // the names are read when a module is analyzed: they are a live setting, which the client can change while the extension runs.
     protected override IEnumerable<AnalyzerFinding> Analyze(ModuleNode module)
+    {
+        var allowed = new HashSet<string>(options.Value.HungarianNotation.AllowedNames ?? [], StringComparer.OrdinalIgnoreCase);
+        return Analyze(module, allowed);
+    }
+
+    private static IEnumerable<AnalyzerFinding> Analyze(ModuleNode module, HashSet<string> allowed)
         => DeclaredNames.In(module)
-            .Where(declared => !_allowed.Contains(declared.Name) && IsHungarian(declared.Name))
+            .Where(declared => !allowed.Contains(declared.Name) && IsHungarian(declared.Name))
             .Select(declared => new AnalyzerFinding(
                 RDCoreDiagnosticId.HungarianNotation,
                 declared.Range,
                 DiagnosticSeverity.Information,
-                Say(RDCoreDiagnosticsResources.HungarianNotation_Message, declared.Name)));
+                Say(RDCoreDiagnosticsResources.HungarianNotation_Message, declared.Name))
+            {
+                Fixes = new DiagnosticFixes { Rename = new RenameFix { Suggestions = WithoutPrefix(declared.Name) is { } suggested ? [suggested] : [] } },
+            });
 
     /// <summary>
     /// Whether a name begins with a prefix that states a type, and a new word follows it.
@@ -49,4 +58,15 @@ internal sealed class HungarianNotationAnalyzer(IOptions<DiagnosticsOptions> opt
     /// <param name="name">A name.</param>
     public static bool IsHungarian(string name)
         => Prefixes.Any(prefix => name.Length > prefix.Length && name.StartsWith(prefix, StringComparison.Ordinal) && char.IsUpper(name[prefix.Length]));
+
+    /// <summary>
+    /// The name without the prefix that states its type, which is the word that follows it: <c>Name</c> for <c>strName</c>; <see langword="null"/> when what
+    /// follows is no name code can declare (<c>strNext</c>), or the name has no such prefix.
+    /// </summary>
+    /// <param name="name">A name.</param>
+    public static string? WithoutPrefix(string name)
+        => Prefixes
+            .Where(prefix => name.Length > prefix.Length && name.StartsWith(prefix, StringComparison.Ordinal) && char.IsUpper(name[prefix.Length]))
+            .Select(prefix => name[prefix.Length..])
+            .FirstOrDefault(rest => VBIdentifier.Validate(rest) == VBIdentifierValidity.Valid);
 }

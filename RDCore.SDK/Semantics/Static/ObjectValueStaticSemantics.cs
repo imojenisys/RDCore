@@ -12,6 +12,7 @@ using RDCore.SDK.Model.Types.Abstract;
 using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Runtime.Abstract.Execution;
+using RDCore.SDK.Semantics.Flags;
 using RDCore.SDK.Semantics.Static.Abstract;
 using System.Collections.Immutable;
 
@@ -38,8 +39,9 @@ namespace RDCore.SDK.Semantics.Static;
 /// (<see cref="ValueDestination.StringOrVariable"/>).</item>
 /// </list>
 /// <para>
-/// 👉 An object of a class that has no default member, where a value of a declared type is expected, is <see cref="VBCompileErrorId.TypeMismatch"/> too: MS-VBAL
-/// §5.5.1.1 makes it statically invalid. MS-VBA compiles it, and raises error 438 when it runs, which the error says (<see cref="NoDefaultMember"/>).
+/// 👉 An object of a class that has no default member, where a value of a declared type is expected, is statically invalid by MS-VBAL §5.5.1.1. MS-VBA compiles
+/// it, and raises error 438 when it runs (91 when the object is <c>Nothing</c>): RD-VBA does the same (<strong>RD-VBAL §5.5.1.1</strong>), and states it
+/// (<see cref="MarkNoDefaultMember"/>).
 /// </para>
 /// </remarks>
 public static class ObjectValueStaticSemantics
@@ -47,15 +49,16 @@ public static class ObjectValueStaticSemantics
     /// <summary>
     /// The declared type of the value <paramref name="expression"/> stands for where a value is expected, or the compile error that it has none.
     /// </summary>
+    /// <param name="context">The compile-time context: the class of an object is read from it as the composition has it now (see <see cref="CurrentTypes"/>).</param>
     /// <param name="expression">The expression whose value is expected.</param>
     /// <param name="declaredType">The declared type of <paramref name="expression"/>.</param>
     /// <param name="destination">What the place that expects a value expects of an object.</param>
     /// <returns>
     /// <paramref name="declaredType"/> for anything that is not an object of a class; the declared type of the class's default member for one that has a
-    /// default member; <see cref="VBObjectType"/> - late-bound - where a value of any type is expected, for one that has none or whose default member returns
-    /// an object; or the error.
+    /// default member; <see cref="VBObjectType"/> - late-bound - for one that has none, and where a value of any type is expected, for one whose default
+    /// member returns an object; or the error.
     /// </returns>
-    public static StaticSemanticsEvaluationResult ValueOf(ExpressionNode expression, VBType declaredType, ValueDestination destination)
+    public static StaticSemanticsEvaluationResult ValueOf(StaticEvaluationContext context, ExpressionNode expression, VBType declaredType, ValueDestination destination)
     {
         if (IsNothingLiteral(expression))
         {
@@ -63,17 +66,28 @@ public static class ObjectValueStaticSemantics
                 Exceptions.VBCompileError_NothingIsNotAValue_Verbose));
         }
 
-        if (declaredType is not VBClassType classType)
+        // MS-VBAL §5.6.2.1: a subroutine has no value to evaluate to (MS-VBA: "Expected Function or variable", Excel-verified).
+        if (declaredType is VBVoidType)
+        {
+            return StaticSemanticsEvaluationResult.Error(VBCompileErrorInfo.For(VBCompileErrorId.ExpectedFunctionOrVariable, expression.Location, NameOf(expression) ?? string.Empty));
+        }
+
+        if (declaredType is not VBClassType declaredClass)
         {
             return StaticSemanticsEvaluationResult.Success(declaredType);
         }
 
+        var classType = CurrentTypes.Of(context, declaredClass);
         if (classType.DefaultMember is not { } defaultMember)
         {
-            // MS-VBAL 5.5.1.1: statically invalid. A function that takes a value of any type reads it when it runs, as MS-VBA has it.
-            return destination is ValueDestination.TypedValue
-                ? StaticSemanticsEvaluationResult.Error(NoDefaultMember(expression, classType))
-                : StaticSemanticsEvaluationResult.Success(VBObjectType.TypeInfo);
+            // MS-VBAL 5.5.1.1 makes it statically invalid; MS-VBA compiles it, and raises 438 when it runs - 91 when the object is Nothing (RD-VBAL 5.5.1.1).
+            // The object is read for a value when it runs, as a late-bound one is.
+            if (destination is ValueDestination.TypedValue)
+            {
+                MarkNoDefaultMember(context.Facts, expression);
+            }
+
+            return StaticSemanticsEvaluationResult.Success(VBObjectType.TypeInfo);
         }
 
         if (OwnParameters(ParametersOf(defaultMember)).Any(parameter => !parameter.IsOptional && parameter is not ParamArrayParameterSymbol))
@@ -84,27 +98,36 @@ public static class ObjectValueStaticSemantics
 
         if (defaultMember.ResolvedType is VBClassType or VBObjectType)
         {
-            return destination is ValueDestination.TypedValue
-                ? StaticSemanticsEvaluationResult.Error(VBCompileErrorInfo.For(VBCompileErrorId.TypeMismatch, expression.Location,
-                    string.Format(Exceptions.VBCompileError_DefaultMemberReturnsAnObject_Verbose, classType.Name, defaultMember.Name)))
-                : StaticSemanticsEvaluationResult.Success(VBObjectType.TypeInfo);
+            return destination switch
+            {
+                ValueDestination.TypedValue => StaticSemanticsEvaluationResult.Error(VBCompileErrorInfo.For(VBCompileErrorId.TypeMismatch, expression.Location,
+                    string.Format(Exceptions.VBCompileError_DefaultMemberReturnsAnObject_Verbose, classType.Name, defaultMember.Name))),
+                // parentheses read the default member once: what it returns is the object it is declared as.
+                ValueDestination.SimpleDataValue => StaticSemanticsEvaluationResult.Success(defaultMember.ResolvedType),
+                _ => StaticSemanticsEvaluationResult.Success(VBObjectType.TypeInfo),
+            };
         }
 
         return StaticSemanticsEvaluationResult.Success(defaultMember.ResolvedType);
     }
 
     /// <summary>
-    /// The compile error of an object of a class that has no default member, Let-coerced to a value (<strong>MS-VBAL §5.5.1.1</strong>).
+    /// Tells the fact of <paramref name="expression"/> that it is an object of a class that has no default member, Let-coerced to a value
+    /// (<see cref="ValueExpressionSemanticFlags.ValueOfObjectWithNoDefaultMember"/>).
     /// </summary>
+    /// <param name="facts">Where the fact of <paramref name="expression"/> is; nothing is told without one.</param>
     /// <param name="expression">The expression that is the object.</param>
-    /// <param name="classType">The class of the object.</param>
     /// <remarks>
-    /// 👉 MS-VBA compiles it, and raises error 438 (Object doesn't support this property or method) when it runs; RD-VBA validates at compile time what the
-    /// specification says is validated at compile time, and says so in the error.
+    /// 👉 <strong>MS-VBAL §5.5.1.1</strong> makes it statically invalid. MS-VBA compiles it, and raises error 438 (Object doesn't support this property or
+    /// method) when it runs, or 91 when the object is <c>Nothing</c>; RD-VBA does as MS-VBA does, and the fact is for an analyzer to report.
     /// </remarks>
-    public static VBCompileErrorInfo NoDefaultMember(ExpressionNode expression, VBClassType classType)
-        => VBCompileErrorInfo.For(VBCompileErrorId.TypeMismatch, expression.Location,
-            string.Format(Exceptions.VBCompileError_ClassHasNoDefaultMember_Verbose, classType.Name));
+    public static void MarkNoDefaultMember(IExpressionFactSink? facts, ExpressionNode expression)
+    {
+        if (facts is not null && facts.TryGet(expression.Identity, out var fact))
+        {
+            facts.Record(fact with { Flags = fact.Flags | ValueExpressionSemanticFlags.ValueOfObjectWithNoDefaultMember });
+        }
+    }
 
     /// <summary>
     /// What <paramref name="parameter"/> expects of an object given to it; <see langword="null"/> when it takes an object as it is.
@@ -197,7 +220,7 @@ public static class ObjectValueStaticSemantics
                 continue;
             }
 
-            if (ValueOf(passed, type, destination) is { IsError: true } refused)
+            if (ValueOf(context, passed, type, destination) is { IsError: true } refused)
             {
                 return refused.ErrorInfo as VBCompileErrorInfo;
             }
@@ -206,17 +229,54 @@ public static class ObjectValueStaticSemantics
         return null;
     }
 
+    /// <summary>
+    /// The error of an argument that is a project, a module or an enumeration (<paramref name="error"/>, the argument's own), given to a parameter that takes a
+    /// <c>String</c> or a variable - what <c>Len</c> and <c>LenB</c> measure: MS-VBA requires a variable there (Excel-verified, oracle\s29 C05, C06, C35, O19).
+    /// </summary>
+    /// <param name="context">The compile-time context the call is evaluated against.</param>
+    /// <param name="callee">What is called.</param>
+    /// <param name="arguments">The arguments of the call.</param>
+    /// <param name="argument">The argument whose evaluation is <paramref name="error"/>.</param>
+    /// <param name="error">The argument's error.</param>
+    /// <returns>The error to report instead, or <see langword="null"/> when <paramref name="error"/> is the one.</returns>
+    public static VBCompileErrorInfo? NotAValueArgumentError(
+        StaticEvaluationContext context, ExpressionNode callee, ImmutableArray<ExpressionNode> arguments, ExpressionNode argument, VBCompileErrorInfo? error)
+    {
+        var value = argument switch
+        {
+            NamedArgumentNode named => named.Value,
+            ByValArgumentExpressionNode byVal => byVal.Operand,
+            _ => argument,
+        };
+
+        if (!NameClassificationStaticSemantics.IsNotAValue(value, error) || ParametersOfCallee(context, callee) is not { } parameters)
+        {
+            return null;
+        }
+
+        var own = OwnParameters(parameters).ToImmutableArray();
+        var position = arguments.IndexOf(argument);
+        var parameter = argument is NamedArgumentNode { Name: var name }
+            ? own.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase))
+            : position >= 0 && position < own.Length ? own[position] : null;
+
+        return parameter is not null && DestinationOf(parameter) is ValueDestination.StringOrVariable
+            ? VBCompileErrorInfo.For(VBCompileErrorId.VariableRequired, value.Location,
+                string.Format(Exceptions.VBCompileError_NameIsNoVariable_Verbose, NameClassificationStaticSemantics.NameOf(value), error!.Verbose))
+            : null;
+    }
+
     // Len and LenB: "any valid string expression, or any valid variable name" (MS-VBAL §6.1.2.11.1.22). A value that is a String or a Variant is a string
     // expression, and so is one MS-VBA reads as one when it runs (an object, a record); a value of any other declared type must be a variable, whose size is
     // measured. An object stands for its default member's value, which is no variable: MS-VBA refuses it unless that value is a String or a Variant.
     private static VBCompileErrorInfo? StringOrVariableError(StaticEvaluationContext context, ExpressionNode expression, VBType type)
     {
-        if (ValueOf(expression, type, ValueDestination.AnyValue) is { IsError: true } refused)
+        if (ValueOf(context, expression, type, ValueDestination.AnyValue) is { IsError: true } refused)
         {
             return refused.ErrorInfo as VBCompileErrorInfo;
         }
 
-        if (type is VBClassType { DefaultMember: { } defaultMember } classType)
+        if (type is VBClassType declaredClass && CurrentTypes.Of(context, declaredClass) is { DefaultMember: { } defaultMember } classType)
         {
             return IsReadAsAString(defaultMember.ResolvedType) && defaultMember.ResolvedType is not (VBClassType or VBObjectType)
                 ? null
@@ -246,7 +306,7 @@ public static class ObjectValueStaticSemantics
         MemberAccessExpressionNode { Owner: { } owner } access => ExpressionStaticSemanticsEvaluator.Evaluate(Unrecorded(context), owner) switch
         {
             { IsSuccess: true, Result: VBUserDefinedType } => true,
-            { IsSuccess: true, Result: VBClassType declared } => declared.Members.FirstOrDefault(member
+            { IsSuccess: true, Result: VBClassType declared } => CurrentTypes.Of(context, declared).Members.FirstOrDefault(member
                 => member.Name.Equals(access.Member.IdentifierName, StringComparison.OrdinalIgnoreCase)) is { Kind: SymbolKindExt.Variable or SymbolKindExt.Field },
             _ => false,
         },
@@ -279,13 +339,41 @@ public static class ObjectValueStaticSemantics
             MemberAccessExpressionNode { Owner: { } owner } access when context.Resolver.NamespaceOf(owner, context.Scope.Uri) is { } qualifier
                 => context.Resolver.ResolveMember(qualifier, access.Member, context.Scope.Uri).Symbol,
             MemberAccessExpressionNode { Owner: { } owner } access when ExpressionStaticSemanticsEvaluator.Evaluate(Unrecorded(context), owner) is { IsSuccess: true, Result: VBClassType classType }
-                => classType.Members.FirstOrDefault(member => string.Equals(member.Name, access.Member.IdentifierName, StringComparison.OrdinalIgnoreCase)
-                    && member is VBReturningMemberSymbol or VBProcedureMemberSymbol),
+                => CalledMemberOf(context, classType, access),
+            // a member of the target of the enclosing With block (MS-VBAL §5.6.15).
+            MemberAccessExpressionNode { Owner: null } access when context.EnclosingWithTargetType is VBClassType classType => CalledMemberOf(context, classType, access),
             _ => null,
         };
 
         return symbol is VBReturningMemberSymbol or VBProcedureMemberSymbol ? (VBTypeMemberSymbol)symbol : null;
     }
+
+    /// <summary>
+    /// The control of a form that <paramref name="target"/> names - by its bare name in the form's code, or as a member of the form (<c>Me.TextBox1</c>,
+    /// <c>UserForm1.TextBox1</c>); <see langword="null"/> when it names something else (<see cref="SymbolProperties.DesignerControl"/>).
+    /// </summary>
+    /// <param name="context">The compile-time context the target is evaluated against.</param>
+    /// <param name="target">The expression an assignment is written on.</param>
+    public static VBTypeMemberSymbol? DesignerControlOf(StaticEvaluationContext context, ExpressionNode target)
+    {
+        var symbol = target switch
+        {
+            SimpleNameExpressionNode name => context.Resolver.ResolveValue(name, ScopeKind.Local, context.Scope.Uri).Symbol,
+            MemberAccessExpressionNode { Owner: { } owner } access when ExpressionStaticSemanticsEvaluator.Evaluate(Unrecorded(context), owner) is { IsSuccess: true, Result: VBClassType classType }
+                => (VBProjectSymbol.ResolveClass(context.Resolver, classType.Symbol) ?? classType.Symbol).DefaultInterfaceMembers.FirstOrDefault(member
+                    => string.Equals(member.Name, access.Member.IdentifierName, StringComparison.OrdinalIgnoreCase)),
+            _ => null,
+        };
+
+        return symbol is VBTypeMemberSymbol member && member.GetProperty(SymbolProperties.DesignerControl) ? member : null;
+    }
+
+    // the member of a class a call or a read of the name invokes, as the class is declared now: a Sub, a Function or a Property Get - not a Property Let or
+    // Set of the same name, which an assignment invokes.
+    private static VBTypeMemberSymbol? CalledMemberOf(StaticEvaluationContext context, VBClassType classType, MemberAccessExpressionNode access)
+        => (VBProjectSymbol.ResolveClass(context.Resolver, classType.Symbol) ?? classType.Symbol).DefaultInterfaceMembers.FirstOrDefault(member
+            => string.Equals(member.Name, access.Member.IdentifierName, StringComparison.OrdinalIgnoreCase)
+                && member is VBReturningMemberSymbol or VBProcedureMemberSymbol && member is not (VBPropertyLetMemberSymbol or VBPropertySetMemberSymbol));
 
     // the parameters of a procedure, whichever kind of member declares it.
     private static ImmutableArray<VBParameterSymbol> ParametersOf(VBTypeMemberSymbol member) => member switch
@@ -298,6 +386,15 @@ public static class ObjectValueStaticSemantics
     // a member of a class has an implicit Me at parameter 0, which is the object the call is on and no argument of it.
     private static IEnumerable<VBParameterSymbol> OwnParameters(ImmutableArray<VBParameterSymbol> parameters)
         => parameters.Where(parameter => !(parameter.Name == "Me" && parameter.ParameterKind == ParameterKind.ImplicitByRef));
+
+    // the name a subroutine is written by, for the message of the error.
+    private static string? NameOf(ExpressionNode expression) => expression switch
+    {
+        SimpleNameExpressionNode name => name.IdentifierName,
+        MemberAccessExpressionNode access => access.Member.IdentifierName,
+        IndexExpressionNode index => NameOf(index.Callee),
+        _ => null,
+    };
 
     // the same context, with nothing recording what an expression evaluated again binds to.
     private static StaticEvaluationContext Unrecorded(StaticEvaluationContext context) => context with { Facts = null, Bindings = null };

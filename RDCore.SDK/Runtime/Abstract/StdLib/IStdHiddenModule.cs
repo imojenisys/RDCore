@@ -15,8 +15,9 @@ namespace RDCore.SDK.Runtime.Abstract.StdLib;
 /// specification does name. What the hidden members share is that a hidden member is left out of a completion list and
 /// resolves anyway, being a member of a standard module like any other.
 /// <para>
-/// The pointer members (<c>ObjPtr</c>, <c>StrPtr</c>, <c>VarPtr</c>) are not documented by Microsoft even so; what they
-/// are is what the language has always done with them.
+/// The pointer members (<c>ObjPtr</c>, <c>StrPtr</c>, <c>VarPtr</c>) are not documented by Microsoft even so, nor specified by MS-VBAL; what they
+/// give is what <strong>MS-VBA</strong> gives, recorded in Excel: addresses in the session's memory, where a variable, a <c>String</c>'s characters and an
+/// object's interface are laid out as MS-VBA lays them out, and <c>PEEK</c> and <c>POKE</c> read and write them (RD-VBAL §2.3.1.2, the memory model).
 /// </para>
 /// </remarks>
 [StdLibModule("_HiddenModule", IsHidden = true)]
@@ -60,7 +61,9 @@ public interface IStdHiddenModule
     /// <strong>InputB</strong> Gets the <em>bytes</em> read from a file, as <see cref="Input"/> gets characters.
     /// </summary>
     /// <remarks>
-    /// 🚧 Not implemented: a file channel reads characters, and nothing in it reads a byte.
+    /// The bytes as they are in the file, not the characters they encode: a <c>String</c> of <paramref name="number"/> bytes, which <c>StrConv(…, vbUnicode)</c>
+    /// reads as characters. It reads at the same position <see cref="Input"/> does, on a file opened for <c>Input</c> or <c>Binary</c>: on any other, it is error
+    /// 54 (Bad file mode); past the end of the file, error 62.
     /// </remarks>
     /// <param name="number">The number of bytes to read.</param>
     /// <param name="fileNumber">The file number of an open file.</param>
@@ -72,39 +75,66 @@ public interface IStdHiddenModule
     RuntimeSemanticsEvaluationResult<VBStringValue> InputBString(VBLongValue number, VBIntegerValue fileNumber);
 
     /// <summary>
-    /// <strong>ObjPtr</strong> Gets a number that identifies an object: the same one for as long as it lives, and a different one
-    /// for every other object.
+    /// <strong>ObjPtr</strong> Gets the address of an interface of an object in the session's memory.
     /// </summary>
     /// <remarks>
-    /// <c>0</c> for <c>Nothing</c>. The number is the identity the session gives the object, not an address in memory
-    /// the program could read through: nothing in the runtime lays objects out in an address space.
+    /// Declared as the <c>VBA</c> type library declares it, <c>ObjPtr(Ptr As Unknown) As LongPtr</c>, and given where its argument is
+    /// (<see cref="StdLibByAddressAttribute"/>): the interface is the one the variable it is passed is declared as. As in <strong>MS-VBA</strong> (recorded
+    /// in Excel):
+    /// <list type="bullet">
+    /// <item><c>Nothing</c> is <c>0</c>, and an object's address is the same for as long as it lives;</item>
+    /// <item>a variable of the object's class, of <c>Object</c>, and a <c>Variant</c> give one address; a variable of an interface the class implements gives
+    /// another, and one of <c>IUnknown</c> another still;</item>
+    /// <item>the bytes of an object variable are this address, and the first pointer at it is the same for every object of a class.</item>
+    /// </list>
     /// </remarks>
-    /// <param name="object">The object.</param>
+    /// <param name="ptr">The address of the object variable.</param>
     /// <returns>A <see cref="RuntimeSemanticsEvaluationResult"/> object encapsulating the result of the successful operation, or the error metadata otherwise.</returns>
     [StdLibMember(IsHidden = true)]
-    RuntimeSemanticsEvaluationResult<VBLongPtrValue> ObjPtr(VBObjectValue @object);
+    RuntimeSemanticsEvaluationResult<VBLongPtrValue> ObjPtr([StdLibByAddress(typeof(VBObjectValue))] VBLongLongValue ptr);
 
     /// <summary>
-    /// <strong>StrPtr</strong> Gets the address of the characters of a string.
+    /// <strong>StrPtr</strong> Gets the address of the characters of a string in the session's memory.
     /// </summary>
     /// <remarks>
-    /// 🚧 Not implemented: the characters of a string live in the value that holds them, not at an address of the session's memory.
+    /// Declared as the <c>VBA</c> type library declares it, <c>StrPtr(Ptr As String) As LongPtr</c>, and given where its argument is
+    /// (<see cref="StdLibByAddressAttribute"/>): the characters are those of the very <c>String</c> it is passed, in the <c>BSTR</c> it is in - a <c>Long</c>
+    /// of its length in bytes just before them, a null character just after. As in <strong>MS-VBA</strong> (recorded in Excel):
+    /// <list type="bullet">
+    /// <item><c>vbNullString</c>, and a <c>String</c> variable nothing was assigned to, is <c>0</c>; a zero-length <c>String</c> is not;</item>
+    /// <item>a <c>String</c> variable, an element of a <c>String</c> array, a field of a record and a <c>Variant</c> holding a <c>String</c> each have their own
+    /// characters, the same until another <c>String</c> is assigned to them: <c>t = s</c> copies them, and so does a <c>ByVal</c> parameter;</item>
+    /// <item>the bytes of a <c>String</c> variable are this address;</item>
+    /// <item>what is no variable, <c>StrPtr("abc")</c>, is a <c>String</c> of its own until the statement is over.</item>
+    /// </list>
     /// </remarks>
-    /// <param name="string">The string.</param>
+    /// <param name="ptr">The address of the <c>String</c>.</param>
     /// <returns>A <see cref="RuntimeSemanticsEvaluationResult"/> object encapsulating the result of the successful operation, or the error metadata otherwise.</returns>
     [StdLibMember(IsHidden = true)]
-    RuntimeSemanticsEvaluationResult<VBLongPtrValue> StrPtr(VBStringValue @string);
+    RuntimeSemanticsEvaluationResult<VBLongPtrValue> StrPtr([StdLibByAddress(typeof(VBStringValue))] VBLongLongValue ptr);
 
     /// <summary>
-    /// <strong>VarPtr</strong> Gets the address of a variable.
+    /// <strong>VarPtr</strong> Gets the address of a variable in the session's memory.
     /// </summary>
     /// <remarks>
-    /// 🚧 Not implemented: it takes its argument by reference, which a standard-library member cannot yet declare.
+    /// Declared as the <c>VBA</c> type library declares it, <c>VarPtr(Ptr As Any) As LongPtr</c> (<see cref="StdLibAsAnyAttribute"/>): it takes a variable of
+    /// any type but an array, and is given its address. As in <strong>MS-VBA</strong> (recorded in Excel):
+    /// <list type="bullet">
+    /// <item>the address is never <c>0</c>, and is the same for a variable for as long as it exists, whatever is assigned to it - the same for a module's
+    /// variable named bare or qualified, and for a <c>Static</c> local across calls;</item>
+    /// <item>a <c>ByRef</c> parameter's is the address of the variable it was given, and a <c>ByVal</c> parameter's its own; a <c>Variant</c> one given a
+    /// variable of another type is a <c>VARIANT</c> of its own, at one address for the call;</item>
+    /// <item>what is no variable - <c>VarPtr(1)</c>, <c>VarPtr(x + 0)</c>, <c>VarPtr((x))</c>, a public variable of an object named through it - is passed
+    /// as a temporary, which has an address of its own until the statement is over;</item>
+    /// <item><c>VarPtr(ByVal n)</c> is the bytes <c>n</c> is stored in, read as a whole number;</item>
+    /// <item>an element of an array is in a block of the array's elements side by side, and a field of a record at its offset in the record, as
+    /// <strong>MS-VBA</strong> lays them out.</item>
+    /// </list>
     /// </remarks>
-    /// <param name="variable">The variable.</param>
+    /// <param name="ptr">The address of the variable.</param>
     /// <returns>A <see cref="RuntimeSemanticsEvaluationResult"/> object encapsulating the result of the successful operation, or the error metadata otherwise.</returns>
     [StdLibMember(IsHidden = true)]
-    RuntimeSemanticsEvaluationResult<VBLongPtrValue> VarPtr(VBVariantValue variable);
+    RuntimeSemanticsEvaluationResult<VBLongPtrValue> VarPtr([StdLibAsAny] VBLongLongValue ptr);
 
     /// <summary>
     /// <strong>Width</strong> Sets the line width of a file opened for output: the number of characters a line holds before

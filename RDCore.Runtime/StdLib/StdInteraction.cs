@@ -4,10 +4,12 @@ using RDCore.Runtime.Execution;
 using RDCore.Runtime.Semantics.Conversion;
 using RDCore.SDK.Model.Errors;
 using RDCore.SDK.Model.Source;
+using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
 using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
+using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Model.Values;
 using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Model.Values.Bindings;
@@ -25,12 +27,11 @@ namespace RDCore.Runtime.StdLib;
 /// <para>
 /// What this module reaches is the outside world's (<see cref="ExternalWorld"/>), and the host says what that is: the dialogs of <c>MsgBox</c> and <c>InputBox</c> are
 /// the person running the program's to answer - Windows' own, the interactive shell's console, or nobody's - the desktop of <c>DoEvents</c>, <c>AppActivate</c>,
-/// <c>SendKeys</c> and <c>Shell</c> is Windows' or nothing, and the settings are the workspace's <c>appsettings.json</c>, or the registry when the workspace asks for it.
-/// An analysis reaches none of it (<see cref="ExternalWorld.None"/>).
+/// <c>SendKeys</c> and <c>Shell</c> is Windows' or nothing, the settings are the workspace's <c>appsettings.json</c>, or the registry when the workspace asks for it,
+/// and the arguments of <see cref="Command"/> are none unless the host gives some. An analysis reaches none of it (<see cref="ExternalWorld.None"/>).
 /// </para>
 /// <para>
-/// 🚧 <see cref="Command"/>, <see cref="CommandString"/>, <see cref="CreateObject"/>, <see cref="GetObject"/>, <see cref="GetAttr"/> and <see cref="Partition"/> are
-/// declared and not written, and <see cref="MacScript"/> never will be: each returns an error that says so.
+/// <see cref="MacScript"/> is not written, and never will be: it returns an error that says so.
 /// </para>
 /// </remarks>
 /// <param name="session">The session whose objects <see cref="CallByName"/> calls, and whose turn <see cref="DoEvents"/> gives up.</param>
@@ -101,7 +102,7 @@ public sealed class StdInteraction(
     }
 
     // a String is written in the regional settings of the session's environment, as Let-coercion writes it.
-    private RuntimeSemanticsEvaluationResult<VBTypedValue> ToText(VBTypedValue value) => Convert(value, source => ValueConversions.ToText(source, session.Environment.Culture), "String");
+    private RuntimeSemanticsEvaluationResult<VBTypedValue> ToText(VBTypedValue value) => Convert(value, source => ValueConversions.ToText(source, session.Environment.Culture, session.Environment.Regional), "String");
 
     private RuntimeSemanticsEvaluationResult<VBTypedValue> ToLong(VBTypedValue value)
         => Convert(value, source => ValueConversions.ToNumeric(source, VBLongType.TypeInfo, session.Environment.Regional), "Long");
@@ -187,8 +188,9 @@ public sealed class StdInteraction(
     /// <c>Function</c> (or, failing those, a <c>Property Get</c>); <see cref="VBCallType.VBGet"/> a <c>Property Get</c>, a <c>Function</c> or a public variable;
     /// <see cref="VBCallType.VBLet"/> and <see cref="VBCallType.VBSet"/> a <c>Property Let</c> and a <c>Property Set</c>, the value assigned being the last argument.
     /// <para>
-    /// The arguments are passed by value, each Let-coerced to the type of its parameter. An omitted <c>Optional</c> parameter is given its type's default.
-    /// 🚧 Assigning a public variable by name is not supported yet (error 438).
+    /// The arguments are passed by value, each Let-coerced to the type of its parameter. An omitted <c>Optional</c> parameter is given what a call written in
+    /// source gives it: its declared default, or Missing for a <c>Variant</c> that declares none. <see cref="VBCallType.VBLet"/> and
+    /// <see cref="VBCallType.VBSet"/> of a public variable assign it, as an assignment written in source does.
     /// </para>
     /// </remarks>
     public RuntimeSemanticsEvaluationResult<VBVariantValue> CallByName(VBObjectValue objectValue, VBStringValue procName, VBCallType callType, params VBVariantValue[] args)
@@ -203,6 +205,38 @@ public sealed class StdInteraction(
             return Fail<VBVariantValue>(VBRuntimeErrorId.ObjectDoesntSupportThisPropertyOrMethod, $"The object has no member '{procName.Value}' to call by name.");
         }
 
+        // a late-bound object is called by the name, as the call type says: its arguments are the member's ParamArray, and an assignment's value is the last.
+        if (Execution.External.Automation.LateBinding.IsLateBound(instance.ClassModule))
+        {
+            var assigns = callType is VBCallType.VBLet or VBCallType.VBSet;
+            if (assigns && args.Length == 0)
+            {
+                return Fail<VBVariantValue>(VBRuntimeErrorId.ArgumentNotOptional, $"'{procName.Value}' was not given the value it is assigned.");
+            }
+
+            var lateBound = Execution.External.Automation.LateBinding.MemberOf(instance.ClassModule, procName.Value ?? string.Empty, callType switch
+            {
+                VBCallType.VBLet => RDCore.External.Automation.AutomationInvocation.Let,
+                VBCallType.VBSet => RDCore.External.Automation.AutomationInvocation.Set,
+                _ => RDCore.External.Automation.AutomationInvocation.Get,
+            });
+
+            var indexes = assigns ? args[..^1] : args;
+            var collected = new VBResizableArrayValue([(0, indexes.Length - 1)], VBVariantType.TypeInfo);
+            for (var index = 0; index < indexes.Length; index++)
+            {
+                collected.TrySetElement(BindingKnowledge.NewCell(indexes[index]), index);
+            }
+
+            IRuntimeValue[] lateArguments = assigns
+                ? [new VBRuntimeValue<VBRuntimeArrayValue>(new VBRuntimeArrayValue(collected)), args[^1].RuntimeValue]
+                : [new VBRuntimeValue<VBRuntimeArrayValue>(new VBRuntimeArrayValue(collected))];
+            var answered = callables.ForMember(lateBound, objectValue.RuntimeValue).Call(session.Symbols.Resolver, lateArguments);
+            return answered.IsSuccess
+                ? Succeed(answered.Result is null or VBVoidValue ? new VBVariantValue(VBEmptyValue.Empty) : InVariant(answered.Result))
+                : RuntimeSemanticsEvaluationResult<VBVariantValue>.Error(answered.ErrorInfo ?? NotImplementedError(nameof(CallByName), "the call had no answer"));
+        }
+
         var candidates = instance.ClassModule.DefaultInterfaceMembers
             .Where(member => string.Equals(member.Name, procName.Value, StringComparison.OrdinalIgnoreCase))
             .ToArray();
@@ -214,14 +248,34 @@ public sealed class StdInteraction(
                 : Fail<VBVariantValue>(VBRuntimeErrorId.WrongNumberOfArgumentsOrInvalidPropertyAssignment, $"'{field.Name}' is a variable, and takes no arguments.");
         }
 
+        if (callType is VBCallType.VBLet or VBCallType.VBSet
+            && candidates.FirstOrDefault(member => member.Kind is SymbolKindExt.Field or SymbolKindExt.Variable) is { } assigned)
+        {
+            return AssignVariable(objectValue, instance, assigned, callType is VBCallType.VBSet, args);
+        }
+
         if (MemberOf(candidates, callType) is not { } target)
         {
-            return Fail<VBVariantValue>(VBRuntimeErrorId.ObjectDoesntSupportThisPropertyOrMethod,
-                $"The object has no member '{procName.Value}' that can be called as {callType}.");
+            // a Function asked for as a property is the member, called the wrong way (MS-VBA: 450, Excel-verified, oracle\s40 B22, B28); a name that is no
+            // member to be called so at all is 438.
+            return callType is VBCallType.VBGet && candidates.Any(member => member is VBFunctionMemberSymbol)
+                ? Fail<VBVariantValue>(VBRuntimeErrorId.WrongNumberOfArgumentsOrInvalidPropertyAssignment, $"'{procName.Value}' is a function, and no property to get.")
+                : Fail<VBVariantValue>(VBRuntimeErrorId.ObjectDoesntSupportThisPropertyOrMethod, $"The object has no member '{procName.Value}' that can be called as {callType}.");
         }
 
         var parameters = RuntimeProcedureInvoker.GetParameters(target).Where(parameter => parameter.Name != "Me").ToArray();
-        if (args.Length > parameters.Length)
+
+        // VbLet and VbSet assign the last argument, which is the property's last parameter - its value - whatever index parameters come before it, Optional ones
+        // included: CallByName(c, "List", VbLet, v) is c.List = v, of Microsoft Forms' List(Optional pvargIndex, Optional pvargColumn).
+        var assignsValue = callType is VBCallType.VBLet or VBCallType.VBSet && parameters.Length > 0;
+        if (assignsValue && args.Length == 0)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.ArgumentNotOptional, $"'{target.Name}' was not given the value it is assigned.");
+        }
+
+        var given = assignsValue ? args.Length - 1 : args.Length;
+        var indexParameters = assignsValue ? parameters.Length - 1 : parameters.Length;
+        if (given > indexParameters)
         {
             return Fail<VBVariantValue>(VBRuntimeErrorId.WrongNumberOfArgumentsOrInvalidPropertyAssignment,
                 $"'{target.Name}' takes {parameters.Length} argument(s), and was given {args.Length}.");
@@ -231,18 +285,22 @@ public sealed class StdInteraction(
         for (var index = 0; index < parameters.Length; index++)
         {
             var parameter = parameters[index];
-            if (index >= args.Length)
+            var isValue = assignsValue && index == parameters.Length - 1;
+            var argument = isValue ? args.Length - 1 : index;
+            if (!isValue && index >= given)
             {
                 if (!parameter.IsOptional)
                 {
                     return Fail<VBVariantValue>(VBRuntimeErrorId.ArgumentNotOptional, $"'{target.Name}' was not given its argument '{parameter.Name}'.");
                 }
 
-                bound[index] = parameter.ResolvedType.DefaultValue.RuntimeValue;
+                // what a call written in source gives an omitted parameter: its declared default, or Missing for a Variant that declares none (MS-VBAL
+                // §5.3.1.11; MS-VBA, Excel-verified, oracle\s40 B06-B09, B13).
+                bound[index] = (session.Symbols.Defaults?.DefaultValueOf(parameter) ?? parameter.ResolvedType.DefaultValue).RuntimeValue;
                 continue;
             }
 
-            var coerced = Coerce(args[index], parameter.ResolvedType);
+            var coerced = Coerce(args[argument], parameter.ResolvedType);
             if (!coerced.IsSuccess)
             {
                 return RuntimeSemanticsEvaluationResult<VBVariantValue>.Error(coerced.ErrorInfo!);
@@ -260,6 +318,108 @@ public sealed class StdInteraction(
         return Succeed(called.Result is null or VBVoidValue ? new VBVariantValue(VBEmptyValue.Empty) : InVariant(called.Result));
     }
 
+    // VbLet and VbSet of a public variable of the object assign it, as `obj.Name = value` and `Set obj.Name = value` do: the value is the one argument (MS-VBA,
+    // Excel-verified, oracle\s40 B01-B05, B15, B18, B20, B21, B23-B27, B30-B32). None is error 446 and more than one 451, as MS-VBA has it; a Let of an object
+    // is a Let of its default member's value; a Let into a variable of an object assigns the object's default member, of which Nothing has none (91); a Set
+    // into a variable that holds no object is 451, and of what is no object, or an object of another class, 13.
+    private RuntimeSemanticsEvaluationResult<VBVariantValue> AssignVariable(
+        VBObjectValue owner, IObjectInstance instance, VBTypeMemberSymbol variable, bool isSet, VBVariantValue[] args)
+    {
+        if (args.Length == 0)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.ObjectDoesntSupportNamedArguments, $"'{variable.Name}' was not given the value it is assigned.");
+        }
+
+        if (args.Length > 1)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.PropertyLetNotDefinedPropertyGetDidNotReturnObject, $"'{variable.Name}' is a variable, and takes no arguments.");
+        }
+
+        var declared = variable.ResolvedType;
+        var holdsAnObject = declared is VBObjectType or VBClassType;
+        var handle = instance.GetValue(variable);
+        var value = Unwrapped(args[0]);
+        VBTypedValue stored;
+        if (isSet)
+        {
+            if (!holdsAnObject && declared is not VBVariantType)
+            {
+                return Fail<VBVariantValue>(VBRuntimeErrorId.PropertyLetNotDefinedPropertyGetDidNotReturnObject, $"'{variable.Name}' is a {declared.Name}, which holds no object to Set.");
+            }
+
+            if (value is not VBObjectValue assignedObject)
+            {
+                return Fail<VBVariantValue>(VBRuntimeErrorId.TypeMismatch, $"What is Set into '{variable.Name}' is no object.");
+            }
+
+            if (declared is VBClassType { Symbol: var classModule } && !assignedObject.IsNothing()
+                && (!session.Symbols.TryGetInstance(assignedObject.Value, out var assignedInstance) || !IsOrImplements(assignedInstance!.ClassModule, classModule, [])))
+            {
+                return Fail<VBVariantValue>(VBRuntimeErrorId.TypeMismatch, $"'{variable.Name}' is a {declared.Name}, and the object Set into it is not one.");
+            }
+
+            stored = declared is VBVariantType ? new VBVariantValue(assignedObject) : assignedObject;
+        }
+        else if (holdsAnObject)
+        {
+            // a Let into a variable of an object is a Let of the object's default member.
+            var held = declared.CreateValue(handle.ForReading()) as VBObjectValue;
+            if (held is null || held.IsNothing())
+            {
+                return Fail<VBVariantValue>(VBRuntimeErrorId.ObjectVariableOrWithBlockVariableNotSet, $"'{variable.Name}' holds Nothing, which has no default member to assign.");
+            }
+
+            return session.Symbols.TryGetInstance(held.Value, out var heldInstance) && ObjectDefaultMember.TryFind(heldInstance!.ClassModule, out var defaultMember)
+                ? CallByName(held, new VBStringValue(defaultMember.Name), VBCallType.VBLet, args)
+                : Fail<VBVariantValue>(VBRuntimeErrorId.ObjectDoesntSupportThisPropertyOrMethod, $"The object '{variable.Name}' holds has no default member to assign.");
+        }
+        else
+        {
+            // a Let of an object is a Let of its default member's value, into a Variant too.
+            var assigned = args[0];
+            if (value is VBObjectValue)
+            {
+                var read = ObjectDefaultMember.ValueOf(session, value);
+                if (!read.IsSuccess)
+                {
+                    return RuntimeSemanticsEvaluationResult<VBVariantValue>.Error(read.ErrorInfo!);
+                }
+
+                assigned = InVariant(read.Result!);
+            }
+
+            var coerced = Coerce(assigned, declared);
+            if (!coerced.IsSuccess)
+            {
+                return RuntimeSemanticsEvaluationResult<VBVariantValue>.Error(coerced.ErrorInfo!);
+            }
+
+            stored = coerced.Result!;
+        }
+
+        var withEvents = variable.GetProperty(SymbolProperties.WithEvents);
+        var previous = holdsAnObject && declared.CreateValue(handle.ForReading()) is VBObjectValue before ? new VBObjectValue(before.Value) : null;
+        if (withEvents)
+        {
+            EventAttachments.Detach(session, owner.Value, variable, previous);
+        }
+
+        var heldBefore = ObjectReferences.HeldIn(session, handle);
+        handle.Store(session.Symbols.Resolver, SymbolAddressTable.BoxedValue(stored), !stored.IsIndeterminate);
+        ObjectReferences.Rebind(session, handle, heldBefore);
+        if (withEvents)
+        {
+            EventAttachments.Attach(session, owner.Value, variable, stored as VBObjectValue);
+        }
+
+        return Succeed(new VBVariantValue(VBEmptyValue.Empty));
+    }
+
+    // whether a class is, or implements, another.
+    private static bool IsOrImplements(VBClassModuleSymbol classModule, VBClassModuleSymbol target, HashSet<string> visited)
+        => classModule.Uri.AbsoluteUri == target.Uri.AbsoluteUri
+            || visited.Add(classModule.Uri.AbsoluteUri) && classModule.ImplementedInterfaces.Any(implemented => IsOrImplements(implemented, target, visited));
+
     private static VBTypeMemberSymbol? MemberOf(IReadOnlyList<VBTypeMemberSymbol> candidates, VBCallType callType)
     {
         bool IsMethod(VBTypeMemberSymbol member) => member is VBFunctionMemberSymbol or VBProcedureMemberSymbol
@@ -268,7 +428,8 @@ public sealed class StdInteraction(
         return callType switch
         {
             VBCallType.VBMethod => candidates.FirstOrDefault(IsMethod) ?? candidates.FirstOrDefault(member => member is VBPropertyGetMemberSymbol),
-            VBCallType.VBGet => candidates.FirstOrDefault(member => member is VBPropertyGetMemberSymbol) ?? candidates.FirstOrDefault(member => member is VBFunctionMemberSymbol),
+            // a Function is no property to get: VbGet of one is 450, as MS-VBA has it (Excel-verified, oracle\s40 B22, B28).
+            VBCallType.VBGet => candidates.FirstOrDefault(member => member is VBPropertyGetMemberSymbol),
             VBCallType.VBLet => candidates.FirstOrDefault(member => member is VBPropertyLetMemberSymbol),
             VBCallType.VBSet => candidates.FirstOrDefault(member => member is VBPropertySetMemberSymbol),
             _ => null,
@@ -287,7 +448,7 @@ public sealed class StdInteraction(
         Func<VBTypedValue, ValueConversionResult>? conversion = value is VBObjectValue ? null : declared switch
         {
             VBNumericType numeric => source => ValueConversions.ToNumeric(source, numeric, session.Environment.Regional),
-            VBStringType => source => ValueConversions.ToText(source, session.Environment.Culture),
+            VBStringType => source => ValueConversions.ToText(source, session.Environment.Culture, session.Environment.Regional),
             VBBooleanType => source => ValueConversions.ToBoolean(source, session.Environment.Regional),
             VBDateType => source => ValueConversions.ToDate(source, session.Environment.Regional),
             _ => null,
@@ -376,12 +537,18 @@ public sealed class StdInteraction(
     /// <inheritdoc/>
     /// <remarks>
     /// The session's turn is given up for the events that wait for it - those of the objects of a library, which only Windows has - and the messages that wait in
-    /// the queue of the thread the program runs on are processed, which only Windows has either. Elsewhere there is nothing to yield to, and it returns at once.
-    /// The answer is <c>0</c>: the number of open forms, of which there are none.
+    /// the queue of the thread the program runs on are processed, which only Windows has either. So are the messages the windows of the program's forms held
+    /// while it ran (<see cref="External.Forms.IFormHost.DoEvents"/>): what they raise is handled now, as the answer to the call. Elsewhere there is nothing to yield
+    /// to, and it returns at once. The answer is <c>0</c>: the number of open forms, of which there are none.
     /// </remarks>
     public RuntimeSemanticsEvaluationResult<VBIntegerValue> DoEvents()
     {
         session.Turn.Pump();
+        using (session.Turn.Yield())
+        {
+            _outside.Forms.DoEvents();
+        }
+
         _outside.Desktop.DoEvents();
         return Succeed(new VBIntegerValue(0));
     }
@@ -661,25 +828,180 @@ public sealed class StdInteraction(
         => RuntimeSemanticsEvaluationResult<VBVariantValue>.Error(NotImplementedError(nameof(MacScript), "it runs AppleScript, which RD-VBA has none of"));
 
     /// <inheritdoc/>
-    public RuntimeSemanticsEvaluationResult<VBVariantValue> Command() => NotImplemented<VBVariantValue>(nameof(Command));
-
-    /// <inheritdoc/>
-    public RuntimeSemanticsEvaluationResult<VBStringValue> CommandString() => NotImplemented<VBStringValue>("Command$");
-
-    /// <inheritdoc/>
     public RuntimeSemanticsEvaluationResult<VBObjectValue> CreateObject(VBStringValue objectClass, VBStringValue? serverName = default)
-        => NotImplemented<VBObjectValue>(nameof(CreateObject));
+    {
+        var progId = objectClass.Value ?? string.Empty;
+        if (string.IsNullOrEmpty(serverName?.Value) && NativeClassOf(progId) is { } native)
+        {
+            return Succeed(NewObjectOf(native));
+        }
+
+        return Obtain(new ExternalObjectRequest(ExternalObjectSource.Create, progId, ServerName: serverName?.Value));
+    }
+
+    // a class the platform implements itself that answers to a programmatic identifier: the class of the identifier's last part in the standard library, if it
+    // declares that identifier (StdLibClassAttribute.ProgId).
+    private VBClassModuleSymbol? NativeClassOf(string progId)
+    {
+        var name = progId[(progId.LastIndexOf('.') + 1)..];
+        return name.Length > 0
+            && VBProjectSymbol.ResolveQualifiedType(session.Symbols.Resolver, SDK.Runtime.StdLib.StdLibSymbolProvider.LibraryName, name, StaticSymbol.GlobalUri).Symbol
+                is VBClassModuleSymbol classModule
+            && string.Equals(classModule.GetProperty(SymbolProperties.ProgId), progId, StringComparison.OrdinalIgnoreCase)
+            ? classModule
+            : null;
+    }
+
+    // what New makes of a class of the standard library: an identity, and the record of its instance.
+    private VBObjectValue NewObjectOf(VBClassModuleSymbol classModule)
+    {
+        var objectId = session.Objects.CreateObject();
+        session.Symbols.CreateInstance(objectId, classModule);
+        return new VBObjectValue(objectId);
+    }
+
+    // an object by name, from whatever reaches the machine's servers: through the session's external calls, which the policy over automation sees.
+    private RuntimeSemanticsEvaluationResult<VBObjectValue> Obtain(ExternalObjectRequest request)
+    {
+        if (session.External is not { } external)
+        {
+            return Fail<VBObjectValue>(VBRuntimeErrorId.ActiveXComponentCantCreateObject, $"{request.Describe()}: nothing here reaches an automation server.");
+        }
+
+        var obtained = external.Invoke(ExternalCallRequest.ForObject(request), session.Symbols.Resolver);
+        return obtained switch
+        {
+            { IsSuccess: true, Result: VBObjectValue objectValue } => Succeed(objectValue),
+            { IsSuccess: true } => Fail<VBObjectValue>(VBRuntimeErrorId.ActiveXComponentCantCreateObject, $"{request.Describe()} gave no object."),
+            _ => RuntimeSemanticsEvaluationResult<VBObjectValue>.Error(obtained.ErrorInfo!),
+        };
+    }
+
+    // the text of an argument that names a class or a file: Missing is none, Null is error 94.
+    private RuntimeSemanticsEvaluationResult<VBObjectValue>? TextOf(VBVariantValue? argument, out string? text)
+    {
+        text = null;
+        if (argument is null || argument.TypedValue is VBMissingValue)
+        {
+            return null;
+        }
+
+        if (argument.TypedValue is VBNullValue)
+        {
+            return Fail<VBObjectValue>(VBRuntimeErrorId.InvalidUseOfNull, "GetObject: a name is no Null");
+        }
+
+        var converted = ValueConversions.ToText(argument.TypedValue, session.Environment.Culture, session.Environment.Regional);
+        if (converted is not { IsSuccess: true, Value: VBStringValue value })
+        {
+            return Fail<VBObjectValue>(converted.Error ?? VBRuntimeErrorId.TypeMismatch, "GetObject: a name is a String");
+        }
+
+        text = value.Value ?? string.Empty;
+        return null;
+    }
 
     /// <inheritdoc/>
-    public RuntimeSemanticsEvaluationResult<VBLongValue> GetAttr(VBStringValue pathName) => NotImplemented<VBLongValue>(nameof(GetAttr));
+    public RuntimeSemanticsEvaluationResult<VBLongValue> GetAttr(VBStringValue pathName)
+    {
+        // through the session's file channels, the one seam file I/O goes through (IStdFileSystemModule).
+        var path = pathName.Value ?? string.Empty;
+        return session.Files.TryGetAttributes(path, out var attributes) is { } failed
+            ? RuntimeSemanticsEvaluationResult<VBLongValue>.Error(VBRuntimeErrorInfo.For(failed, default, $"GetAttr({path})"))
+            : RuntimeSemanticsEvaluationResult<VBLongValue>.Success(new VBLongValue((int)attributes));
+    }
 
     /// <inheritdoc/>
     public RuntimeSemanticsEvaluationResult<VBObjectValue> GetObject(VBVariantValue? pathName = default, VBVariantValue? className = default)
-        => NotImplemented<VBObjectValue>(nameof(GetObject));
+    {
+        if (TextOf(pathName, out var path) is { } badPath)
+        {
+            return badPath;
+        }
+
+        if (TextOf(className, out var progId) is { } badClass)
+        {
+            return badClass;
+        }
+
+        // as MS-VBA answers them (recorded in Excel, oracle\s25 G02, G03): nothing at all is a type mismatch, no file and no class an invalid argument, and
+        // no file but a class a new object of it.
+        return (path, progId) switch
+        {
+            (null, null) => Fail<VBObjectValue>(VBRuntimeErrorId.TypeMismatch, "GetObject(): neither a file nor a class"),
+            ("", null or "") => Fail<VBObjectValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, "GetObject(\"\"): neither a file nor a class"),
+            ("", { } created) => CreateObject(new VBStringValue(created)),
+            (null, { } running) => NativeClassOf(running) is not null
+                ? Fail<VBObjectValue>(VBRuntimeErrorId.ActiveXComponentCantCreateObject, $"GetObject(, \"{running}\"): no object of it is running")
+                : Obtain(new ExternalObjectRequest(ExternalObjectSource.Running, running)),
+            ({ } file, var opener) => Obtain(new ExternalObjectRequest(ExternalObjectSource.File, opener is { Length: > 0 } ? opener : null, PathName: file)),
+        };
+    }
+
+    #endregion
+
+    // what the program was started with, as the host says (ExternalWorld.CommandLine): a String in a Variant, as in MS-VBA.
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBVariantValue> Command() => Succeed(new VBVariantValue(new VBStringValue(_outside.CommandLine)));
+
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBStringValue> CommandString() => Succeed(new VBStringValue(_outside.CommandLine));
 
     /// <inheritdoc/>
     public RuntimeSemanticsEvaluationResult<VBVariantValue> Partition(VBVariantValue number, VBVariantValue start, VBVariantValue stop, VBVariantValue interval)
-        => NotImplemented<VBVariantValue>(nameof(Partition));
+    {
+        // "If any of the parts is Null, Partition returns the data value Null": before what is wrong with the others is (oracle\s27 P03).
+        VBVariantValue[] parts = [number, start, stop, interval];
+        if (parts.Any(part => Unwrapped(part) is VBNullValue))
+        {
+            return Succeed(new VBVariantValue(VBNullValue.Null));
+        }
 
-    #endregion
+        var whole = new long[parts.Length];
+        for (var index = 0; index < parts.Length; index++)
+        {
+            var read = WholeNumberOf(parts[index]);
+            if (!read.IsSuccess)
+            {
+                return RuntimeSemanticsEvaluationResult<VBVariantValue>.Error(read.ErrorInfo!);
+            }
+
+            whole[index] = read.Result!.Value;
+        }
+
+        var (value, first, last, size) = (whole[0], whole[1], whole[2], whole[3]);
+        if (first < 0 || last <= first || size < 1)
+        {
+            return Fail<VBVariantValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument,
+                $"Partition's range starts at {first}, ends at {last}, and is split {size} at a time: it starts at 0 or above, ends after it starts, and is split one or more at a time.");
+        }
+
+        // each side of the colon is as wide as the widest number either can be - what is before the range or after it - so that the ranges sort as text
+        // (MS-VBA, oracle\s27: the spec's "characters in Stop, plus one" is that for a Start of 0 and a Stop below a power of ten).
+        var below = (first - 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var above = (last + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var width = Math.Max(below.Length, above.Length);
+        string Side(string text) => text.PadLeft(width);
+        string Range(long lower, long upper) => Side(lower.ToString(System.Globalization.CultureInfo.InvariantCulture)) + ":" + Side(upper.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        var range = value < first ? Side(string.Empty) + ":" + Side(below)
+            : value > last ? Side(above) + ":" + Side(string.Empty)
+            : Range(first + (value - first) / size * size, Math.Min(first + (value - first) / size * size + size - 1, last));
+        return Succeed(new VBVariantValue(new VBStringValue(range)));
+    }
+
+    // a part of Partition, rounded to a whole number as a Long is (half to even): one too large for a Long is a number all the same, past the range.
+    private RuntimeSemanticsEvaluationResult<VBLongLongValue> WholeNumberOf(VBVariantValue part)
+    {
+        var converted = Convert(part, source => ValueConversions.ToNumeric(source, VBDoubleType.TypeInfo, session.Environment.Regional), "Double");
+        if (!converted.IsSuccess)
+        {
+            return RuntimeSemanticsEvaluationResult<VBLongLongValue>.Error(converted.ErrorInfo!);
+        }
+
+        var rounded = Math.Round(((VBDoubleValue)converted.Result!).Value, MidpointRounding.ToEven);
+        return rounded is >= long.MinValue and <= long.MaxValue
+            ? Succeed(new VBLongLongValue((long)rounded))
+            : Fail<VBLongLongValue>(VBRuntimeErrorId.Overflow, $"{rounded} is too large a part of a partition.");
+    }
 }

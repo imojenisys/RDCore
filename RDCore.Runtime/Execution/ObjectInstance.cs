@@ -20,9 +20,13 @@ public sealed class ObjectInstance(VBRuntimeObjectId objectId, VBClassModuleSymb
 {
     private readonly SymbolAddressTable _addresses = new(storage);
     private readonly HashSet<SemanticId> _declared = [];
+    private readonly List<Symbol> _staticLocals = [];
 
     public VBRuntimeObjectId ObjectId => objectId;
     public VBClassModuleSymbol ClassModule => classModule;
+
+    /// <inheritdoc/>
+    public IReadOnlyCollection<Symbol> StaticLocals => _staticLocals;
 
     /// <inheritdoc/>
     public void Push(Symbol field, VBTypedValue value)
@@ -32,7 +36,14 @@ public sealed class ObjectInstance(VBRuntimeObjectId objectId, VBClassModuleSymb
             throw new InvalidOperationException($"'{field.Uri}' is already declared on this instance.");
         }
 
-        _ = _addresses.TryAllocate(field, value, out _);
+        if (field is VBLocalVariableSymbol { IsStatic: true })
+        {
+            _staticLocals.Add(field);
+        }
+
+        // a field of a scalar type (or a Variant holding one) is held as a payload, as a local is (IR lowering S1.4c, Frames.CallStackFrame.CellFor): what
+        // the code of the class evaluates its fields on.
+        _ = _addresses.TryAllocate(field, value.Size, Frames.CallStackFrame.CellFor(value), out _);
     }
 
     /// <inheritdoc/>

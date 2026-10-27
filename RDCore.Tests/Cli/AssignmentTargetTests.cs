@@ -1,4 +1,4 @@
-using static RDCore.Tests.Cli.ModuleWorkspace;
+﻿using static RDCore.Tests.Cli.ModuleWorkspace;
 
 namespace RDCore.Tests.Cli;
 
@@ -23,29 +23,19 @@ public sealed class AssignmentTargetTests
         => $"Attribute VB_Name = \"Program\"\r\n{(optionExplicit ? "Option Explicit\r\n" : string.Empty)}{declarations}\r\nPublic Sub Main()\r\n{body}\r\nEnd Sub\r\n";
 
     // the module does not load, for the one error that says what the target is.
-    private static async Task AssertVariableRequiredAsync(string program, string what)
+    private static Task AssertVariableRequiredAsync(string program, string what) => AssertTargetErrorAsync(program, "Variable required", what);
+
+    private static async Task AssertTargetErrorAsync(string program, string error, string what)
     {
         var errors = await LoadErrorsAsync([], program);
 
         Assert.HasCount(1, errors, string.Join(" | ", errors));
-        StringAssert.Contains(errors[0], "Variable required");
+        StringAssert.Contains(errors[0], error);
         StringAssert.Contains(errors[0], $"and this is {what}");
     }
 
+    // a function named as the target of a Let or a Set is a call of it, and its own errors are MS-VBA's (FunctionTargetTests).
     [TestMethod]
-    [DataRow("", "vbSunday = 5", "the constant vbSunday", DisplayName = "A constant of a library's Enum")]
-    [DataRow("", "vbTextCompare = 5", "the constant vbTextCompare", DisplayName = "Another constant of a library's Enum")]
-    [DataRow("Private Const Limit = 10", "Limit = 5", "the constant Limit", DisplayName = "A constant of the module")]
-    [DataRow("", "Const Limit = 10\r\nLimit = 5", "the constant Limit", DisplayName = "A constant of the procedure")]
-    [DataRow("Private Enum Colour\r\nRed\r\nEnd Enum", "Red = 5", "the constant Red", DisplayName = "A constant of the workspace's Enum")]
-    [DataRow("", "Left$ = \"x\"", "the function Left$ of the VBA library", DisplayName = "A function of the library that returns a String, by its name with a type character")]
-    [DataRow("", "Strings.Left$ = \"x\"", "the function Left$ of the VBA library", DisplayName = "A function of the library that returns a String, qualified by its module")]
-    [DataRow("", "VbDayOfWeek.vbSunday = 5", "the constant vbSunday", DisplayName = "A constant qualified by its Enum")]
-    [DataRow("", "VBA.vbSunday = 5", "the constant vbSunday", DisplayName = "A constant qualified by its library")]
-    [DataRow("Private Const Limit = 10", "Program.Limit = 5", "the constant Limit", DisplayName = "A constant qualified by its module")]
-    [DataRow("Private Const Limit = 10", "Set Limit = Nothing", "the constant Limit", DisplayName = "The target of a Set assignment")]
-    [DataRow("", "Set Err = Nothing", "the function Err of the VBA library", DisplayName = "The target of a Set assignment, a function of the library that returns an object")]
-    [DataRow("", "Set Left = Nothing", "the function Left of the VBA library", DisplayName = "The target of a Set assignment, a function of the library that returns a Variant")]
     [DataRow("Private Const Label = \"abc\"", "LSet Label = \"x\"", "the constant Label", DisplayName = "The target of an LSet statement")]
     [DataRow("Private Const Label = \"abc\"", "RSet Label = \"x\"", "the constant Label", DisplayName = "The target of an RSet statement")]
     [DataRow("", "LSet Err = \"x\"", "the function Err of the VBA library", DisplayName = "The target of an LSet statement, a function of the library that returns an object")]
@@ -55,19 +45,32 @@ public sealed class AssignmentTargetTests
     [DataRow("", "For Left = 1 To 2\r\nNext", "the function Left of the VBA library", DisplayName = "The control variable of a For statement, a function of the library that returns a Variant")]
     [DataRow("Private Items As New Collection", "For Each vbSunday In Items\r\nNext", "the constant vbSunday", DisplayName = "The control variable of a For Each statement")]
     [DataRow("", "Mid$(Left$, 1, 1) = \"x\"", "the function Left$ of the VBA library", DisplayName = "The target of a Mid statement")]
-    [DataRow("Private Const Left = \"c\"", "Left$ = \"x\"", "the constant Left", DisplayName = "A constant of the module named like a function of the library, by its name with a type character")]
-    [DataRow("", "vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module")]
-    [DataRow("", "Constants.vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module, qualified by its module")]
-    [DataRow("", "VBA.vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module, qualified by its library")]
     [DataRow("", "LSet vbCrLf = \"x\"", "the constant vbCrLf", DisplayName = "A constant of the Constants module, the target of an LSet statement")]
     [DataRow("Private Items As New Collection", "For Each vbCrLf In Items\r\nNext", "the constant vbCrLf", DisplayName = "A constant of the Constants module, the control variable of a For Each statement")]
     public async Task AnAssignment_ToWhatIsNotAVariable_IsAVariableRequiredError(string declarations, string body, string what)
         => await AssertVariableRequiredAsync(Program(declarations, body), what);
 
+    // MS-VBA: "Assignment to constant not permitted" - a Let or a Set statement whose target is a constant (Excel-verified).
     [TestMethod]
-    [TestCategory("MS-VBAL 5.4.3.3 ReDim Statement")]
+    [DataRow("", "vbSunday = 5", "the constant vbSunday", DisplayName = "A constant of a library's Enum")]
+    [DataRow("", "vbTextCompare = 5", "the constant vbTextCompare", DisplayName = "Another constant of a library's Enum")]
+    [DataRow("Private Const Limit = 10", "Limit = 5", "the constant Limit", DisplayName = "A constant of the module")]
+    [DataRow("", "Const Limit = 10\r\nLimit = 5", "the constant Limit", DisplayName = "A constant of the procedure")]
+    [DataRow("Private Enum Colour\r\nRed\r\nEnd Enum", "Red = 5", "the constant Red", DisplayName = "A constant of the workspace's Enum")]
+    [DataRow("", "VbDayOfWeek.vbSunday = 5", "the constant vbSunday", DisplayName = "A constant qualified by its Enum")]
+    [DataRow("", "VBA.vbSunday = 5", "the constant vbSunday", DisplayName = "A constant qualified by its library")]
+    [DataRow("Private Const Limit = 10", "Program.Limit = 5", "the constant Limit", DisplayName = "A constant qualified by its module")]
+    [DataRow("Private Const Limit = 10", "Set Limit = Nothing", "the constant Limit", DisplayName = "The target of a Set assignment")]
+    [DataRow("Private Const Left = \"c\"", "Left$ = \"x\"", "the constant Left", DisplayName = "A constant of the module named like a function of the library, by its name with a type character")]
+    [DataRow("", "vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module")]
+    [DataRow("", "Constants.vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module, qualified by its module")]
+    [DataRow("", "VBA.vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module, qualified by its library")]
+    public async Task AnAssignment_ToAConstant_IsAssignmentToConstantNotPermitted(string declarations, string body, string what)
+        => await AssertTargetErrorAsync(Program(declarations, body), "Assignment to constant not permitted", what);
+
+    // a ReDim of a constant is "Expected array" (MS-VBA, Excel-verified, oracle\s29 E17, E18): RedimTargetTests.
+    [TestMethod]
     [TestCategory("MS-VBAL 5.4.3.4 Erase Statement")]
-    [DataRow("Private Const Limit = 10", "ReDim Limit(1)", "the constant Limit", DisplayName = "The target of a ReDim statement")]
     [DataRow("Private Const Limit = 10", "Erase Limit", "the constant Limit", DisplayName = "An element of an Erase statement")]
     [DataRow("", "Erase vbSunday", "the constant vbSunday", DisplayName = "An element of an Erase statement, a constant of a library's Enum")]
     [DataRow("", "Erase vbCrLf", "the constant vbCrLf", DisplayName = "An element of an Erase statement, a constant of the Constants module")]
@@ -77,9 +80,10 @@ public sealed class AssignmentTargetTests
 
     [TestMethod]
     [TestCategory("MS-VBAL 5.4.3.4 Erase Statement")]
-    public async Task AnErase_OfAFunctionOfTheLibrary_IsNotRefused()
-        // an element of an Erase statement may be a function (MS-VBAL §5.4.3.4); only whether the module loads is asserted.
-        => CollectionAssert.AreEqual(Array.Empty<string>(), await LoadErrorsAsync([], Program(string.Empty, "Erase Left")));
+    public async Task AnErase_OfAFunctionOfTheLibrary_ThatTakesNoArgument_IsNotRefused()
+        // an element of an Erase statement may be a function (MS-VBAL §5.4.3.4), called with no argument: `Erase Left` is "Argument not optional"
+        // (FunctionTargetTests); only whether the module loads is asserted.
+        => CollectionAssert.AreEqual(Array.Empty<string>(), await LoadErrorsAsync([], Program(string.Empty, "Erase Now")));
 
     [TestMethod]
     [TestCategory("MS-VBAL 5.4.3.3 ReDim Statement")]
@@ -93,7 +97,7 @@ public sealed class AssignmentTargetTests
     [DataRow("vbCrLf = 5", "the constant vbCrLf", DisplayName = "A constant of the Constants module")]
     public async Task AnAssignment_ToALibraryConstant_WithoutOptionExplicit_IsTheSameError(string body, string what)
         // without Option Explicit an undeclared name is a variable of its own, but the constant's name is declared.
-        => await AssertVariableRequiredAsync(Program(string.Empty, body, optionExplicit: false), what);
+        => await AssertTargetErrorAsync(Program(string.Empty, body, optionExplicit: false), "Assignment to constant not permitted", what);
 
     [TestMethod]
     public async Task TheError_SaysWhatTheTargetIs_AndCitesTheSpecification()
@@ -101,7 +105,7 @@ public sealed class AssignmentTargetTests
         var errors = await LoadErrorsAsync([], Program(string.Empty, "vbSunday = 5"));
 
         CollectionAssert.AreEqual(
-            new[] { "Variable required - can't assign to this expression: The target of a Let assignment must be a variable, and this is the constant vbSunday (MS-VBAL §5.4.3.8)." },
+            new[] { "Assignment to constant not permitted: The target of a Let assignment must be a variable, and this is the constant vbSunday (MS-VBAL §5.4.3.8)." },
             errors);
     }
 
@@ -143,17 +147,32 @@ public sealed class AssignmentTargetTests
         CollectionAssert.AreEqual(new[] { "5" }, output);
     }
 
+    // MS-VBAL §5.6.13: an object indexed is its default member given the arguments, and one assigned is too - through its Property Let, or its Property Set.
+    [TestMethod]
+    public async Task AnAssignment_ToAnIndexedObject_AssignsItsDefaultMember()
+    {
+        var cells = ("Cells", ClassModule("Cells", "Option Explicit", "Private m(1 To 2) As Variant",
+            "Public Property Get Item(ByVal i As Long) As Variant", "Attribute Item.VB_UserMemId = 0", "If IsObject(m(i)) Then Set Item = m(i) Else Item = m(i)", "End Property",
+            "Public Property Let Item(ByVal i As Long, ByVal v As Variant)", "Attribute Item.VB_UserMemId = 0", "m(i) = v", "End Property",
+            "Public Property Set Item(ByVal i As Long, ByVal v As Object)", "Attribute Item.VB_UserMemId = 0", "Set m(i) = v", "End Property"));
+
+        var output = await RunAsync([cells], Program("Private c As New Cells",
+            "c(1) = 5\r\nDebug.Print c(1)\r\nSet c(2) = c\r\nDebug.Print TypeName(c(2))\r\nDim o As Object\r\nSet o = c\r\no(1) = 7\r\nDebug.Print c.Item(1)"));
+
+        CollectionAssert.AreEqual(new[] { "5", "Cells", "7" }, output);
+    }
+
     [TestMethod]
     [DataRow("", "Err = 5", DisplayName = "A function of the library that returns an object, whose default member is assigned")]
-    [DataRow("", "Left = \"x\"", DisplayName = "A function of the library that returns a Variant")]
+    [DataRow("", "Command = \"x\"", DisplayName = "A function of the library that returns a Variant, and takes no argument")]
     [DataRow("", "Array = 5", DisplayName = "Another function of the library that returns a Variant")]
-    [DataRow("", "Strings.Left = \"x\"", DisplayName = "A function of the library that returns a Variant, qualified by its module")]
+    [DataRow("", "Interaction.Command = \"x\"", DisplayName = "A function of the library that returns a Variant, qualified by its module")]
     [DataRow("Private m As Long\r\nPublic Property Get Level() As Long\r\nLevel = m\r\nEnd Property\r\nPublic Property Let Level(ByVal v As Long)\r\nm = v\r\nEnd Property",
         "Level = 5", DisplayName = "A property of the module, by its bare name")]
     public async Task AnAssignment_ThatMayBeValid_IsNotRefused(string declarations, string body)
         // only whether the module loads is asserted: these are not refused for what they assign to. MS-VBAL §5.4.3.8 admits a Let to a function whose
-        // declared type is a class, Object or Variant, and has the one of a Variant raise error 450 when it runs; here the library's functions still fail
-        // when they run, as they did, and the property of the module is assigned through its Property Let.
+        // declared type is a class, Object or Variant, which is called and assigned through when it runs (FunctionTargetTests); the property of the
+        // module is assigned through its Property Let.
         => CollectionAssert.AreEqual(Array.Empty<string>(), await LoadErrorsAsync([], Program(declarations, body)));
 
     [TestMethod]

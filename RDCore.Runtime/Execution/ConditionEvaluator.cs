@@ -2,6 +2,7 @@ using RDCore.Runtime.Semantics;
 using RDCore.Runtime.Semantics.LetCoercion;
 using RDCore.SDK.Model.AST.Abstract;
 using RDCore.SDK.Model.Types;
+using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Model.Values.Meta;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
@@ -28,7 +29,13 @@ public sealed class ConditionEvaluator(RuntimeExpressionEvaluator expressionEval
     /// </summary>
     public RuntimeSemanticsEvaluationResult EvaluateBoolean(IRuntimeSession session, ExpressionNode condition, RuntimeEvaluationContext context)
     {
-        var valueResult = expressionEvaluator.Evaluate(session, condition, context);
+        if (expressionEvaluator.TryEvaluateConditionUnboxed(session, condition, context, out var isTrue))
+        {
+            return RuntimeSemanticsEvaluationResult.Success(isTrue ? VBBooleanValue.True : VBBooleanValue.False);
+        }
+
+        // a Single, Double or Date condition is converted to a Boolean from the extended format it is computed in (MS-VBAL §5.6.9.3; s42 E01).
+        var valueResult = expressionEvaluator.EvaluateLetCoercedTo(session, condition, VBBooleanType.TypeInfo, context);
         if (!valueResult.IsSuccess)
         {
             return valueResult;

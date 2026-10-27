@@ -664,6 +664,753 @@ namespace RDCore.SDK {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Expected Function or variable.
+        /// </summary>
+        public static string VBCompileError_ExpectedFunctionOrVariable {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedFunctionOrVariable", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Can&apos;t assign to read-only property.
+        /// </summary>
+        public static string VBCompileError_CantAssignToReadOnlyProperty {
+            get {
+                return ResourceManager.GetString("VBCompileError_CantAssignToReadOnlyProperty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Wrong number of arguments or invalid property assignment.
+        /// </summary>
+        public static string VBCompileError_WrongNumberOfArgumentsOrInvalidPropertyAssignment {
+            get {
+                return ResourceManager.GetString("VBCompileError_WrongNumberOfArgumentsOrInvalidPropertyAssignment", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to LSet allowed only on strings and user-defined types.
+        /// </summary>
+        public static string VBCompileError_LSetAllowedOnlyOnStringsAndUserDefinedTypes {
+            get {
+                return ResourceManager.GetString("VBCompileError_LSetAllowedOnlyOnStringsAndUserDefinedTypes", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to RSet allowed only on strings.
+        /// </summary>
+        public static string VBCompileError_RSetAllowedOnlyOnStrings {
+            get {
+                return ResourceManager.GetString("VBCompileError_RSetAllowedOnlyOnStrings", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid use of property.
+        /// </summary>
+        public static string VBCompileError_InvalidUseOfProperty {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidUseOfProperty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Assignment to constant not permitted.
+        /// </summary>
+        public static string VBCompileError_AssignmentToConstantNotPermitted {
+            get {
+                return ResourceManager.GetString("VBCompileError_AssignmentToConstantNotPermitted", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Object required.
+        /// </summary>
+        public static string VBCompileError_ObjectRequired {
+            get {
+                return ResourceManager.GetString("VBCompileError_ObjectRequired", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Named argument already specified.
+        /// </summary>
+        public static string VBCompileError_NamedArgumentAlreadySpecified {
+            get {
+                return ResourceManager.GetString("VBCompileError_NamedArgumentAlreadySpecified", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Named argument not found.
+        /// </summary>
+        public static string VBCompileError_NamedArgumentNotFound {
+            get {
+                return ResourceManager.GetString("VBCompileError_NamedArgumentNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Constant expression required.
+        /// </summary>
+        public static string VBCompileError_ConstantExpressionRequired {
+            get {
+                return ResourceManager.GetString("VBCompileError_ConstantExpressionRequired", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid data type for constant.
+        /// </summary>
+        public static string VBCompileError_InvalidDataTypeForConstant {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidDataTypeForConstant", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Overflow.
+        /// </summary>
+        public static string VBCompileError_Overflow {
+            get {
+                return ResourceManager.GetString("VBCompileError_Overflow", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Division by zero.
+        /// </summary>
+        public static string VBCompileError_DivisionByZero {
+            get {
+                return ResourceManager.GetString("VBCompileError_DivisionByZero", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid qualifier.
+        /// </summary>
+        public static string VBCompileError_InvalidQualifier {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidQualifier", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Function call on left-hand side of assignment must return Variant or Object.
+        /// </summary>
+        public static string VBCompileError_FunctionCallOnLeftHandSideMustReturnVariantOrObject {
+            get {
+                return ResourceManager.GetString("VBCompileError_FunctionCallOnLeftHandSideMustReturnVariantOrObject", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Wrong number of dimensions.
+        /// </summary>
+        public static string VBCompileError_WrongNumberOfDimensions {
+            get {
+                return ResourceManager.GetString("VBCompileError_WrongNumberOfDimensions", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Array already dimensioned.
+        /// </summary>
+        public static string VBCompileError_ArrayAlreadyDimensioned {
+            get {
+                return ResourceManager.GetString("VBCompileError_ArrayAlreadyDimensioned", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to For control variable already in use.
+        /// </summary>
+        public static string VBCompileError_ForControlVariableAlreadyInUse {
+            get {
+                return ResourceManager.GetString("VBCompileError_ForControlVariableAlreadyInUse", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid Next control variable reference.
+        /// </summary>
+        public static string VBCompileError_InvalidNextControlVariableReference {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidNextControlVariableReference", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Can&apos;t assign to array.
+        /// </summary>
+        public static string VBCompileError_CantAssignToArray {
+            get {
+                return ResourceManager.GetString("VBCompileError_CantAssignToArray", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to ByRef argument type mismatch.
+        /// </summary>
+        public static string VBCompileError_ByRefArgumentTypeMismatch {
+            get {
+                return ResourceManager.GetString("VBCompileError_ByRefArgumentTypeMismatch", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Type mismatch: array or user-defined type expected.
+        /// </summary>
+        public static string VBCompileError_TypeMismatchArrayOrUserDefinedTypeExpected {
+            get {
+                return ResourceManager.GetString("VBCompileError_TypeMismatchArrayOrUserDefinedTypeExpected", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Next without For.
+        /// </summary>
+        public static string VBCompileError_NextWithoutFor {
+            get {
+                return ResourceManager.GetString("VBCompileError_NextWithoutFor", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to For without Next.
+        /// </summary>
+        public static string VBCompileError_ForWithoutNext {
+            get {
+                return ResourceManager.GetString("VBCompileError_ForWithoutNext", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Loop without Do.
+        /// </summary>
+        public static string VBCompileError_LoopWithoutDo {
+            get {
+                return ResourceManager.GetString("VBCompileError_LoopWithoutDo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Do without Loop.
+        /// </summary>
+        public static string VBCompileError_DoWithoutLoop {
+            get {
+                return ResourceManager.GetString("VBCompileError_DoWithoutLoop", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to End If without block If.
+        /// </summary>
+        public static string VBCompileError_EndIfWithoutBlockIf {
+            get {
+                return ResourceManager.GetString("VBCompileError_EndIfWithoutBlockIf", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Block If without End If.
+        /// </summary>
+        public static string VBCompileError_BlockIfWithoutEndIf {
+            get {
+                return ResourceManager.GetString("VBCompileError_BlockIfWithoutEndIf", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Else without If.
+        /// </summary>
+        public static string VBCompileError_ElseWithoutIf {
+            get {
+                return ResourceManager.GetString("VBCompileError_ElseWithoutIf", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Case without Select Case.
+        /// </summary>
+        public static string VBCompileError_CaseWithoutSelectCase {
+            get {
+                return ResourceManager.GetString("VBCompileError_CaseWithoutSelectCase", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Select Case without End Select.
+        /// </summary>
+        public static string VBCompileError_SelectCaseWithoutEndSelect {
+            get {
+                return ResourceManager.GetString("VBCompileError_SelectCaseWithoutEndSelect", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to End With without With.
+        /// </summary>
+        public static string VBCompileError_EndWithWithoutWith {
+            get {
+                return ResourceManager.GetString("VBCompileError_EndWithWithoutWith", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid outside procedure.
+        /// </summary>
+        public static string VBCompileError_InvalidOutsideProcedure {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidOutsideProcedure", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Only comments may appear after End Sub, End Function, or End Property.
+        /// </summary>
+        public static string VBCompileError_OnlyCommentsAfterEndProcedure {
+            get {
+                return ResourceManager.GetString("VBCompileError_OnlyCommentsAfterEndProcedure", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is written with the {1} argument(s) it takes, in parentheses..
+        /// </summary>
+        public static string VBCompileError_ReservedNameArguments_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_ReservedNameArguments_Verbose", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid use of AddressOf operator.
+        /// </summary>
+        public static string VBCompileError_InvalidUseOfAddressOf {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidUseOfAddressOf", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid use of New keyword.
+        /// </summary>
+        public static string VBCompileError_InvalidUseOfNewKeyword {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidUseOfNewKeyword", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is declared As New {1}, which is no class: New creates an object of a class..
+        /// </summary>
+        public static string VBCompileError_InvalidUseOfNewKeyword_NotAClass_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidUseOfNewKeyword_NotAClass_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is declared WithEvents: it is assigned the object whose events it handles, and creates none of its own..
+        /// </summary>
+        public static string VBCompileError_InvalidUseOfNewKeyword_WithEvents_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidUseOfNewKeyword_WithEvents_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is declared As New {1}, a class of the {2} library that cannot be created. MS-VBA compiles it, and raises &apos;Class not registered&apos; when the variable is first referred to..
+        /// </summary>
+        public static string VBCompileError_InvalidUseOfNewKeyword_NotCreatable_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidUseOfNewKeyword_NotCreatable_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Can&apos;t change data types of array elements.
+        /// </summary>
+        public static string VBCompileError_CantChangeDataTypesOfArrayElements {
+            get {
+                return ResourceManager.GetString("VBCompileError_CantChangeDataTypesOfArrayElements", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is an array of {1}: a ReDim can&apos;t make its elements {2}..
+        /// </summary>
+        public static string VBCompileError_CantChangeDataTypesOfArrayElements_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_CantChangeDataTypesOfArrayElements_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Expected procedure, not variable.
+        /// </summary>
+        public static string VBCompileError_ExpectedProcedureNotVariable {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedProcedureNotVariable", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Array argument must be ByRef.
+        /// </summary>
+        public static string VBCompileError_ArrayArgumentMustBeByRef {
+            get {
+                return ResourceManager.GetString("VBCompileError_ArrayArgumentMustBeByRef", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is declared ByVal and an array: an array parameter is always ByRef..
+        /// </summary>
+        public static string VBCompileError_ArrayArgumentMustBeByRef_Declaration_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_ArrayArgumentMustBeByRef_Declaration_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Automation type not supported in Visual Basic.
+        /// </summary>
+        public static string VBCompileError_AutomationTypeNotSupported {
+            get {
+                return ResourceManager.GetString("VBCompileError_AutomationTypeNotSupported", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Expected user-defined type, not project.
+        /// </summary>
+        public static string VBCompileError_ExpectedUserDefinedTypeNotProject {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedUserDefinedTypeNotProject", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a procedural module of a library, not a type..
+        /// </summary>
+        public static string VBCompileError_DeclaredTypeIsALibraryModule_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_DeclaredTypeIsALibraryModule_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a project, not a type: a type of the project is written after its name and a dot..
+        /// </summary>
+        public static string VBCompileError_DeclaredTypeIsAProject_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_DeclaredTypeIsAProject_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a type, not a value..
+        /// </summary>
+        public static string VBCompileError_BuiltInTypeIsNoValue_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_BuiltInTypeIsNoValue_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is an intrinsic type, which no object is: TypeOf ... Is tests an object against a class, an interface or Object..
+        /// </summary>
+        public static string VBCompileError_TypeOfIntrinsicType_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_TypeOfIntrinsicType_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to TypeOf ... Is is followed by the name of a type: a class, an interface or Object..
+        /// </summary>
+        public static string VBCompileError_TypeOfNotATypeName_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_TypeOfNotATypeName_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is not the name of a type this project can see..
+        /// </summary>
+        public static string VBCompileError_TypeOfTypeNotResolved_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_TypeOfTypeNotResolved_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid length for fixed-length string.
+        /// </summary>
+        public static string VBCompileError_InvalidLengthForFixedLengthString {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidLengthForFixedLengthString", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to A fixed-length string is 1 to 65526 characters long: &apos;String * {0}&apos; is not..
+        /// </summary>
+        public static string VBCompileError_InvalidLengthForFixedLengthString_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidLengthForFixedLengthString_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is no length of a fixed-length string: a length is a whole number up to 65535, or the name of a constant..
+        /// </summary>
+        public static string VBCompileError_FixedLengthNotALength_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_FixedLengthNotALength_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The length of a fixed-length string is known when the code is compiled: &apos;{0}&apos; is not a constant..
+        /// </summary>
+        public static string VBCompileError_FixedLengthNotAConstant_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_FixedLengthNotAConstant_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to A bound of the array &apos;{0}&apos; is past the range of a Long, which every bound is..
+        /// </summary>
+        public static string VBCompileError_ArrayBoundOverflow_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_ArrayBoundOverflow_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is no variable whose size can be measured: {1}.
+        /// </summary>
+        public static string VBCompileError_NameIsNoVariable_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_NameIsNoVariable_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a constant, which is the name this ReDim re-dimensions, and no array. Declare an array of another name..
+        /// </summary>
+        public static string VBCompileError_RedimOfAConstant_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_RedimOfAConstant_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Expected variable or procedure, not project.
+        /// </summary>
+        public static string VBCompileError_ExpectedVariableOrProcedureNotProject {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedVariableOrProcedureNotProject", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Expected variable or procedure, not enum type.
+        /// </summary>
+        public static string VBCompileError_ExpectedVariableOrProcedureNotEnumType {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedVariableOrProcedureNotEnumType", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to With object must be user-defined type, Object, or Variant.
+        /// </summary>
+        public static string VBCompileError_WithObjectMustBeUserDefinedTypeObjectOrVariant {
+            get {
+                return ResourceManager.GetString("VBCompileError_WithObjectMustBeUserDefinedTypeObjectOrVariant", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to For Each may only iterate over a collection object or an array.
+        /// </summary>
+        public static string VBCompileError_ForEachMayOnlyIterateOverACollectionObjectOrAnArray {
+            get {
+                return ResourceManager.GetString("VBCompileError_ForEachMayOnlyIterateOverACollectionObjectOrAnArray", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a project: it qualifies the names of what it declares, as in &apos;{0}.Len&apos;, and is no value of its own..
+        /// </summary>
+        public static string VBCompileError_NameIsAProject_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_NameIsAProject_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a module of the {1} library: it qualifies the names of its members, and is no value of its own..
+        /// </summary>
+        public static string VBCompileError_NameIsALibraryModule_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_NameIsALibraryModule_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a module of this project: it qualifies the names of its members, and is no value of its own..
+        /// </summary>
+        public static string VBCompileError_NameIsAModule_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_NameIsAModule_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is an enumeration: each of its members is a value, written after its name and a dot, and it is none..
+        /// </summary>
+        public static string VBCompileError_NameIsAnEnumType_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_NameIsAnEnumType_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is no value an operator can work on: {1}.
+        /// </summary>
+        public static string VBCompileError_NameIsNoOperand_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_NameIsNoOperand_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is no object a Set statement can assign: {1}.
+        /// </summary>
+        public static string VBCompileError_NameIsNoObject_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_NameIsNoObject_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to A With block refers to the members of an object, a record or a Variant; &apos;{0}&apos; is of type {1}..
+        /// </summary>
+        public static string VBCompileError_WithObject_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_WithObject_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to A With block refers to the members of an object, a record or a Variant: {0}.
+        /// </summary>
+        public static string VBCompileError_WithName_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_WithName_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to For Each iterates the elements of an array or the items of a collection object; &apos;{0}&apos; is of type {1}..
+        /// </summary>
+        public static string VBCompileError_ForEachSource_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_ForEachSource_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to For Each iterates the elements of an array or the items of a collection object: {0}.
+        /// </summary>
+        public static string VBCompileError_ForEachName_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_ForEachName_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;As {0}()&apos; is what a Function, a Property Get or a Declare returns: an array is declared with () after its name, as in &apos;Dim a() As {0}&apos;..
+        /// </summary>
+        public static string VBCompileError_ArrayTypeOnlyReturned_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_ArrayTypeOnlyReturned_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a ParamArray, which is written with neither ByVal nor ByRef..
+        /// </summary>
+        public static string VBCompileError_ParamArrayPassingMode_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_ParamArrayPassingMode_Verbose", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to What {0} tests is an object, written without parentheses: in parentheses, it would be its default member&apos;s value..
+        /// </summary>
+        public static string VBCompileError_TypeOfParenthesizedOperand_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_TypeOfParenthesizedOperand_Verbose", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Expected End With.
+        /// </summary>
+        public static string VBCompileError_ExpectedEndWith {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedEndWith", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Expected variable or procedure, not module.
+        /// </summary>
+        public static string VBCompileError_ExpectedVariableOrProcedureNotModule {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedVariableOrProcedureNotModule", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Expected Sub, Function, or Property.
+        /// </summary>
+        public static string VBCompileError_ExpectedSubFunctionOrProperty {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedSubFunctionOrProperty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Range has no values.
+        /// </summary>
+        public static string VBCompileError_RangeHasNoValues {
+            get {
+                return ResourceManager.GetString("VBCompileError_RangeHasNoValues", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to A module is not a valid type.
+        /// </summary>
+        public static string VBCompileError_ModuleIsNotAValidType {
+            get {
+                return ResourceManager.GetString("VBCompileError_ModuleIsNotAValidType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Argument not optional.
         /// </summary>
         public static string VBCompileError_ArgumentNotOptional {
@@ -687,15 +1434,6 @@ namespace RDCore.SDK {
         public static string VBCompileError_DefaultMemberReturnsAnObject_Verbose {
             get {
                 return ResourceManager.GetString("VBCompileError_DefaultMemberReturnsAnObject_Verbose", resourceCulture);
-            }
-        }
-
-        /// <summary>
-        ///   Looks up a localized string similar to {0} has no default member to give it a value, which makes it statically invalid to Let-coerce to one (MS-VBAL §5.5.1.1). MS-VBA compiles it, and raises run-time error 438 (Object doesn&apos;t support this property or method) when it runs..
-        /// </summary>
-        public static string VBCompileError_ClassHasNoDefaultMember_Verbose {
-            get {
-                return ResourceManager.GetString("VBCompileError_ClassHasNoDefaultMember_Verbose", resourceCulture);
             }
         }
 
@@ -850,7 +1588,34 @@ namespace RDCore.SDK {
                 return ResourceManager.GetString("VBExponentOp_InvalidProcedureCallOrArgument_Verbose", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to A subscript of an array is a Long: a LongLong is not let-coerced to one..
+        /// </summary>
+        public static string VBIndex_LongLongSubscript_Verbose {
+            get {
+                return ResourceManager.GetString("VBIndex_LongLongSubscript_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to A negative number raised to a fractional power has no real result..
+        /// </summary>
+        public static string VBExponentOp_NoRealPower_Verbose {
+            get {
+                return ResourceManager.GetString("VBExponentOp_NoRealPower_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to A value that is no number (NaN) has no sign..
+        /// </summary>
+        public static string VBSgn_NaN_Verbose {
+            get {
+                return ResourceManager.GetString("VBSgn_NaN_Verbose", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to This operation results in a division by zero, possibly due to Banker&apos;s Rounding losing enough precision to bring the operand value to integer value 0..
         /// </summary>
@@ -924,6 +1689,60 @@ namespace RDCore.SDK {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to What TypeOf tests is Nothing: an object variable that was never set, or that was set to Nothing, has no object whose type could be tested. Test it with &apos;Is Nothing&apos; first..
+        /// </summary>
+        public static string VBTypeOf_ObjectVariableNotSet_Verbose {
+            get {
+                return ResourceManager.GetString("VBTypeOf_ObjectVariableNotSet_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to A {0} is neither an array nor an object: there is nothing to index..
+        /// </summary>
+        public static string VBIndex_NothingToIndex_Verbose {
+            get {
+                return ResourceManager.GetString("VBIndex_NothingToIndex_Verbose", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The object&apos;s {0} property has a Property Get and no Property Let, and what it returns is no object whose default member could be assigned instead..
+        /// </summary>
+        public static string VBMemberAssignment_ReadOnlyProperty_Verbose {
+            get {
+                return ResourceManager.GetString("VBMemberAssignment_ReadOnlyProperty_Verbose", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The bounds of an array are asked of an expression declared as a {0}, which never holds one..
+        /// </summary>
+        public static string VBCompileError_ExpectedArray_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_ExpectedArray_Verbose", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid use of Me keyword.
+        /// </summary>
+        public static string VBCompileError_InvalidUseOfMe {
+            get {
+                return ResourceManager.GetString("VBCompileError_InvalidUseOfMe", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The object has no member named {0}..
+        /// </summary>
+        public static string VBMemberAccess_NoSuchMember_Verbose {
+            get {
+                return ResourceManager.GetString("VBMemberAccess_NoSuchMember_Verbose", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The Variant this member is accessed on holds a {0}, which has no members: only an object, or a record, has..
         /// </summary>
         public static string VBMemberAccess_ObjectRequired_Verbose {
@@ -992,6 +1811,87 @@ namespace RDCore.SDK {
         public static string VBProcedureCall_OutOfStackSpace_Verbose {
             get {
                 return ResourceManager.GetString("VBProcedureCall_OutOfStackSpace_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The session&apos;s memory has no room left for the temporary this argument is passed in..
+        /// </summary>
+        public static string VBProcedureCall_OutOfMemory_Temporary_Verbose {
+            get {
+                return ResourceManager.GetString("VBProcedureCall_OutOfMemory_Temporary_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is an array, which an As Any parameter does not take: it takes a variable of any other type, or an element of the array..
+        /// </summary>
+        public static string VBArgument_ArrayToAsAny_Verbose {
+            get {
+                return ResourceManager.GetString("VBArgument_ArrayToAsAny_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is ByRef: ByVal is written only before an argument of a ByVal parameter, of an As Any one, or of a Declare&apos;s..
+        /// </summary>
+        public static string VBArgument_ByValByRefParameter_Verbose {
+            get {
+                return ResourceManager.GetString("VBArgument_ByValByRefParameter_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is an array parameter, which is ByRef: an array is never passed ByVal..
+        /// </summary>
+        public static string VBArgument_ByValArrayParameter_Verbose {
+            get {
+                return ResourceManager.GetString("VBArgument_ByValArrayParameter_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is a ParamArray, which takes no argument written ByVal..
+        /// </summary>
+        public static string VBArgument_ByValParamArray_Verbose {
+            get {
+                return ResourceManager.GetString("VBArgument_ByValParamArray_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The member is called late-bound: its parameters are not known, and are taken to be ByRef, which takes no argument written ByVal..
+        /// </summary>
+        public static string VBArgument_ByValLateBound_Verbose {
+            get {
+                return ResourceManager.GetString("VBArgument_ByValLateBound_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The object is called late-bound, through its IDispatch, which converts each argument to the type of its parameter: Null converts to no type but Variant..
+        /// </summary>
+        public static string VBArgument_NullThroughDispatch_Verbose {
+            get {
+                return ResourceManager.GetString("VBArgument_NullThroughDispatch_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to An index of an array is never written ByVal..
+        /// </summary>
+        public static string VBArgument_ByValIndex_Verbose {
+            get {
+                return ResourceManager.GetString("VBArgument_ByValIndex_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to {0} is compiled inline, and takes no argument written ByVal..
+        /// </summary>
+        public static string VBArgument_ByValInlineFunction_Verbose {
+            get {
+                return ResourceManager.GetString("VBArgument_ByValInlineFunction_Verbose", resourceCulture);
             }
         }
 
@@ -1245,6 +2145,114 @@ namespace RDCore.SDK {
         public static string VBDeclare_ObjectNotPassed_Verbose {
             get {
                 return ResourceManager.GetString("VBDeclare_ObjectNotPassed_Verbose", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The designer block of the form module (Begin … End) has no matching End..
+        /// </summary>
+        public static string FormDesigner_UnterminatedBlock {
+            get {
+                return ResourceManager.GetString("FormDesigner_UnterminatedBlock", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The form keeps its controls in its .frx file, which was not supplied..
+        /// </summary>
+        public static string FormDesigner_MissingCompanion {
+            get {
+                return ResourceManager.GetString("FormDesigner_MissingCompanion", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The form&apos;s designer data is not where its module says it is in its .frx file..
+        /// </summary>
+        public static string FormDesigner_BlobOutOfRange {
+            get {
+                return ResourceManager.GetString("FormDesigner_BlobOutOfRange", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The form&apos;s designer data is not a compound file (an OLE storage)..
+        /// </summary>
+        public static string FormDesigner_NotACompoundFile {
+            get {
+                return ResourceManager.GetString("FormDesigner_NotACompoundFile", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The form&apos;s designer data is a damaged compound file..
+        /// </summary>
+        public static string FormDesigner_CorruptCompoundFile {
+            get {
+                return ResourceManager.GetString("FormDesigner_CorruptCompoundFile", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The form&apos;s designer data has no form stream (f)..
+        /// </summary>
+        public static string FormDesigner_MissingFormStream {
+            get {
+                return ResourceManager.GetString("FormDesigner_MissingFormStream", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The form&apos;s designer data was written by a version of Microsoft Forms that is not supported..
+        /// </summary>
+        public static string FormDesigner_UnsupportedVersion {
+            get {
+                return ResourceManager.GetString("FormDesigner_UnsupportedVersion", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The form&apos;s designer data ends before the description of its controls does..
+        /// </summary>
+        public static string FormDesigner_Truncated {
+            get {
+                return ResourceManager.GetString("FormDesigner_Truncated", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to A control of the form names no class the form describes..
+        /// </summary>
+        public static string FormDesigner_InvalidControl {
+            get {
+                return ResourceManager.GetString("FormDesigner_InvalidControl", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Member already exists in an object module from which this object module derives.
+        /// </summary>
+        public static string VBCompileError_MemberAlreadyExistsInDesigner {
+            get {
+                return ResourceManager.GetString("VBCompileError_MemberAlreadyExistsInDesigner", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; is the name of a control of the form, which is already a member of the form&apos;s class..
+        /// </summary>
+        public static string VBCompileError_MemberAlreadyExistsInDesigner_Verbose {
+            get {
+                return ResourceManager.GetString("VBCompileError_MemberAlreadyExistsInDesigner_Verbose", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The project file &apos;{0}&apos; is not valid JSON, at line {1}, position {2}: {3}.
+        /// </summary>
+        public static string ProjectFile_InvalidJson {
+            get {
+                return ResourceManager.GetString("ProjectFile_InvalidJson", resourceCulture);
             }
         }
     }

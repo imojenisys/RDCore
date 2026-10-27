@@ -189,6 +189,9 @@
   <data name="ImplicitVariantDeclaration_Message" xml:space="preserve">
     <value>'{0}' is implicitly declared as a Variant. State its type with an As clause (As Variant, if that is intended).</value>
   </data>
+  <data name="ImplicitArrayDeclaration_Message" xml:space="preserve">
+    <value>This ReDim declares the array '{0}', whose name matches nothing else. Declare it first, with Dim {0}() As ..., so that a misspelled name does not declare a new array.</value>
+  </data>
   <data name="ImplicitVariantReturnType_Message" xml:space="preserve">
     <value>'{0}' implicitly returns a Variant. State its return type with an As clause (As Variant, if that is intended).</value>
   </data>
@@ -237,6 +240,12 @@
   <data name="ObsoleteOnLocalErrorStatement_Message" xml:space="preserve">
     <value>On Local Error is obsolete: every error is local to the procedure, so Local says nothing. Use On Error.</value>
   </data>
+  <data name="RedundantByValArgument_Message" xml:space="preserve">
+    <value>The parameter is ByVal: ByVal written before its argument changes nothing.</value>
+  </data>
+  <data name="EarlyBindingOpportunity_Message" xml:space="preserve">
+    <value>'{0}' is the class {1}.{2}, of a referenced library: declare the object As {1}.{2} and create it with New, and its members are bound when the code is compiled.</value>
+  </data>
   <data name="ImplementationsShouldBePrivate_Interface_Message" xml:space="preserve">
     <value>'{0}' implements a member of an interface, and is Public: it exposes that member on the default interface of this class, where it does not belong. Make it Private.</value>
   </data>
@@ -260,5 +269,44 @@
   </data>
   <data name="VariantNumberStringComparison_Message" xml:space="preserve">
     <value>'{0}' compares a Variant holding a number with a Variant holding a String: the number is always less than the String, whatever their values.</value>
+  </data>
+  <data name="VariantComparedWithStringAsText_Message" xml:space="preserve">
+    <value>'{0}' compares a Variant holding a number, a Date or a Boolean with a String: MS-VBA compares their text, where MS-VBAL §5.6.9.5 makes it a type mismatch (13) when the String is no number.</value>
+  </data>
+  <data name="CaseComparedInSelectorType_Message" xml:space="preserve">
+    <value>MS-VBA converts the value of this Case Is to the declared type of the selector before comparing the two, where MS-VBAL §5.4.2.10 states the expression 'selector operator value': the result can differ.</value>
+  </data>
+  <data name="VariantStringThatIsNoNumberRanked_Message" xml:space="preserve">
+    <value>'{0}' compares a Variant holding a String that is no number with a number, a Date or a Boolean: MS-VBA ranks the String above it, whatever their values, where MS-VBAL §5.6.9.5 makes it a type mismatch (13).</value>
+  </data>
+  <data name="UnmatchedEventHandler_Message" xml:space="preserve">
+    <value>&apos;{0}&apos; is named as the handler of an event of a control, and does not match the event: the event never calls it, and neither does anything else.</value>
+  </data>
+  <data name="SetThroughACallFails_NoDefaultMemberToSet_Message" xml:space="preserve">
+    <value>This Set calls &apos;{0}&apos; and Sets the default member of what it returns, which has no Property Set: it raises run-time error 438 (Object doesn&apos;t support this property or method) whenever it runs.</value>
+  </data>
+  <data name="LikePatternDeparture_EmptyCharList_Message" xml:space="preserve">
+    <value>This pattern has a [] or a [!]: MS-VBAL makes it a list of no character, which matches nothing, where MS-VBA matches [] with no character at all, and [!] with a &apos;!&apos;.</value>
+  </data>
+  <data name="LikePatternDeparture_InvalidPattern_Message" xml:space="preserve">
+    <value>This pattern is not a valid Like pattern: MS-VBAL raises run-time error 93 wherever it is used, where MS-VBA raises it only when a match reaches the invalid element.</value>
+  </data>
+  <data name="ArgumentTypedArithmeticOverflow_Message" xml:space="preserve">
+    <value>This operation is {0} arithmetic: MS-VBA types Abs, Int and Fix of a number as that number&apos;s type, where MS-VBAL declares them Variant. It can overflow (run-time error 6) where a Variant operation would widen to a larger type.</value>
+  </data>
+  <data name="IgnoredTypeCharacter_Message" xml:space="preserve">
+    <value>The type character of this function does not match its declared type ({1}): MS-VBAL makes the name invalid, and MS-VBA ignores the character. Write &apos;{0}&apos; without it.</value>
+  </data>
+  <data name="ProcedureConstantLength_Message" xml:space="preserve">
+    <value>The value of constant &apos;{0}&apos; calls Len: MS-VBA accepts it in a procedure, but refuses it in a module (Constant expression required), and its run is not reliable. Write the length itself.</value>
+  </data>
+  <data name="ReDimOfAnImplicitVariant_Message" xml:space="preserve">
+    <value>&apos;{0}&apos; was declared implicitly, where it is first used: MS-VBAL and VB6 re-dimension it here, where MS-VBA refuses this ReDim at compile time (Invalid ReDim). Declare &apos;{0}&apos; with Dim before using it.</value>
+  </data>
+  <data name="ValueOfObjectWithNoDefaultMember_Message" xml:space="preserve">
+    <value>An object of class &apos;{0}&apos;, which has no default member, is where a value is expected: MS-VBA raises run-time error 438 (91 when it is Nothing) when it runs, where MS-VBAL §5.5.1.1 makes it a compile error (type mismatch).</value>
+  </data>
+  <data name="EmptyLetToArray_Message" xml:space="preserve">
+    <value>{0} is assigned to an array: MS-VBAL allows it, {0} being a Variant, but the value it holds raises run-time error 13 (Type mismatch) whenever the assignment runs. Erase empties a dynamic array.</value>
   </data>
 </root>

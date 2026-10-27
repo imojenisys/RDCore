@@ -22,6 +22,17 @@ public record class VBRuntimeErrorInfo : VBErrorInfo, IVBRaisableError
     /// </remarks>
     public string ToDiagnosticCode() => $"VBR{ErrorId:00000}";
 
+    /// <summary>
+    /// Whether the error is raised whatever values the operation is given: decided by their types alone - a <c>Byte()</c> let-coerced to a <c>Long</c> is
+    /// a type mismatch, whatever bytes it holds (<strong>MS-VBAL 5.5.1.2.6</strong>).
+    /// </summary>
+    /// <remarks>
+    /// An analysis evaluates code with values it assumes, and states none of the errors those raise: what an assumed value raises is not known to happen.
+    /// An error decided by the types is, which is why it is stated all the same - the evaluation of an operation on a value that is not known keeps it, and
+    /// an instruction whose evaluation assumed something reports it.
+    /// </remarks>
+    public bool IsDecidedByTypes { get; init; }
+
     /// <inheritdoc/>
     public VBErrorInfo AsErrorInfo => this;
 
@@ -98,6 +109,7 @@ public record class VBRuntimeErrorInfo : VBErrorInfo, IVBRaisableError
         [VBRuntimeErrorId.InvalidFileFormat] = "Invalid file format",
         [VBRuntimeErrorId.CantCreateNecessaryTemporaryFile] = "Can't create necessary temporary file",
         [VBRuntimeErrorId.InvalidFormatInResourceFile] = "Invalid format in resource file",
+        [VBRuntimeErrorId.CantLoadOrUnloadThisObject] = "Can't load or unload this object",
         [VBRuntimeErrorId.InvalidPropertyValue] = "Invalid property value",
         [VBRuntimeErrorId.InvalidPropertyArrayIndex] = "Invalid property array index",
         [VBRuntimeErrorId.SetNotSupportedAtRuntime] = "Set not supported at runtime",
@@ -116,6 +128,7 @@ public record class VBRuntimeErrorInfo : VBErrorInfo, IVBRaisableError
         [VBRuntimeErrorId.AutomationError] = "Automation error",
         [VBRuntimeErrorId.ConnectionToTypeLibraryLost] = "Connection to type library or object library for remote process has been lost. Press OK for dialog to remove reference.",
         [VBRuntimeErrorId.AutomationObjectDoesNotHaveDefaultValue] = "Automation object does not have a default value",
+        [VBRuntimeErrorId.MethodNotApplicableInThisContext] = "Method not applicable in this context",
         [VBRuntimeErrorId.ObjectDoesntSupportThisAction] = "Object doesn't support this action",
         [VBRuntimeErrorId.ObjectDoesntSupportNamedArguments] = "Object doesn't support named arguments",
         [VBRuntimeErrorId.ObjectDoesntSupportCurrentLocaleSettings] = "Object doesn't support current locale setting",

@@ -563,7 +563,8 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         var assignment = CaptureIsolatedExpression(context.expression(0));
         var end = CaptureIsolatedExpression(context.expression(1));
         var step = CaptureIsolatedExpression(context.stepStmt()?.expression());
-        OnExitParentIfBuilt(builder => builder.BuildForStatement(context, assignment, end, step));
+        var next = CaptureIsolatedExpression(context.expression(2));
+        OnExitParentIfBuilt(builder => builder.BuildForStatement(context, assignment, end, step, next));
     }
 
     // `For Each...Next` (MS-VBAL 5.4.2.9). Same body/capture shape as For; no assignment to split —
@@ -574,7 +575,8 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
     {
         var control = CaptureIsolatedExpression(context.expression(0));
         var collection = CaptureIsolatedExpression(context.expression(1));
-        OnExitParentIfBuilt(builder => builder.BuildForEachStatement(context, control, collection));
+        var next = CaptureIsolatedExpression(context.expression(2));
+        OnExitParentIfBuilt(builder => builder.BuildForEachStatement(context, control, collection, next));
     }
 
     // `Select Case` (MS-VBAL 5.4.2.10). Every expression here — the control expression, and each
@@ -1371,6 +1373,31 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
         OnExpression(new SimpleNameExpressionNode(GetCurrentNodeId(), location, value, identifier.TypeHint()));
     }
 
+    // MS-VBAL §3.3.5.3: an intrinsic type written where an expression is - after TypeOf ... Is, or where a value is. It is no value, and the static semantics
+    // refuse it there; it is built all the same, so that the refusal is where it was written rather than the name silently missing from the expression.
+    // `Object` is no reserved-type-identifier: MS-VBA reads it as a name, and so does this.
+    public override void ExitBuiltInTypeExpr([NotNull] VBAParser.BuiltInTypeExprContext context)
+    {
+        if (!IsDeclarationPassExpression)
+        {
+            return;
+        }
+
+        var builtInType = context.builtInType();
+        var location = context.GetSourceLocation(_rootUri);
+        var isBracketed = builtInType.L_SQUARE_BRACKET() is not null;
+        if (builtInType.OBJECT() is { } objectToken)
+        {
+            OnExpression(new SimpleNameExpressionNode(GetCurrentNodeId(), location, objectToken.GetText()));
+            return;
+        }
+
+        if (builtInType.baseType() is { } baseType)
+        {
+            OnExpression(new BuiltInTypeExpressionNode(GetCurrentNodeId(), location, baseType.GetText(), isBracketed));
+        }
+    }
+
     // `lExpression` (MS-VBAL §5.6.10-16) is left-recursive, same as `expression` — every alternative
     // below follows the same no-Enter-override, PopLastChildren-at-Exit discipline as the operators
     // above (see that block's own remarks on why it stays even though ModuleParser is walk-based now).
@@ -1877,14 +1904,26 @@ internal class DeclarationsParseTreeListener(Uri sourceUri, ModuleNode moduleNod
     // argument written to be passed by value was aliased to a ByRef parameter and mutated the caller's
     // variable. What this operator yields is a value bound to nothing, which is what there being nothing
     // to alias means; no rule anywhere says "forced ByVal".
+    // One syntax, two operators (RD-VBAL §5.6.6), as `=` is an assignment or a comparison: around an operand of an operator - or around what is already
+    // in parentheses - they group it, and are the precedence operator; anywhere else - an argument, the value of an assignment, a condition - they
+    // let-coerce what they enclose. Either is the simple data value of what it encloses. What TypeOf tests is no operand in parentheses at all (MS-VBA:
+    // "Syntax error"), which the static semantics say; the tree keeps it as written.
     public override void ExitParenthesizedExpr([NotNull] VBAParser.ParenthesizedExprContext context)
     {
         if (!IsDeclarationPassExpression)
         {
             return;
         }
-        AddIfBuilt(BuildUnary(OperatorSymbolNames.UnaryLetCoerceOp, context));
+
+        var token = IsOperandOfAnOperator(context) ? OperatorSymbolNames.UnaryArithmeticPrecedenceOp : OperatorSymbolNames.UnaryLetCoerceOp;
+        AddIfBuilt(BuildUnary(token, context));
     }
+
+    private static bool IsOperandOfAnOperator(VBAParser.ParenthesizedExprContext context)
+        => context.Parent is VBAParser.PowOpContext or VBAParser.UnaryMinusOpContext or VBAParser.MultOpContext or VBAParser.IntDivOpContext
+            or VBAParser.ModOpContext or VBAParser.AddOpContext or VBAParser.ConcatOpContext or VBAParser.RelationalOpContext
+            or VBAParser.LogicalNotOpContext or VBAParser.LogicalAndOpContext or VBAParser.LogicalOrOpContext or VBAParser.LogicalXorOpContext
+            or VBAParser.LogicalEqvOpContext or VBAParser.LogicalImpOpContext or VBAParser.ParenthesizedExprContext or VBAParser.TypeofexprContext;
 
     public override void ExitPowOp([NotNull] VBAParser.PowOpContext context)
     {

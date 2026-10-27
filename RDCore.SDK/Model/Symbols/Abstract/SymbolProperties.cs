@@ -1,6 +1,17 @@
 ﻿namespace RDCore.SDK.Model.Symbols.Abstract;
 
-public record class SymbolProperty<T>(string Name) { }
+/// <summary>
+/// The key of a property of a symbol (<see cref="Symbol.GetProperty{T}"/>), of the type of its value: two keys of the same name and type are the same key.
+/// </summary>
+/// <param name="Name">The name of the property.</param>
+public record class SymbolProperty<T>(string Name)
+{
+    // a property is read on every call of an external member, and a key is hashed each time it is looked up: its name is hashed once (IR lowering S1.9).
+    private readonly int _hashCode = HashCode.Combine(typeof(SymbolProperty<T>), Name);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => _hashCode;
+}
 
 /// <summary>
 /// Defines LSP-compliant extension properties for symbols. RDCore uses this to carry the <c>VB_Attribute</c> values associated with a symbol.
@@ -46,6 +57,16 @@ public static class SymbolProperties
     /// source declares, or it would take its own earlier output for the declaration it is about to make.
     /// </remarks>
     public static readonly SymbolProperty<bool> ImplicitlyDeclared = new(nameof(ImplicitlyDeclared));
+    /// <summary>
+    /// Whether a member of a form's class is one of the form's controls: declared by the form's designer, not by its code
+    /// (<see cref="Workspace.Forms.FormDescriptor.DeclaredControls"/>).
+    /// </summary>
+    /// <remarks>
+    /// A control is a <c>Public</c>, read-only property of the control's class: a <c>Property Get</c>, which the designer owns and the code does not assign, so
+    /// <c>Set TextBox1 = …</c> is an invalid use of the property (<strong>MS-VBAL §5.4.3.9</strong>), and <c>TextBox1 = "a"</c> assigns its default member
+    /// (§5.4.3.8). It is also <see cref="WithEvents"/>: the procedures named for it handle its events (<c>TextBox1_Change</c>).
+    /// </remarks>
+    public static readonly SymbolProperty<bool> DesignerControl = new(nameof(DesignerControl));
     /// <summary>
     /// The name of the library project a symbol belongs to — <c>VBA</c> for the standard library of a VBA
     /// environment — or unset for a symbol of the enclosing project.
@@ -128,6 +149,23 @@ public static class SymbolProperties
     /// </remarks>
     public static readonly SymbolProperty<bool> DefaultsToOptionCompare = new(nameof(DefaultsToOptionCompare));
     /// <summary>
+    /// Whether the <c>VBA</c> type library declares a library parameter by reference - a <c>VARIANT*</c> for every <c>Variant</c> parameter, and a few others
+    /// (<c>StdLibTypeLibraryByRefAttribute</c>) - where the platform passes it by value: a call-site <c>ByVal</c> written for it is a compile error, as it is
+    /// for any parameter that is <c>ByRef</c> (<strong>MS-VBA</strong>, recorded in Excel; RD-VBAL §5.6.13.1).
+    /// </summary>
+    /// <remarks>
+    /// Set by the standard library's reader. It says nothing of how the argument is passed, which is the parameter's <see cref="VBParameterSymbol.ParameterKind"/>.
+    /// </remarks>
+    public static readonly SymbolProperty<bool> TypeLibraryByRef = new(nameof(TypeLibraryByRef));
+    /// <summary>
+    /// Whether a library parameter declared with a type of its own is given the address of what it is passed - a variable of its type, or a <c>Variant</c>
+    /// holding a value of it - rather than the value (<c>StdLibByAddressAttribute</c>): <c>StrPtr</c>'s, which is the address of the very <c>String</c>.
+    /// </summary>
+    /// <remarks>
+    /// Set by the standard library's reader. The parameter is <c>ByVal</c> to the language: it takes what any argument of its type is.
+    /// </remarks>
+    public static readonly SymbolProperty<bool> PassedByAddress = new(nameof(PassedByAddress));
+    /// <summary>
     /// What a parameter declared <c>Variant</c> expects of an object given to it, when it reads the value of its argument as MS-VBA compiles it: <c>CInt</c>'s
     /// does, <c>Round</c>'s does not (<see cref="Semantics.Static.ObjectValueStaticSemantics"/>).
     /// </summary>
@@ -149,6 +187,19 @@ public static class SymbolProperties
     /// that can be created.
     /// </summary>
     public static readonly SymbolProperty<string> ProgId = new(nameof(ProgId));
+
+    /// <summary>
+    /// What <c>TypeName</c> says of an object of a class of the standard library, when it is not the class's name (<c>Object</c>, for the <c>UserForms</c>
+    /// collection's). Absent on every other class.
+    /// </summary>
+    public static readonly SymbolProperty<string> ReportedTypeName = new(nameof(ReportedTypeName));
+
+    /// <summary>
+    /// The class of a referenced library whose default interface a class of that library is (<c>ReturnBoolean</c>, on <c>MSForms.IReturnBoolean</c>): a type
+    /// name of its own, with the class's members, which an object of the class is - and whose objects are of the class. Absent on every other class.
+    /// </summary>
+    public static readonly SymbolProperty<string> DefaultInterfaceOf = new(nameof(DefaultInterfaceOf));
+
     /// <summary>
     /// Whether a variable is declared with the <c>WithEvents</c> modifier (<strong>MS-VBAL §5.2.3.1.2</strong>): its
     /// declared type is a class with events, and the procedures of the module that are named for the variable and an

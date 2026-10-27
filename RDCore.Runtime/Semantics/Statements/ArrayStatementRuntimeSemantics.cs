@@ -73,8 +73,29 @@ public sealed record class ArrayStatementRuntimeSemantics(
             return Failed(redim, VBRuntimeErrorId.ThisArrayIsFixedOrTemporarilyLocked, $"{redim.Name} is locked");
         }
 
-        if (!TryEvaluateBounds(session, context, redim, out var bounds, out var boundsKnown, out var failure))
+        // a resizable array parameter bound to a fixed-size array (a ReDim of the array itself is a compile error) can't resize it: MS-VBA raises 10, the
+        // array keeping its bounds - with Preserve too (recorded in Excel, grid oracle\s16 B02, B08). A Variant that holds a copy of one is resized.
+        if (target.Current is VBFixedSizeArrayValue)
         {
+            return Failed(redim, VBRuntimeErrorId.ThisArrayIsFixedOrTemporarilyLocked, $"{redim.Name} is fixed");
+        }
+
+        if (!TryEvaluateBounds(session, context, redim, out var bounds, out var boundsKnown, out var inverted, out var failure))
+        {
+            // a Variant given bounds whose upper is below its lower raises 7 rather than 9, whatever it held, and is left Empty (MS-VBA, recorded in Excel:
+            // oracle\findings-labels cases-redim3 N01, cases-redim4 B01, B02; vb6.exe too, HexIDE's findings desk #9). A ReDim Preserve of a Variant that
+            // holds no array raises 13 first (cases-redim4 B05), and a variable declared as an array raises 9 (cases-redim3 B03, B04).
+            if (inverted && redim.IsPreserve && target.Declared is not VBArrayType && Unwrapped(target.Current) is not VBArrayValue)
+            {
+                return Failed(redim, VBRuntimeErrorId.TypeMismatch, $"{redim.Name} is not an array");
+            }
+
+            if (inverted && !redim.IsPreserve && target.Declared is VBVariantType && !IsAMemberOfAnObject(session, context, target.Expression))
+            {
+                var emptied = StoreValue(session, context, redim, target, new VBVariantValue(VBEmptyValue.Empty));
+                return emptied == RuntimeExecutionOutcome.Next ? Failed(redim, VBRuntimeErrorId.OutOfMemory, $"{redim.Name}: an upper bound below its lower bound") : emptied;
+            }
+
             return failure;
         }
 
@@ -87,25 +108,27 @@ public sealed record class ArrayStatementRuntimeSemantics(
         if (held is not VBArrayValue array)
         {
             // "Runtime Error 13 is raised if the declared type of a redimensioned variable is Variant and its
-            // value type is not an array" - which cannot be read as covering the Empty a Variant starts as,
-            // since the static rule admits a Variant target precisely so that it can become an array, and
-            // `Dim v As Variant: ReDim v(5)` would otherwise be impossible to write. What the Variant holds
-            // is what the rule is about, so it is the unwrapped value that decides: a Variant holding a
-            // number is the error, and one holding nothing yet is not.
-            return held is null or VBEmptyValue
-                ? Store(session, context, redim, target, Redimensioned(Resized(session, bounds, stated ?? ItemTypeOf(target.Current))))
-                : Failed(redim, VBRuntimeErrorId.TypeMismatch, $"{redim.Name} is not an array");
+            // value type is not an array" - which MS-VBA reads as a ReDim Preserve, the one that has the elements of an array to keep: a plain
+            // ReDim makes the Variant an array whatever it held, a number, a String, an object or Null (recorded in Excel, oracle\findings-labels
+            // V01, V04-V06), and a ReDim Preserve of a Variant that holds no array raises 13 (V02), the Empty it starts as too, and leaves what it held
+            // (oracle\s44 H01-H05, H07). A variable declared as an array that holds nothing yet is dimensioned.
+            return redim.IsPreserve && target.Declared is not VBArrayType
+                ? Failed(redim, VBRuntimeErrorId.TypeMismatch, $"{redim.Name} is not an array")
+                : Store(session, context, redim, target, Redimensioned(Resized(session, bounds, stated ?? ItemTypeOf(target.Current))));
         }
 
-        return redim.IsPreserve
+        // an array that was never dimensioned has no bounds for Preserve to keep, nor an element: MS-VBA dimensions it (recorded in Excel, oracle\s20 S05),
+        // the first ReDim Preserve of a list that grows as it is added to.
+        return redim.IsPreserve && array.IsInitialized
             ? Preserved(session, context, redim, target, array, bounds, boundsKnown)
             : Store(session, context, redim, target, Redimensioned(
                 Resized(session, bounds, stated ?? (array.IsInitialized ? array.ItemType : DeclaredItemType(target, array.ItemType)))));
     }
 
-    // an array of the new bounds, each element its default data value: a record's as a declared variable of it starts (IVariableDefaults).
+    // an array of the new bounds, each element its default data value: a record's as a declared variable of it starts, in the cell the runtime keeps an
+    // element of its type in (IVariableDefaults).
     private static VBResizableArrayValue Resized(IRuntimeSession session, (int LBound, int UBound)[] bounds, VBType itemType)
-        => new(bounds, itemType, session.Symbols.Defaults?.ElementDefaultOf(itemType));
+        => new(bounds, itemType, session.Symbols.Defaults?.ElementDefaultOf(itemType), session.Symbols.Defaults?.ElementCellOf(itemType));
 
     // MS-VBAL 5.4.3.3: a <redim-untyped-dcl> "has the same static semantics as if the text of its elements were parsed as an <untyped-variable-dcl>",
     // and a <redim-typed-variable-dcl> as a <typed-variable-dcl>: the As clause, or the type character, is the type of the elements. A variable declared
@@ -165,6 +188,25 @@ public sealed record class ArrayStatementRuntimeSemantics(
             // §5.4.3.4 allows any l-expression classified as a variable, property, function or unbound member: a simple name is a symbol, and
             // the rest - a member access, an element - are expressions.
             var name = element is SimpleNameExpressionNode simpleName ? simpleName.IdentifierName : element.ToString() ?? string.Empty;
+
+            // a function named outside its own body - a property of a module too - is called, and what it returns is erased: an array it returns is a copy
+            // nothing else holds, and anything else is error 13 (MS-VBA, oracle\s28 B19, B21, B22). What cannot return an array is a compile error.
+            if (NamesAFunction(session, context, element))
+            {
+                var returned = Expressions.Evaluate(session, element, context);
+                if (!returned.IsSuccess)
+                {
+                    return returned.IsInternalError ? RuntimeExecutionOutcome.InternalError : RuntimeExecutionOutcome.Error(returned.ErrorInfo!);
+                }
+
+                if (Unwrapped(returned.Result) is not VBArrayValue)
+                {
+                    return Failed(statement, VBRuntimeErrorId.TypeMismatch, $"{name} returned no array");
+                }
+
+                continue;
+            }
+
             if (!TryResolveTarget(session, context, element is SimpleNameExpressionNode ? null : element, name, out var target, out var targetFailure))
             {
                 return targetFailure;
@@ -205,6 +247,21 @@ public sealed record class ArrayStatementRuntimeSemantics(
         }
 
         return RuntimeExecutionOutcome.Next;
+    }
+
+    // a function, by its name or qualified by its module, that is not the procedure being run - or a property of a module.
+    private bool NamesAFunction(IRuntimeSession session, RuntimeEvaluationContext context, ExpressionNode element)
+    {
+        var symbol = element switch
+        {
+            SimpleNameExpressionNode name => session.Symbols.Resolver.ResolveValue(name, ScopeKind.Local, context.Scope).Symbol,
+            MemberAccessExpressionNode access => Expressions.ResolveNamespaceQualified(session, context, access),
+            _ => null,
+        };
+
+        return symbol is SDK.Model.Symbols.VBProject.VBFunctionMemberSymbol or SDK.Model.Symbols.VBProject.VBPropertyGetMemberSymbol
+            && symbol.Uri.AbsoluteUri != context.Scope.AbsoluteUri
+            && RuntimeProcedureInvoker.GetParameters((VBTypeMemberSymbol)symbol) is not [{ Name: Tokens.Me }, ..];
     }
 
     // classified by the type the owner is declared as, without evaluating it again. A Variant owner is one too: what it holds is an object by the time the
@@ -260,9 +317,11 @@ public sealed record class ArrayStatementRuntimeSemantics(
         // caller shares, and an element written in place through its handle would write the default of every other.
         var held = ObjectReferences.HeldBy(InvalidBindingHandle.Default, array);
         var initial = array.ItemType.DefaultValue;
+        var elementCell = session.Symbols.Defaults?.ElementCellOf(array.ItemType);
         foreach (var subscripts in Subscripts(array))
         {
-            array.TrySetElement(initial.Handle is ValueBindingHandle ? BindingKnowledge.NewCell(initial.RuntimeValue, isKnown: true) : initial.Handle, subscripts);
+            array.TrySetElement(elementCell?.Invoke()
+                ?? (initial.Handle is ValueBindingHandle ? BindingKnowledge.NewCell(initial.RuntimeValue, isKnown: true) : initial.Handle), subscripts);
         }
 
         ObjectReferences.Release(session, held);
@@ -355,8 +414,13 @@ public sealed record class ArrayStatementRuntimeSemantics(
         // the value back, and VBVariantType can only read a Variant. Storing the bare array would make the
         // very next read of the variable throw.
         var variant = target.Declared is VBVariantType || target.Current is VBVariantValue;
-        var stored = variant ? new VBVariantValue(array) : (VBTypedValue)array;
+        return StoreValue(session, context, statement, target, variant ? new VBVariantValue(array) : array);
+    }
 
+    // what the variable is given: the array a ReDim made, or the Empty a Variant is left as.
+    private RuntimeExecutionOutcome StoreValue(
+        IRuntimeSession session, RuntimeEvaluationContext context, StatementNode statement, Target target, VBTypedValue stored)
+    {
         // a member of an object is read as a value of its own, and what is made of it is not written back (MS-VBA, recorded in Excel: `ReDim v.Loose(3)`
         // with an object in v leaves the member as it was).
         if (IsAMemberOfAnObject(session, context, target.Expression))
@@ -396,10 +460,11 @@ public sealed record class ArrayStatementRuntimeSemantics(
 
     private bool TryEvaluateBounds(
         IRuntimeSession session, RuntimeEvaluationContext context, RedimDeclarationNode redim,
-        out (int LBound, int UBound)[] bounds, out bool isKnown, out RuntimeExecutionOutcome failure)
+        out (int LBound, int UBound)[] bounds, out bool isKnown, out bool inverted, out RuntimeExecutionOutcome failure)
     {
         bounds = [];
         isKnown = true;
+        inverted = false;
         failure = RuntimeExecutionOutcome.Next;
 
         if (redim.Bounds is not { Dimensions.IsDefaultOrEmpty: false } declared)
@@ -444,6 +509,7 @@ public sealed record class ArrayStatementRuntimeSemantics(
                 // the one element its lower bound gives it, which nothing read from it relies on.
                 if (dimensionKnown)
                 {
+                    inverted = true;
                     failure = Failed(redim, VBRuntimeErrorId.SubscriptOutOfRange, $"{lower} To {upper}");
                     return false;
                 }

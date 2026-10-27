@@ -10,20 +10,11 @@ using RDCore.SDK.Runtime.Shared;
 namespace RDCore.Runtime.StdLib;
 
 /// <inheritdoc cref="IStdHiddenModule"/>
-/// <remarks>
-/// 🚧 <see cref="StrPtr"/>, <see cref="VarPtr"/>, <see cref="InputB"/> and <see cref="InputBString"/> are declared and not written:
-/// each says why, in the declaration.
-/// </remarks>
 /// <param name="session">The session whose file channels, call stack and environment these members read.</param>
 public sealed class StdHidden(IRuntimeSession session) : IStdHiddenModule
 {
     // MS-VBAL 5.4.5.7: "If Line width is less than 0 or greater than 255 an error (number 5...) is raised."
     private const int MaxLineWidth = 255;
-
-    private static RuntimeSemanticsEvaluationResult<TValue> NotImplemented<TValue>(string member, string because)
-        where TValue : SDK.Model.Values.Abstract.VBTypedValue
-        => RuntimeSemanticsEvaluationResult<TValue>.Error(VBRuntimeErrorInfo.For(
-            VBRuntimeErrorId.ApplicationDefinedOrObjectDefinedError, default, $"'{member}' is declared but not implemented yet: {because}."));
 
     private static RuntimeSemanticsEvaluationResult<TValue> Failed<TValue>(VBRuntimeErrorId error, string detail)
         where TValue : SDK.Model.Values.Abstract.VBTypedValue
@@ -91,27 +82,82 @@ public sealed class StdHidden(IRuntimeSession session) : IStdHiddenModule
 
     /// <inheritdoc/>
     public RuntimeSemanticsEvaluationResult<VBVariantValue> InputB(VBLongValue number, VBIntegerValue fileNumber)
-        => NotImplemented<VBVariantValue>(nameof(InputB), "a file channel reads characters, and nothing in it reads a byte");
-
-    /// <inheritdoc/>
-    public RuntimeSemanticsEvaluationResult<VBStringValue> InputBString(VBLongValue number, VBIntegerValue fileNumber)
-        => NotImplemented<VBStringValue>("InputB$", "a file channel reads characters, and nothing in it reads a byte");
-
-    /// <inheritdoc/>
-    public RuntimeSemanticsEvaluationResult<VBLongPtrValue> ObjPtr(VBObjectValue @object)
     {
-        var identity = @object.IsNothing() ? 0 : @object.Value.Identity;
-        return RuntimeSemanticsEvaluationResult<VBLongPtrValue>.Success(
-            session.Environment.Is64Bit ? new VBLongPtrValue(identity) : new VBLongPtrValue(unchecked((int)identity)));
+        var read = ReadBytes(number.Value, fileNumber.Value);
+        return read.IsSuccess
+            ? RuntimeSemanticsEvaluationResult<VBVariantValue>.Success(new VBVariantValue(read.Result!))
+            : RuntimeSemanticsEvaluationResult<VBVariantValue>.Error(read.ErrorInfo!);
     }
 
     /// <inheritdoc/>
-    public RuntimeSemanticsEvaluationResult<VBLongPtrValue> StrPtr(VBStringValue @string)
-        => NotImplemented<VBLongPtrValue>(nameof(StrPtr), "the characters of a string live in its value, not at an address of the session's memory");
+    public RuntimeSemanticsEvaluationResult<VBStringValue> InputBString(VBLongValue number, VBIntegerValue fileNumber)
+        => ReadBytes(number.Value, fileNumber.Value);
+
+    // the bytes themselves, at the same file-pointer-position characters are read at, as a String of those bytes: "ABC" read 2 bytes at a time is one
+    // character, of the bytes 41 42 (StrConv(s, vbUnicode) is "AB"). Valid where Input is, and failing as it does (MS-VBA, Excel-verified, oracle\s40
+    // I01-I11).
+    private RuntimeSemanticsEvaluationResult<VBStringValue> ReadBytes(int number, int fileNumber)
+    {
+        if (number < 0)
+        {
+            return Failed<VBStringValue>(VBRuntimeErrorId.InvalidProcedureCallOrArgument, $"InputB({number}, #{fileNumber}): the number of bytes cannot be negative.");
+        }
+
+        if (!session.Files.TryGet(fileNumber, out var channel))
+        {
+            return Failed<VBStringValue>(VBRuntimeErrorId.BadFileNameOrNumber, $"#{fileNumber} is not open");
+        }
+
+        if (!FileStatementAccess.IsValid(SDK.Model.Tokens.Input, channel!.Mode, channel.Access))
+        {
+            return Failed<VBStringValue>(VBRuntimeErrorId.BadFileMode, $"InputB is not valid on #{fileNumber}, opened For {channel.Mode} Access {channel.Access}");
+        }
+
+        var bytes = new byte[number];
+        for (var read = 0; read < number; read++)
+        {
+            var next = channel.Input.ReadByte();
+            if (next < 0)
+            {
+                return Failed<VBStringValue>(VBRuntimeErrorId.InputPastEndOfFile, $"InputB({number}, #{fileNumber}) read {read}");
+            }
+
+            bytes[read] = (byte)next;
+        }
+
+        return RuntimeSemanticsEvaluationResult<VBStringValue>.Success(VBStringValue.FromBytes(bytes));
+    }
 
     /// <inheritdoc/>
-    public RuntimeSemanticsEvaluationResult<VBLongPtrValue> VarPtr(VBVariantValue variable)
-        => NotImplemented<VBLongPtrValue>(nameof(VarPtr), "it takes its argument by reference, which a standard-library member cannot yet declare");
+    public RuntimeSemanticsEvaluationResult<VBLongPtrValue> ObjPtr(VBLongLongValue ptr)
+    {
+        // what is at the address is an object, or a Variant holding one: the evaluator passes nothing else here (StdLibByAddressAttribute).
+        if (session.Storage is not Execution.Memory.SessionStorage storage || !storage.TryGetObjectPointer(new MemoryAddress(unchecked((int)ptr.Value)), out var pointer))
+        {
+            return Failed<VBLongPtrValue>(VBRuntimeErrorId.OutOfMemory, "no room for the interface of the object");
+        }
+
+        return RuntimeSemanticsEvaluationResult<VBLongPtrValue>.Success(
+            session.Environment.Is64Bit ? new VBLongPtrValue(pointer) : new VBLongPtrValue(unchecked((int)pointer)));
+    }
+
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBLongPtrValue> StrPtr(VBLongLongValue ptr)
+    {
+        // what is at the address is a String, or a Variant holding one: the evaluator passes nothing else here (StdLibByAddressAttribute).
+        if (session.Storage is not Execution.Memory.SessionStorage storage || !storage.TryGetStringPointer(new MemoryAddress(unchecked((int)ptr.Value)), out var pointer))
+        {
+            return Failed<VBLongPtrValue>(VBRuntimeErrorId.OutOfMemory, "no room for the characters of the string");
+        }
+
+        return RuntimeSemanticsEvaluationResult<VBLongPtrValue>.Success(
+            session.Environment.Is64Bit ? new VBLongPtrValue(pointer) : new VBLongPtrValue(unchecked((int)pointer)));
+    }
+
+    /// <inheritdoc/>
+    public RuntimeSemanticsEvaluationResult<VBLongPtrValue> VarPtr(VBLongLongValue ptr)
+        => RuntimeSemanticsEvaluationResult<VBLongPtrValue>.Success(
+            session.Environment.Is64Bit ? new VBLongPtrValue(ptr.Value) : new VBLongPtrValue(unchecked((int)ptr.Value)));
 
     /// <inheritdoc/>
     public RuntimeSemanticsEvaluationResult Width(VBIntegerValue fileNumber, VBIntegerValue width)

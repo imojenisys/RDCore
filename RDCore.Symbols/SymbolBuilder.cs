@@ -7,6 +7,7 @@ using RDCore.SDK.Model.AST.Statements;
 using RDCore.SDK.Model.Source;
 using RDCore.SDK.Model.Symbols;
 using RDCore.SDK.Model.Symbols.Abstract;
+using RDCore.SDK.Model.Symbols.Operators;
 using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Types;
 using RDCore.SDK.Model.Types.Abstract;
@@ -14,6 +15,7 @@ using RDCore.SDK.Model.Types.Complex;
 using RDCore.SDK.Model.Values.Abstract;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Runtime.Shared;
+using RDCore.SDK.Workspace.Forms;
 using System.Collections.Immutable;
 
 namespace RDCore.Symbols;
@@ -56,7 +58,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         var range = RangeOf(node);
         var symbol = new VBProcedureMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Procedure,
-            VBVoidType.TypeInfo, range, range, node.AccessModifier);
+            VBVoidType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with { Parameters = BuildParameters(node, symbol.Uri, includeMe: true) };
     }
 
@@ -65,7 +67,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         var range = RangeOf(node);
         var symbol = new VBFunctionMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Function,
-            VBUnknownType.TypeInfo, range, range, node.AccessModifier);
+            VBUnknownType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with
         {
             ResolvedType = ReturnType(node, symbol.Uri),
@@ -77,7 +79,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
     {
         var range = RangeOf(node);
         var symbol = new VBPropertyGetMemberSymbol(
-            workspaceRoot, moduleUri, memberScope, node.Name, range, range, node.AccessModifier);
+            workspaceRoot, moduleUri, memberScope, node.Name, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with
         {
             ResolvedType = ReturnType(node, symbol.Uri),
@@ -90,7 +92,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         var range = RangeOf(node);
         var symbol = new VBPropertyLetMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Property,
-            VBVoidType.TypeInfo, range, range, node.AccessModifier);
+            VBVoidType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with { Parameters = BuildParameters(node, symbol.Uri, includeMe: true) };
     }
 
@@ -99,7 +101,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         var range = RangeOf(node);
         var symbol = new VBPropertySetMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Property,
-            VBVoidType.TypeInfo, range, range, node.AccessModifier);
+            VBVoidType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with { Parameters = BuildParameters(node, symbol.Uri, includeMe: true) };
     }
 
@@ -110,7 +112,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         {
             var function = new VBExternalFunctionMemberSymbol(
                 workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Function,
-                VBUnknownType.TypeInfo, range, range, node.AccessModifier, node.IsPtrSafe, node.Library, node.Alias);
+                VBUnknownType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier, node.IsPtrSafe, node.Library, node.Alias);
             return function with
             {
                 ResolvedType = ReturnType(node, function.Uri),
@@ -120,14 +122,14 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
 
         var procedure = new VBExternalSubMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Procedure,
-            VBVoidType.TypeInfo, range, range, node.AccessModifier, node.IsPtrSafe, node.Library, node.Alias);
+            VBVoidType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier, node.IsPtrSafe, node.Library, node.Alias);
         return procedure with { Parameters = BuildParameters(node, procedure.Uri) };
     }
 
     public Symbol BuildEvent(MemberDeclarationNode node)
     {
         var range = RangeOf(node);
-        var symbol = new VBEventMemberSymbol(workspaceRoot, moduleUri, node.Name, memberScope, range, range, node.AccessModifier);
+        var symbol = new VBEventMemberSymbol(workspaceRoot, moduleUri, node.Name, memberScope, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with { Parameters = BuildParameters(node, symbol.Uri) };
     }
 
@@ -178,6 +180,112 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
 
         // MS-VBAL §5.2.3.1.2: what makes the procedures named for this variable event handlers.
         return node.IsWithEvents ? field.With(SymbolProperties.WithEvents, true) : field;
+    }
+
+    /// <summary>
+    /// The member of a form's class that one of its controls is: a <c>Public</c>, read-only property of the control's class - a <c>Property Get</c> and no
+    /// <c>Property Let</c> or <c>Set</c> - whose events the form's procedures named for it handle (<see cref="SymbolProperties.DesignerControl"/>).
+    /// </summary>
+    /// <remarks>
+    /// The designer declares it, so no text of the module does: it has no range of its own. A control whose class the designer names by its CLSID only (an
+    /// ActiveX control that is not one of the referenced libraries') has a type that is not resolved, as an unknown <c>As</c> type is.
+    /// </remarks>
+    /// <param name="control">The control, as the form's designer describes it.</param>
+    /// <param name="form">The name of the form, which names what hosts it (<see cref="FormObject.TargetOf"/>).</param>
+    public Symbol BuildDesignerControl(FormControlDescriptor control, string form)
+    {
+        var type = control.Class.Name is { } className
+            ? ResolveTypeName(className, moduleUri, control.Class.Library)
+            : new VBUnresolvedType(control.Class.ToString());
+        var property = new VBPropertyGetMemberSymbol(workspaceRoot, moduleUri, memberScope, control.Name, SourceRange.Empty, SourceRange.Empty, AccessModifier.Public);
+
+        // the implicit parameter 0 a library's instance member has: the form the control is reached through, which is what the call is dispatched on.
+        return (property with
+                {
+                    ResolvedType = type,
+                    Parameters = [new VBParameterSymbol(workspaceRoot, property.Uri, "Me", SourceRange.Empty, SourceRange.Empty, ParameterKind.ImplicitByRef, VBObjectType.TypeInfo)],
+                })
+            .With(SymbolProperties.WithEvents, true)
+            .With(SymbolProperties.DesignerControl, true)
+            .With(SymbolProperties.ExternalTarget, FormObject.TargetOf(form, control.Name, "get"));
+    }
+
+    /// <summary>
+    /// The members a form's class has besides its controls and its code: those of the VBA form object (<see cref="FormObject"/>: <c>Show</c>, <c>Hide</c>,
+    /// <c>Left</c>…), and those of the Microsoft Forms <c>UserForm</c> it hosts (<c>Caption</c>, <c>Controls</c>…), when the project references Microsoft
+    /// Forms. They are members of the form's class itself, part of its default interface: <c>Me.Caption</c> is a member of the form whose code it is in, and
+    /// <c>Caption</c>, there, is too.
+    /// </summary>
+    /// <remarks>
+    /// Each is declared as the member it is of its own class, with the form for its parent, and dispatched outside the workspace's code
+    /// (<see cref="FormObject.TargetOf"/>). A name the form's code or one of its controls declares is not declared again: that one is the member of that name.
+    /// </remarks>
+    /// <param name="form">The name of the form.</param>
+    /// <param name="taken">The names the form's code and its controls declare.</param>
+    public IEnumerable<Symbol> BuildFormMembers(string form, IReadOnlySet<string> taken)
+    {
+        var userForm = VBProjectSymbol.ResolveQualifiedType(resolver, FormDesigner.MSFormsLibrary, FormObject.ClassName, moduleUri).Symbol as VBClassModuleSymbol;
+        var inherited = (userForm?.Members ?? []).Concat(FormObject.ClassIn(workspaceRoot).Members)
+            .Where(member => member is not VBEventMemberSymbol && !taken.Contains(member.Name));
+        foreach (var member in inherited)
+        {
+            if (Rehome(member) is { } rehomed)
+            {
+                yield return rehomed.With(SymbolProperties.ExternalTarget, FormObject.TargetOf(form, member.Name, KindOf(member)));
+            }
+        }
+    }
+
+    private static string KindOf(VBTypeMemberSymbol member) => member switch
+    {
+        VBPropertyGetMemberSymbol => "get",
+        VBPropertyLetMemberSymbol => "let",
+        VBPropertySetMemberSymbol => "set",
+        _ => "method",
+    };
+
+    // a library member declared again as a member of the module: the same kind of member, of the same type and parameters, whose parent is the module. A
+    // symbol's identity is its parent's, made when it is constructed, so it is built anew; its default-member id and its flags (hidden) go with it.
+    private Symbol? Rehome(VBTypeMemberSymbol member)
+    {
+        Symbol? rehomed = member switch
+        {
+            VBPropertyGetMemberSymbol => new VBPropertyGetMemberSymbol(
+                workspaceRoot, moduleUri, memberScope, member.Name, SourceRange.Empty, SourceRange.Empty, AccessModifier.Public) { ResolvedType = member.ResolvedType },
+            VBPropertyLetMemberSymbol => new VBPropertyLetMemberSymbol(
+                workspaceRoot, moduleUri, member.Name, memberScope, SymbolKindExt.Property, VBVoidType.TypeInfo, SourceRange.Empty, SourceRange.Empty, AccessModifier.Public),
+            VBPropertySetMemberSymbol => new VBPropertySetMemberSymbol(
+                workspaceRoot, moduleUri, member.Name, memberScope, SymbolKindExt.Property, VBVoidType.TypeInfo, SourceRange.Empty, SourceRange.Empty, AccessModifier.Public),
+            VBFunctionMemberSymbol => new VBFunctionMemberSymbol(
+                workspaceRoot, moduleUri, member.Name, memberScope, SymbolKindExt.Function, member.ResolvedType, SourceRange.Empty, SourceRange.Empty, AccessModifier.Public),
+            VBProcedureMemberSymbol => new VBProcedureMemberSymbol(
+                workspaceRoot, moduleUri, member.Name, memberScope, SymbolKindExt.Procedure, VBVoidType.TypeInfo, SourceRange.Empty, SourceRange.Empty, AccessModifier.Public),
+            _ => null,
+        };
+
+        var parameters = member switch
+        {
+            VBReturningMemberSymbol returning => returning.Parameters,
+            VBProcedureMemberSymbol procedure => procedure.Parameters,
+            _ => [],
+        };
+        ImmutableArray<VBParameterSymbol> RehomedParameters(Uri owner) => [.. parameters.Select(parameter => parameter is ParamArrayParameterSymbol
+            ? new ParamArrayParameterSymbol(workspaceRoot, owner, parameter.Name, SourceRange.Empty, SourceRange.Empty, parameter.ParameterKind)
+            : new VBParameterSymbol(workspaceRoot, owner, parameter.Name, SourceRange.Empty, SourceRange.Empty, parameter.ParameterKind, parameter.ResolvedType,
+                parameter.IsOptional, parameter.DefaultValue))];
+        rehomed = rehomed switch
+        {
+            VBReturningMemberSymbol returning => returning with { Parameters = RehomedParameters(returning.Uri) },
+            VBProcedureMemberSymbol procedure => procedure with { Parameters = RehomedParameters(procedure.Uri) },
+            _ => rehomed,
+        };
+
+        if (rehomed is not null && member.TryGetProperty(SymbolProperties.UserMemId, out var userMemId))
+        {
+            rehomed = rehomed.With(SymbolProperties.UserMemId, userMemId);
+        }
+
+        return rehomed?.With(SymbolProperties.MemberFlags, member.GetProperty(SymbolProperties.MemberFlags));
     }
 
     // a fixed-size array is as big as its bounds say, which are constant expressions the type has no room for: they ride the symbol,
@@ -255,10 +363,11 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         foreach (var parameter in parameters)
         {
             var range = RangeOf(parameter);
+            var name = parameter.NameRange ?? range;
             builder.Add(parameter.IsParamArray
-                ? new ParamArrayParameterSymbol(workspaceRoot, memberUri, parameter.Name, range, range, parameter.ParameterKind)
+                ? new ParamArrayParameterSymbol(workspaceRoot, memberUri, parameter.Name, range, name, parameter.ParameterKind)
                 : new VBParameterSymbol(
-                    workspaceRoot, memberUri, parameter.Name, range, range, parameter.ParameterKind,
+                    workspaceRoot, memberUri, parameter.Name, range, name, parameter.ParameterKind,
                     ParameterType(parameter, memberUri), parameter.IsOptional,
                     DefaultValueOf(parameter)));
         }
@@ -341,52 +450,92 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
     }
 
     // MS-VBAL 5.2.3.1.4: "the data value of its <INTEGER> element or the data value referenced by its <constant-name> Let-coerced to declared type Long" -
-    // a number as written, or a constant whose value is one.
+    // a number as written, a constant whose value is a literal, or a member of an enumeration whose value is one. A length no fixed-length string can be
+    // (0, 70000) is no type at all: the host reports it (DeclaredSizeStaticSemantics), and the declaration is the variable-length String it was written with.
     private int? FixedLengthOf(string length, Uri handle)
     {
-        if (TryParseInteger(length, out var written))
-        {
-            return written;
-        }
+        var characters = VBFixedStringType.TryParseLengthLiteral(length, out var written) ? written : ConstantLengthOf(length, handle);
+        return characters is { } valid && VBFixedStringType.IsValidLength(valid) ? (int)valid : null;
+    }
 
-        var constant = resolver.ResolveValue(length, ScopeKind.Local, handle).Symbol;
-        var value = constant switch
+    private long? ConstantLengthOf(string length, Uri handle)
+    {
+        var value = ValueOfConstant(resolver.ResolveValue(length, ScopeKind.Local, handle).Symbol, handle, depth: 0);
+
+        // Let-coerced to Long: a fraction rounds half to even (Const K = 2.5 is 2), and a String that reads as a number is that number (Const K = "3" is 3),
+        // as MS-VBA has it (Excel-verified, oracle\s29 F05, F06).
+        return value switch
         {
-            VBConstantMemberSymbol { Value: LiteralExpressionNode literal } => literal.StaticValue,
-            VBLocalConstantSymbol { Value: LiteralExpressionNode literal } => literal.StaticValue,
+            _ when value is not null && IsNumber(value) => RoundToLong(Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture)),
+            string text when double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number)
+                => RoundToLong(number),
             _ => null,
         };
-
-        return value?.RuntimeValue.BoxedValue is { } number && number is byte or short or int or long or float or double or decimal
-            ? Convert.ToInt32(number, System.Globalization.CultureInfo.InvariantCulture)
-            : null;
     }
 
-    // an integer literal as VBA writes one: decimal, &H hexadecimal or &O octal, with or without a type-declaration character.
-    private static bool TryParseInteger(string text, out int value)
+    // the value of a constant, as far as the length of a fixed-length string needs it - before the constants are folded, which the host does once the
+    // module is loaded: a constant whose value is a literal, a member of an enumeration, or an expression of them - parentheses, a negation and arithmetic
+    // - which MS-VBA folds (Const K = 1 + 2: Dim s As String * K is a String * 3). null for anything else, whose length the host's checks report.
+    private object? ValueOfConstant(Symbol? constant, Uri handle, int depth) => constant switch
     {
-        var digits = text.TrimEnd('%', '&', '^', '!', '#', '@');
-        if (digits.StartsWith("&H", StringComparison.OrdinalIgnoreCase))
+        VBConstantMemberSymbol { Value: var expression } => ValueOfExpression(expression, handle, depth + 1),
+        VBLocalConstantSymbol { Value: var expression } => ValueOfExpression(expression, handle, depth + 1),
+        VBEnumConstMemberSymbol { DeclaredValue: null } => 0,
+        VBEnumConstMemberSymbol { DeclaredValue: { BaseValue: null, Offset: var offset } } => offset,
+        VBEnumConstMemberSymbol { DeclaredValue: { BaseValue: { } baseValue, Offset: var offset } }
+            when NumberOf(ValueOfExpression(baseValue, handle, depth + 1)) is { } number
+            => number + offset,
+        _ => null,
+    };
+
+    // a constant expression of numbers: arithmetic in Double, as far as a length is concerned - a whole number of characters, from a few to 65,526.
+    private object? ValueOfExpression(ExpressionNode? expression, Uri handle, int depth)
+    {
+        if (depth > 64)
         {
-            return int.TryParse(digits[2..], System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out value);
+            return null;
         }
 
-        if (digits.StartsWith("&O", StringComparison.OrdinalIgnoreCase))
+        switch (expression)
         {
-            try
-            {
-                value = Convert.ToInt32(digits[2..], 8);
-                return true;
-            }
-            catch (FormatException)
-            {
-                value = 0;
-                return false;
-            }
+            case LiteralExpressionNode literal:
+                return literal.StaticValue.RuntimeValue.BoxedValue;
+            case SimpleNameExpressionNode name:
+                return ValueOfConstant(resolver.ResolveValue(name.IdentifierName, ScopeKind.Local, handle).Symbol, handle, depth);
+            case VBUnaryOperatorExpressionNode { Token: OperatorSymbolNames.UnaryArithmeticPrecedenceOp or OperatorSymbolNames.UnaryLetCoerceOp } enclosed:
+                return ValueOfExpression(enclosed.Operand, handle, depth + 1);
+            case VBUnaryOperatorExpressionNode { Token: Tokens.NegationOp } negation:
+                return NumberOf(ValueOfExpression(negation.Operand, handle, depth + 1)) is { } negated ? -negated : null;
+            case VBBinaryOperatorExpressionNode binary
+                when NumberOf(ValueOfExpression(binary.Left, handle, depth + 1)) is { } left && NumberOf(ValueOfExpression(binary.Right, handle, depth + 1)) is { } right:
+                return binary.Token switch
+                {
+                    Tokens.AdditionOp => left + right,
+                    Tokens.SubtractionOp => left - right,
+                    Tokens.MultiplicationOp => left * right,
+                    Tokens.DivisionOp when right != 0 => left / right,
+                    Tokens.IntegerDivisionOp when RoundToLong(right) is { } divisor and not 0 && RoundToLong(left) is { } dividend => (double)(dividend / divisor),
+                    Tokens.ModuloOp when RoundToLong(right) is { } divisor and not 0 && RoundToLong(left) is { } dividend => (double)(dividend % divisor),
+                    Tokens.PowerOp => Math.Pow(left, right),
+                    _ => null,
+                };
+            default:
+                return null;
         }
-
-        return int.TryParse(digits, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value);
     }
+
+    // a value as a number, as a Let-coercion to a number reads it: a number is itself, a String that reads as one is that number.
+    private static double? NumberOf(object? value) => value switch
+    {
+        _ when value is not null && IsNumber(value) => Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture),
+        string text when double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) => number,
+        _ => null,
+    };
+
+    private static bool IsNumber(object value) => value is byte or short or int or long or float or double or decimal;
+
+    private static long? RoundToLong(double value)
+        => Math.Round(value, MidpointRounding.ToEven) is var rounded && rounded >= long.MinValue && rounded <= long.MaxValue ? (long)rounded : null;
 
     // Binds a reserved/declared type name through the resolver, optionally qualified by a project name
     // (MS-VBAL 5.6.4); an unresolved name stays Unknown, and remembers the name (VBUnresolvedType). A resolved user-defined type, enum or class
@@ -440,17 +589,30 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
             }
         }
 
-        // pass 2 — ReDim. an unqualified target that resolves to nothing implicitly declares a
-        // dynamic-array local (MS-VBAL 5.4.3.3; legal under Option Explicit). NOTE cross-module
-        // globals aren't visible here, so a ReDim of one is introduced until the resolver reconciles
-        // it — the LocalDeclarationKind.ReDim marker is that pass's hook.
+        // pass 2 — ReDim. an unqualified target that matches nothing implicitly declares a
+        // dynamic-array local (MS-VBAL 5.4.3.3: "If the name has no matches"; legal under Option
+        // Explicit). What it matches is a variable or a constant, of another module or of a library
+        // too, and the result of the function the ReDim is in: a ReDim of another module's
+        // `Public Items() As Long` re-dimensions that array. A procedure, a module or a project is no
+        // match - `ReDim Left(1)` declares an array that hides the function (MS-VBA, Excel-verified,
+        // oracle\s29 R01-R11, E01-E16).
+        //
+        // where declarations are implicit, a name the procedure uses before its first ReDim was declared there, by that use (MS-VBAL §5.6.10, pass 3), and
+        // the ReDim matches that variable: it re-dimensions it as it would any Variant, as vb6.exe runs it. MS-VBA refuses it at compile time ("Invalid
+        // ReDim", Excel-verified, oracle\findings-labels R01-R10), which the author lets slip with RDC11022 (HexIDE's findings desk #9).
+        var implicitDeclarations = !directives.Explicit && withImplicitDeclarations;
+        var valueNames = implicitDeclarations ? body.SelectMany(ValueContextSimpleNames).ToArray() : [];
         foreach (var redim in body.OfType<RedimDeclarationNode>())
         {
-            if (!redim.IsSimpleName || outerScopeNames.Contains(redim.Name) || !declared.Add(redim.Name))
+            if (!redim.IsSimpleName || outerScopeNames.Contains(redim.Name) || declared.Contains(redim.Name)
+                || redim.Target is SimpleNameExpressionNode target && MatchesARedimTarget(target, procedureUri)
+                || valueNames.Any(used => used.SourceLocation.Range.Start < redim.SourceLocation.Range.Start
+                    && string.Equals(used.IdentifierName, redim.Name, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
 
+            declared.Add(redim.Name);
             results.Add(BuildRedimLocal(redim, procedureUri));
         }
 
@@ -526,6 +688,28 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         => resolved.Symbol is VBModuleFieldVariableMemberSymbol variable
             && variable.GetProperty(SymbolProperties.ImplicitlyDeclared)
             && variable.ParentUri.AbsoluteUri == moduleUri.AbsoluteUri;
+
+    // what a ReDim's target matches (MS-VBAL §5.4.3.3), as MS-VBA has it: a variable or a constant of any module or library, a member of an enumeration,
+    // the result of the function or the Property Get the ReDim is in; and a name that is ambiguous, which the ReDim has to qualify. The local an earlier pass
+    // declared for the ReDim, or an implicit one, is that pass's output: what else the name matches is looked up from the module, past the procedure's locals.
+    private bool MatchesARedimTarget(SimpleNameExpressionNode target, Uri procedureUri)
+    {
+        var resolved = resolver.ResolveValue(target, ScopeKind.Local, procedureUri);
+        if (IsOwnLocal(resolved, procedureUri))
+        {
+            resolved = resolver.ResolveValue(target, ScopeKind.Local, moduleUri);
+        }
+
+        return resolved switch
+        {
+            { IsError: true } => true,
+            { Symbol: null } => false,
+            _ when IsOwnModuleVariable(resolved) => false,
+            { Symbol: var symbol } when symbol.Uri.AbsoluteUri == procedureUri.AbsoluteUri => symbol is VBFunctionMemberSymbol or VBPropertyGetMemberSymbol,
+            { Symbol: VBModuleFieldVariableMemberSymbol or VBConstantMemberSymbol or VBLocalConstantSymbol or VBEnumConstMemberSymbol } => true,
+            _ => false,
+        };
+    }
 
     /// <summary>
     /// The simple name expressions of <paramref name="statement"/>, and of the statements in its body, that sit in the <em>default</em> binding context

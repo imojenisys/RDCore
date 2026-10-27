@@ -14,21 +14,39 @@ See [**RD-VBAL §3.4.2** Simple Statements](rd-vbal.3.4.2.simple-statements.md).
 ## Static Semantics
 
 The target is a variable, a property or an unbound member: **MS-VBAL §5.4.3.9** makes the statement invalid when it
-"is classified as something other than a variable, property or unbound member". A constant or a function of the
-library (`Set Err = Nothing`, `Set Left = Nothing`) is [`VBC09333`](../diagnostics/vbc09333.md) (`VariableRequired`); see
-[**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.let-statement.md).
+"is classified as something other than a variable, property or unbound member". A constant is
+[`VBC09346`](../diagnostics/vbc09346.md) (`AssignmentToConstantNotPermitted`).
 
-It is invalid for the default instance variable to be the target of a `Set` assignment, whatever is assigned to it
-([**MS-VBAL §5.2.4.1.2** Default Instance Variables Static Semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/189fb41b-cc3a-4999-a6d2-ba89f72d2870)).
+A function named as the target outside its own body - or a property of a module that has no `Property Set` - is a call of
+it, as it is for a `Let` statement ([**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.let-statement.md)), and what
+it returns is Set-assigned through its default member. As in MS-VBA (recorded in Excel), one that takes an argument is
+[`VBC09339`](../diagnostics/vbc09339.md) _Argument not optional_ - before what its type is (`Set Left = Nothing`,
+`Set Left$ = Nothing`) - and one whose declared type is neither a `Variant` nor an object is
+[`VBC09345`](../diagnostics/vbc09345.md) _Invalid use of property_ (`Set F = Nothing` of a `Function F() As Long`), as is
+`Set Err = Nothing`: MS-VBA's library declares `Err` a property. What passes is called when it runs, and what returns no
+object is error `424` (`Set Command = Nothing`, `Set Now = Nothing`).
+
+A property of a module of the project that has a `Property Get` and no `Property Set` is
+[`VBC09345`](../diagnostics/vbc09345.md) _Invalid use of property_, unless what its `Property Get` returns has a default
+member that can be Set. As in MS-VBA (recorded in Excel), this holds wherever the statement is written: in the property's
+own module, in another module by its bare name (`Set Fixed = Nothing`), or through its module (`Set Store.Fixed = Nothing`).
+Only a property of a library is called instead, as `Set Now = Nothing` is.
+
+The default instance variable of a predeclared class is a valid target of a `Set` assignment, whatever is assigned to it,
+as it is in **MS-VBA**.
+[**MS-VBAL §5.2.4.1.2** Default Instance Variables Static Semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/189fb41b-cc3a-4999-a6d2-ba89f72d2870)
+says it is invalid; see
+[**RD-VBAL §5.2.4.1.2**](rd-vbal.5.2.4.class-module-declarations.md#52412-default-instance-variables-static-semantics).
 
 |Statement, for a predeclared class `Widget`|Result|
 |---|---|
-|`Set Widget = New Widget`|Compile error `VBC09304`.|
-|`Set Widget = Nothing`|Compile error `VBC09304`.|
+|`Set Widget = New Widget`|Valid. The default instance holds the new object.|
+|`Set Widget = Nothing`|Valid. The default instance lets go of its object, and the next reference to `Widget` creates another.|
 |A `Set` assignment to a local variable or field that is itself named `Widget`|Valid. The local variable or field hides the default instance of class `Widget`, and is an ordinary `Set` target.|
+|`Set Sheet1 = …`, the default instance of an extensible class (a document module)|Compile error [`VBC09345`](../diagnostics/vbc09345.md) _Invalid use of property_, whatever is assigned.|
+|`Set Debug = …`|Compile error [`VBC00001`](../diagnostics/vbc00001.md) _Syntax error_.|
 
-See [**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md) (`VB_PredeclaredId`) and
-[**RD-VBAL §2.6.2** Semantic Compilation Errors](rd-vbal.2.6.2.semantic-compilation-errors.md).
+See [**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md) (`VB_PredeclaredId`, `VB_Extensible`).
 
 ## Runtime Semantics
 
@@ -49,6 +67,10 @@ Two things happen around the assignment of an object to a variable.
 - **`WithEvents`.** When the variable is declared `WithEvents`
   ([**RD-VBAL §5.2.3.1.2**](rd-vbal.5.2.3.module-declarations.md)), its event handlers are detached from the object it holds before the assignment, and attached to the object it is given after it. They handle the events that object raises with `RaiseEvent`
   ([**RD-VBAL §5.4.2.20**](rd-vbal.5.4.2.20.raiseevent-statement.md)); an object that is destroyed handles no more.
+
+A property of a standard module that has a `Property Set` is assigned by invoking its `Property Set` with the value, on no object:
+by its bare name or through its module (`Set Store.Items = New Collection`), from any module. A property of a class, Set by its bare
+name in the class's own code, is invoked on the object whose code it is.
 
 `Set obj.Member = value` assigns a member as `Let` does ([**RD-VBAL §5.4.3.8**](rd-vbal.5.4.3.8.let-statement.md)), through the
 `Property Set` or the public variable, and with the same two things around it: the references and the `WithEvents` handlers are those of

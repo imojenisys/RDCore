@@ -4,6 +4,7 @@ using RDCore.SDK.Model.Symbols.VBProject;
 using RDCore.SDK.Model.Values.Bindings;
 using RDCore.SDK.Model.Values.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
+using System.Runtime.CompilerServices;
 
 namespace RDCore.Runtime.Execution;
 
@@ -30,9 +31,26 @@ public sealed record class RuntimeCallableBindingFactory(
     /// <inheritdoc/>
     public ICallableBinding ForMember(
         VBTypeMemberSymbol member, IRuntimeValue? receiver = null, SourceLocation callSite = default)
-        => IsExternal(member) && External is not null
-            ? new ExternalBindingHandle(member, External, receiver, callSite)
+    {
+        // a procedure of a standard module, or of a library's, is bound to nothing but itself: one handle for every call of it (IR lowering S1.3, S1.9).
+        if (receiver is null && callSite == default && _procedures.TryGetValue(member, out var binding))
+        {
+            return binding;
+        }
+
+        if (IsExternal(member) && External is not null)
+        {
+            return receiver is null && callSite == default
+                ? _procedures.GetValue(member, procedure => new ExternalBindingHandle(procedure, External))
+                : new ExternalBindingHandle(member, External, receiver, callSite);
+        }
+
+        return receiver is null
+            ? _procedures.GetValue(member, procedure => new CallableBindingHandle(procedure, Invoker))
             : new CallableBindingHandle(member, Invoker, receiver);
+    }
+
+    private readonly ConditionalWeakTable<VBTypeMemberSymbol, ICallableBinding> _procedures = new();
 
     // a Declare names a native library: it has no body in the workspace and no target the standard library knows, and what it is is in its type.
     private static bool IsExternal(VBTypeMemberSymbol member)

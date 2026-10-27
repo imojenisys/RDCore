@@ -42,8 +42,10 @@ before any bound is evaluated:
 |---|---|---|
 |One or more bounds|`Dim g(1 To 3, 0 To 4) As Long`|[VBFixedSizeArrayType](../api/RDCore.SDK.Model.Types.VBFixedSizeArrayType.html)|
 |An empty `()` clause|`Dim b() As Long`|[VBResizableArrayType](../api/RDCore.SDK.Model.Types.VBResizableArrayType.html)|
-|A trailing `()` on the `As` clause|`Dim b As Long()`|`VBResizableArrayType`|
-|An empty `()` clause or a trailing `()` on the `As` clause, with item type `Byte`|—|[VBResizableByteArrayType](../api/RDCore.SDK.Model.Types.VBResizableByteArrayType.html), instead of `VBResizableArrayType`|
+|An empty `()` clause, with item type `Byte`|`Dim b() As Byte`|[VBResizableByteArrayType](../api/RDCore.SDK.Model.Types.VBResizableByteArrayType.html), instead of `VBResizableArrayType`|
+
+A trailing `()` on the `As` clause of a local (`Dim b As Long()`, `Static s As Long()`) is a syntax error, as it is in **MS-VBA**
+([**RD-VBAL §5.2.3.1.3**](rd-vbal.5.2.3.module-declarations.md#52313-array-dimensions-and-bounds)).
 
 See [**RD-VBAL §2.4.1** Intrinsic Types](rd-vbal.2.4.1.intrinsic-types.md). An array declaration creates an array
 value of the appropriate array type in the scope of the declaration; see
@@ -73,7 +75,7 @@ When a procedure is invoked
 |Local|Extent|Storage|On each call|When the call returns|
 |---|---|---|---|---|
 |`Dim`|Procedure extent.|A fresh `CallStackFrame.Push` on every call.|Seeded to its declared type's default value on every call. A `Dim` local never sees a previous call's value.|Freed with the rest of the frame.|
-|`Static`|Module extent: it needs storage that outlives the call.|Reserved once by `ISymbolResolver.TryAllocate`, in the session's module-level heap.|Sees whatever the previous call's body last wrote to it.|Kept.|
+|`Static`|Module extent: it needs storage that outlives the call. A member of a class's is the object's (below).|Reserved once by `ISymbolResolver.TryAllocate`, in the session's module-level heap; or on the object.|Sees whatever the previous call's body last wrote to it.|Kept.|
 
 ### Static locals
 
@@ -99,6 +101,30 @@ mechanism for `Static` locals.
 
 A local variable also has module extent when its procedure is declared `Static`
 ([**RD-VBAL §5.3.1.2** Static Procedures](rd-vbal.5.3.1.2.static-procedures.md)): it is marked `Static` as if the keyword were written.
+
+### Static locals of a class module's members
+
+> [!IMPORTANT]
+> **MS-VBAL §5.4.3.1** gives a `Static` local module extent: one for the module, whichever object a member of a class
+> is called on. **MS-VBA** gives each object of the class its own (recorded in Excel), and so does **RD-VBA**.
+
+A `Static` local of a member of a class module has the extent of the object the member is called on, as the
+object's fields do:
+
+|What the code does|What happens|
+|---|---|
+|Calls the member on two objects of the class|Each object has its own `Static` local: two objects whose method counts its calls in one count apart.|
+|Calls the member on the same object again|The object's `Static` local holds what the previous call left in it, whether the member is called by its name, through an interface the class implements, or from another member.|
+|Two members declare a `Static` local of the same name|Two variables.|
+|Lets go of the object|Its `Static` locals go with it: an object one of them holds is let go of, and its `Class_Terminate` runs if nothing else holds it. Another object of the class starts its own from its type's default.|
+
+A `Static` local of a standard module's procedure is one for the module, whoever calls the procedure. Every local of
+a `Static` procedure of a class is the object's, as an explicit `Static` local is.
+
+The object holds a member's `Static` locals beside its fields
+([IObjectInstance](../api/RDCore.SDK.Runtime.Abstract.Execution.IObjectInstance.html)`.StaticLocals`): the first
+call of the member on the object declares them, and `CallStackAwareSymbolResolver` finds them on the object the
+activation is a call on before it looks at the session.
 
 ## Implementation
 

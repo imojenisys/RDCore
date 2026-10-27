@@ -1,4 +1,5 @@
 using RDCore.Runtime.Execution.Frames;
+using RDCore.Runtime.Execution.Memory;
 using RDCore.Runtime.Semantics.Literals;
 using RDCore.SDK.Model;
 using RDCore.SDK.Model.AST.Abstract;
@@ -24,8 +25,8 @@ using System.Runtime.CompilerServices;
 namespace RDCore.Runtime.Semantics;
 
 // The evaluation of bound trees (IR lowering §3.3, S0.8a): what an expression binds to is decided once, the first time it is evaluated, and the bound tree
-// is what is evaluated from then on. A node is evaluated by the same semantics that evaluate it from the syntax tree - only what the binding decided is not
-// decided again.
+// is what is evaluated from then on. A node is evaluated by the run-time semantics of what it is - only what the binding decided is not decided again. What
+// resolves only when it is evaluated (BoundLate), and the run-time counterpart of a compile error (BoundError), are evaluated late-bound (EvaluateLate).
 public sealed partial class RuntimeExpressionEvaluator
 {
     // a bound tree, and the scopes it was bound in: what a name is bound to is true of these scopes, and of no other.
@@ -36,16 +37,6 @@ public sealed partial class RuntimeExpressionEvaluator
     // with it. That is also why it is not a ConditionalWeakTable, whose lookup costs as much as what binding saves a read.
     private readonly ConcurrentDictionary<ExpressionNode, BoundRoot> _boundRoots = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>
-    /// Whether every expression that has no effect of its own is evaluated twice - from its bound tree and from its syntax tree - and the two results
-    /// compared, an <see cref="InvalidOperationException"/> being thrown when they differ (IR lowering S0.8a).
-    /// </summary>
-    /// <remarks>
-    /// 🧪 For the tests only, which turn it on for the whole suite. An expression has an effect when it calls something, an object's default member
-    /// included, or when it is evaluated by an analysis, which counts what it assumes: those are evaluated once.
-    /// </remarks>
-    internal static bool ComparesBoundEvaluation { get; set; }
-
     // the bound tree of an expression, bound now when it is not bound yet, or was bound in scopes that are no longer the session's.
     private BoundNode BoundTreeOf(IRuntimeSession session, ExpressionNode expression, RuntimeEvaluationContext context)
     {
@@ -55,54 +46,120 @@ public sealed partial class RuntimeExpressionEvaluator
             return root.Node;
         }
 
-        var node = Bind(session, scopes, expression, context);        _boundRoots[expression] = new BoundRoot(scopes, node);
+        var node = Bind(session, scopes, expression, context);
+        _boundRoots[expression] = new BoundRoot(scopes, node);
         return node;
     }
 
-    // the layout of the activations of each definition of a procedure, made once for it: a procedure defined again is another symbol, with a layout of its own.
-    private readonly ConditionalWeakTable<Symbol, FrameLayout> _layouts = [];
-
-    // the binding is the static evaluation of the expression, in the scope the evaluation resolves its names from. An expression with no such scope - one
-    // that is not written in code the session defines - is not bound. Its variables are bound to the slots of the procedure it is written in, when that is
-    // the procedure the current activation is of (a Uri's equality ignores its fragment, which is what tells two procedures of a module apart).
+    // the binding is the static evaluation of the expression, in the scope the evaluation resolves its names from. An expression written where the session
+    // defines no scope - a procedure it does not know, whose names its resolver finds all the same - is bound in an empty scope of that procedure, as the
+    // static pass types an owner it has no scope for. Its variables are bound to the slots of the procedure it is written in, when that is the procedure the
+    // current activation is of (a Uri's equality ignores its fragment, which is what tells two procedures of a module apart).
     private BoundNode Bind(IRuntimeSession session, ScopeTree scopes, ExpressionNode expression, RuntimeEvaluationContext context)
     {
         if (!scopes.TryGetScope(context.Scope, out var scope))
         {
-            return new BoundFallback(expression);
+            scope = new LexicalScope(context.Scope, LexicalScopeKind.Procedure, null, []);
         }
 
         var frame = session.CallStack.Current is CallStackFrame { Procedure: { } procedure } && procedure.Uri.AbsoluteUri == context.Scope.AbsoluteUri
-            ? _layouts.GetValue(procedure, FrameLayout.Of)
+            ? FrameLayout.For(procedure)
             : null;
 
-        // a member written with no object before the dot is a member of the target of the enclosing With block, typed as the static pass types it: by the
-        // declared type of the block's expression.
-        var staticContext = new StaticEvaluationContext(session.Symbols.Resolver, scope);
-        if (context.EnclosingWithTargetExpression is { } withTarget)
-        {
-            staticContext = staticContext with { EnclosingWithTargetType = ExpressionStaticSemanticsEvaluator.Evaluate(staticContext with { Facts = null, Bindings = null }, withTarget).Result };
-        }
-
-        return ExpressionBinder.Bind(staticContext, expression, frame).NodeOf(expression)
-            ?? new BoundFallback(expression);
+        return ExpressionBinder.Bind(StaticContextOf(session, scope, context), expression, frame).NodeOf(expression)
+            ?? new BoundLate(expression);
     }
+
+    // a member written with no object before the dot is a member of the target of the enclosing With block, typed as the static pass types it: by the
+    // declared type of the block's expression.
+    private static StaticEvaluationContext StaticContextOf(IRuntimeSession session, LexicalScope scope, RuntimeEvaluationContext context)
+    {
+        var staticContext = new StaticEvaluationContext(session.Symbols.Resolver, scope, Environment: new StaticEnvironment(session.Environment.Is64Bit));
+        return context.EnclosingWithTargetExpression is { } withTarget
+            ? staticContext with { EnclosingWithTargetType = ExpressionStaticSemanticsEvaluator.Evaluate(staticContext with { Facts = null, Bindings = null }, withTarget).Result }
+            : staticContext;
+    }
+
+    /// <summary>
+    /// The declared type of an expression, as the static pass types it in the scope it is written in: what an assignment to it let-coerces to.
+    /// </summary>
+    /// <returns><see langword="null"/> when the session defines no scope there, or the expression has no declared type.</returns>
+    internal VBType? DeclaredTypeOf(IRuntimeSession session, ExpressionNode expression, RuntimeEvaluationContext context)
+        => session.Symbols.Scopes.TryGetScope(context.Scope, out var scope)
+            ? ExpressionStaticSemanticsEvaluator.Evaluate(StaticContextOf(session, scope, context) with { Facts = null, Bindings = null }, expression).Result
+            : null;
 
     // a variable of the current activation is read through its slot; any other - a Static variable, a field, a variable of an activation the slot is not
     // of - is looked up, as a name that is not bound is.
-    private RuntimeSemanticsEvaluationResult ReadBoundVariable(IRuntimeSession session, BoundVariable variable)
+    private RuntimeSemanticsEvaluationResult ReadBoundVariable(IRuntimeSession session, BoundVariable variable, bool boundsOnly = false)
     {
         var (handle, referenced) = BindingOf(session, variable);
-        return ReadVariable(session, (ITypedSymbol)variable.Variable, handle, referenced, variable.IsAutoInstantiated);
+        return ReadVariable(session, (ITypedSymbol)variable.Variable, handle, referenced, variable.IsAutoInstantiated, boundsOnly);
     }
 
-    // the binding of a variable in the current activation, and the declared type of the variable a Variant reference parameter is bound to, if it is one.
-    private static (IBindingHandle Handle, VBType? ReferencedType) BindingOf(IRuntimeSession session, BoundVariable variable)
-        => variable.Slot is { } slot && session.CallStack.Current is CallStackFrame frame
-            && frame.TryReadSlot(slot, variable.Variable, out var handle, out var referenced)
-                ? (handle, referenced)
-                : (session.Symbols.Resolver.GetValue(variable.Variable),
-                    session.CallStack.Current is { } current && current.TryGetReferencedType(variable.Variable, out var type) ? type : null);
+    /// <summary>
+    /// Evaluates what an index expression indexes, or an assignment to one of its elements: a variable declared a fixed-size array is read for its bounds,
+    /// which its declaration makes certain, when an evaluation <see cref="AssumesVariables">assumes</see> what variables hold.
+    /// </summary>
+    /// <param name="session">The session the expression is evaluated in.</param>
+    /// <param name="callee">The callee of the index expression.</param>
+    /// <param name="context">The scope it is written in.</param>
+    internal RuntimeSemanticsEvaluationResult EvaluateIndexed(IRuntimeSession session, ExpressionNode callee, RuntimeEvaluationContext context)
+        => AssumesVariables && BoundVariableOf(session, callee, context) is { } variable
+            ? ReadBoundVariable(session, variable, boundsOnly: true)
+            : Evaluate(session, callee, context);
+
+    /// <summary>
+    /// The variable a statement's target names, bound (IR lowering S0.11): what a <c>Set</c>, an <c>LSet</c> or an <c>RSet</c> writes to, found once.
+    /// </summary>
+    /// <param name="session">The session the statement runs in.</param>
+    /// <param name="target">The target.</param>
+    /// <param name="context">The scope the target is written in.</param>
+    /// <returns>The bound variable; <see langword="null"/> for a target that is not a simple name, or names no variable - a function's result, which
+    /// is the activation's.</returns>
+    internal BoundVariable? BoundVariableOf(IRuntimeSession session, ExpressionNode target, RuntimeEvaluationContext context)
+        => target is SimpleNameExpressionNode ? BoundTreeOf(session, target, context) as BoundVariable : null;
+
+    /// <summary>
+    /// The binding of a bound variable in the current activation - through its slot, when it has one - and the declared type of the variable a
+    /// <c>Variant</c> reference parameter is bound to, if it is one (<strong>MS-VBAL §5.3.1.11</strong>).
+    /// </summary>
+    /// <param name="session">The session the variable lives in.</param>
+    /// <param name="variable">The bound variable.</param>
+    internal (IBindingHandle Handle, VBType? ReferencedType) BindingOf(IRuntimeSession session, BoundVariable variable)
+    {
+        if (variable.Slot is { } slot && session.CallStack.Current is CallStackFrame frame
+            && frame.TryReadSlot(slot, variable.Variable, out var handle, out var referenced))
+        {
+            return (handle, referenced);
+        }
+
+        // a variable of the session - of a module, global, or a Static local - is the same cell from wherever it is read, for as long as nothing is
+        // allocated, freed or rebound in storage: resolved once for each place it is named, rather than looked up by its symbol each time (S1.5).
+        if (IsSessionVariable(variable.Variable, session.CallStack.Current) && session.Storage is SessionStorage storage)
+        {
+            if (_sessionCells.TryGetValue(variable, out var known) && ReferenceEquals(known.Storage, storage) && known.Generation == storage.Generation)
+            {
+                return (known.Cell, null);
+            }
+
+            var cell = session.Symbols.Resolver.GetValue(variable.Variable);
+            _sessionCells[variable] = new SessionCell(storage, storage.Generation, cell);
+            return (cell, null);
+        }
+
+        return (session.Symbols.Resolver.GetValue(variable.Variable),
+            session.CallStack.Current is { } current && current.TryGetReferencedType(variable.Variable, out var type) ? type : null);
+    }
+
+    // a variable whose storage is the session's, which no activation and no object holds: one of a module, a global, a Static local of a procedure that
+    // is a call on no object - one of a member of a class is the object's, a cell for each object.
+    private static bool IsSessionVariable(Symbol variable, ICallStackFrame? frame)
+        => variable.ScopeKind is ScopeKind.Module or ScopeKind.Global || variable is VBLocalVariableSymbol { IsStatic: true } && frame?.Target is null;
+
+    private sealed record class SessionCell(SessionStorage Storage, int Generation, IBindingHandle Cell);
+
+    private readonly ConcurrentDictionary<BoundVariable, SessionCell> _sessionCells = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
     /// Let-coerces a value by the plan of its coercion (<see cref="Plans.PlanExecutor.TryConvert"/>), when nothing observes the evaluation and the value and
@@ -167,22 +224,6 @@ public sealed partial class RuntimeExpressionEvaluator
         return RuntimeSemanticsEvaluationResult.Success(coerced);
     }
 
-    private RuntimeSemanticsEvaluationResult EvaluateBound(IRuntimeSession session, BoundNode node, RuntimeEvaluationContext context)
-    {
-        var result = EvaluateBoundNode(session, node, context);
-        if (ComparesBoundEvaluation && !AssumesVariables && Observation is null && HasNoEffect(node))
-        {
-            var expected = EvaluateSyntax(session, node.Expression, context);
-            if (Outcome(result) != Outcome(expected))
-            {
-                throw new InvalidOperationException(
-                    $"The bound tree of the {node.Expression.GetType().Name} at {node.Expression.Location.Range} evaluated to {Outcome(result)}, and its syntax tree to {Outcome(expected)}.");
-            }
-        }
-
-        return result;
-    }
-
     private RuntimeSemanticsEvaluationResult EvaluateBoundNode(IRuntimeSession session, BoundNode node, RuntimeEvaluationContext context) => node switch
     {
         BoundLiteral literal => LiteralExpressionRuntimeSemantics.Instance.Evaluate(session, new(), literal.Literal),
@@ -191,16 +232,87 @@ public sealed partial class RuntimeExpressionEvaluator
         BoundBinary binary => EvaluateBoundBinary(session, binary, context),
         BoundUnary unary => EvaluateBoundUnary(session, unary, context),
         BoundCall call => EvaluateBoundCall(session, call, context),
-        BoundMember member => EvaluateBoundMember(session, member, context),
+        BoundMember member => member.IsLateBound ? AsVariant(EvaluateBoundMember(session, member, context)) : EvaluateBoundMember(session, member, context),
         BoundNew created => CreateObject(session, created.New, created.Class),
         BoundTypeOf typeOf => EvaluateBoundTypeOf(session, typeOf, context),
-        BoundIndex index => IndexValue(session, context, index.Index, index.Index, EvaluateBoundNode(session, index.Callee, context)),
-        _ => EvaluateSyntax(session, node.Expression, context),
+        BoundIndex index => IndexValue(session, context, index.Index, index.Index,
+            AssumesVariables && index.Callee is BoundVariable indexed ? ReadBoundVariable(session, indexed, boundsOnly: true) : EvaluateBoundNode(session, index.Callee, context)),
+        BoundInstance instance => ReadInstance(session, instance),
+        BoundArrayBound arrayBound => EvaluateBoundArrayBound(session, arrayBound, context),
+        BoundArray array => EvaluateBoundArray(session, array, context),
+        BoundDictionaryAccess dictionary => EvaluateBoundDictionaryAccess(session, dictionary, context),
+        BoundQualifiedName qualified => ReadSymbol(session, context, qualified.Member, nameOfEnclosingFunctionIsItsResult: false),
+        BoundPrecompilerName precompilerName => EvaluatePrecompilerConstant(session, context, precompilerName.Name),
+        // a compile error evaluates to its run-time counterpart: the expression, late-bound.
+        BoundError error => EvaluateBoundNode(session, error.Late, context),
+        BoundLate late => EvaluateLate(session, late.Expression, context),
+        _ => RuntimeSemanticsEvaluationResult.InternalError(),
     };
+
+    // what EvaluateArrayBound does, its operands evaluated through their nodes.
+    private RuntimeSemanticsEvaluationResult EvaluateBoundArrayBound(IRuntimeSession session, BoundArrayBound arrayBound, RuntimeEvaluationContext context)
+    {
+        var array = EvaluateBoundNode(session, arrayBound.Array, context);
+        if (!array.IsSuccess)
+        {
+            return array;
+        }
+
+        VBTypedValue? dimension = null;
+        if (arrayBound.Dimension is { } dimensionNode)
+        {
+            var evaluated = EvaluateBoundNode(session, dimensionNode, context);
+            if (!evaluated.IsSuccess)
+            {
+                return evaluated;
+            }
+
+            dimension = evaluated.Result;
+        }
+
+        return ArrayBoundOf(arrayBound.ArrayBound, array.Result!, dimension);
+    }
+
+    // what EvaluateArray does, its elements evaluated through their nodes.
+    private RuntimeSemanticsEvaluationResult EvaluateBoundArray(IRuntimeSession session, BoundArray array, RuntimeEvaluationContext context)
+    {
+        var lower = session.CallStack.Current?.Directives.Base ?? 0;
+        var value = new VBResizableArrayValue([(lower, lower + array.Elements.Length - 1)], VBVariantType.TypeInfo);
+        for (var index = 0; index < array.Elements.Length; index++)
+        {
+            var element = EvaluateBoundNode(session, array.Elements[index], context);
+            if (!element.IsSuccess)
+            {
+                return element;
+            }
+
+            SetArrayElement(value, lower + index, element.Result!);
+        }
+
+        return RuntimeSemanticsEvaluationResult.Success(new VBVariantValue(value));
+    }
+
+    // what EvaluateDictionaryAccess does, its owner evaluated through its node - or the target of the enclosing With block, for one written with none.
+    private RuntimeSemanticsEvaluationResult EvaluateBoundDictionaryAccess(IRuntimeSession session, BoundDictionaryAccess dictionary, RuntimeEvaluationContext context)
+    {
+        var owner = dictionary.Owner is { } ownerNode
+            ? EvaluateBoundNode(session, ownerNode, context)
+            : context.EnclosingWithTarget is { } withTarget
+                ? RuntimeSemanticsEvaluationResult.Success(withTarget)
+                : RuntimeSemanticsEvaluationResult.InternalError();
+        return owner.IsSuccess ? AccessThroughDictionary(session, context, dictionary.DictionaryAccess, owner.Result!) : owner;
+    }
+
+    // Me is the object the activation was invoked on: what its parameter holds, read through its slot.
+    private static RuntimeSemanticsEvaluationResult ReadInstance(IRuntimeSession session, BoundInstance instance)
+        => RuntimeSemanticsEvaluationResult.Success(new VBObjectValue(
+            instance.Slot is { } slot && session.CallStack.Current is CallStackFrame frame && frame.TryReadSlot(slot, instance.Me, out var handle, out _)
+                ? handle
+                : session.Symbols.Resolver.GetValue(instance.Me)));
 
     // what EvaluateMemberAccess and EvaluateIndex do with a member of an object declared as a class, the member resolved once (S0.10): the owner is evaluated
     // once, and the member the object's class invokes for it is found once for each class the expression meets. Anything else - no object, an object the
-    // session has no instance of, a member the class does not have - is what the syntax tree's evaluation does with the owner it was given.
+    // session has no instance of, a member the class does not have - is what the late-bound evaluation does with the owner it was given.
     private RuntimeSemanticsEvaluationResult EvaluateBoundMember(IRuntimeSession session, BoundMember bound, RuntimeEvaluationContext context)
     {
         // no owner: the object is the target of the enclosing With block.
@@ -227,12 +339,14 @@ public sealed partial class RuntimeExpressionEvaluator
             // a public variable of the object is read, as EvaluateInstanceField reads it - and what follows it in parentheses indexes it.
             if (member.Kind is SymbolKindExt.Field or SymbolKindExt.Variable)
             {
-                result = Assumed(RuntimeSemanticsEvaluationResult.Success(member.ResolvedType.CreateValue(instance.GetValue(member).ForReading())));
+                result = ReadVariable(session, member, instance.GetValue(member), referenced: null, member.GetProperty(SymbolProperties.AutoInstantiated));
                 isCall = false;
             }
             else
             {
-                result = InvokeProcedure(session, context, member, bound.Arguments?.Arguments ?? [], objectValue.RuntimeValue);
+                // the arguments are bound for the member of the class the object is declared as: the member implementing it has parameters of its own.
+                result = InvokeProcedure(session, context, member, bound.Arguments?.Arguments ?? [], objectValue.RuntimeValue,
+                    ReferenceEquals(member, bound.Member) ? bound.BoundArguments : null);
             }
         }
         else if (bound.Arguments is { } call)
@@ -260,7 +374,7 @@ public sealed partial class RuntimeExpressionEvaluator
     private RuntimeSemanticsEvaluationResult EvaluateBoundTypeOf(IRuntimeSession session, BoundTypeOf typeOf, RuntimeEvaluationContext context)
     {
         var operand = EvaluateBoundNode(session, typeOf.Operand, context);
-        return operand.IsSuccess ? IsOfClass(session, operand, typeOf.Class) : operand;
+        return operand.IsSuccess ? IsOfClass(session, operand, typeOf.Class, typeOf.TypeOf) : operand;
     }
 
     // the member each bound member expression invoked last, and the class of the object it was invoked on: an expression meets objects of one class, nearly
@@ -268,8 +382,8 @@ public sealed partial class RuntimeExpressionEvaluator
     private readonly ConcurrentDictionary<BoundMember, (VBClassModuleSymbol Class, VBTypeMemberSymbol? Member)> _memberSites = new(ReferenceEqualityComparer.Instance);
 
     // the member an object of `actual` invokes for a member of the class the expression is declared as (MS-VBAL §5.3.1.9): the member itself, of an object of
-    // that class; the one implementing it, of a class that implements it as an interface; or the class's own member by that name, as the syntax tree's
-    // evaluation finds it.
+    // that class; the one implementing it, of a class that implements it as an interface; or the class's own member by that name, as it is found
+    // late-bound.
     private VBTypeMemberSymbol? ImplementationOf(BoundMember bound, VBClassModuleSymbol actual)
     {
         if (_memberSites.TryGetValue(bound, out var site) && ReferenceEquals(site.Class, actual))
@@ -292,50 +406,76 @@ public sealed partial class RuntimeExpressionEvaluator
 
     private RuntimeSemanticsEvaluationResult EvaluateBoundBinary(IRuntimeSession session, BoundBinary binary, RuntimeEvaluationContext context)
     {
+        // MS-VBAL §5.6.9.3: a Single, Double or Date operation of operands of declared types is computed in the extended format (ExtendedIntermediates),
+        // and so is an operand of an operation that is not one.
+        if (IsWide(binary))
+        {
+            return EvaluateStored(session, binary, context);
+        }
+
+        if (PlanOf(binary) is { IsDeferred: false } plan && (IsWide(binary.Left) || IsWide(binary.Right)))
+        {
+            return EvaluateWithWideOperand(session, binary, plan, context);
+        }
+
+        // an operand that raised an error raises it with no value: a Variant operation of it assigns nothing (MS-VBA: e = s * 10 + v leaves e - s42 E06).
         var leftResult = EvaluateBoundNode(session, binary.Left, context);
         if (!leftResult.IsSuccess)
         {
-            return leftResult;
+            return Unvalued(leftResult);
         }
 
         var rightResult = EvaluateBoundNode(session, binary.Right, context);
         if (!rightResult.IsSuccess)
         {
-            return rightResult;
+            return Unvalued(rightResult);
         }
 
         return OperatorProvider.EvaluateBinaryOperator(session, binary.Operation, leftResult.Result!, rightResult.Result!);
     }
 
     // what EvaluateIndex does with a callee that resolves to a procedure, its callee resolved once: a function that declares no parameter is not given what
-    // follows it in parentheses, which indexes what it returns - and that is evaluated from the syntax tree.
+    // follows it in parentheses, which indexes what it returns - and that is evaluated late-bound.
+    // Abs, Int, Fix, CSng and CDbl of an extended intermediate are computed on it, CByte to CBool convert it, and Sgn takes its sign, none storing it first
+    // (ExtendedIntermediates).
     private RuntimeSemanticsEvaluationResult EvaluateBoundCall(IRuntimeSession session, BoundCall call, RuntimeEvaluationContext context)
-        => call.Procedure is VBTypeMemberSymbol procedure && !ReturnsToBeIndexed(procedure, null, call.Call.Arguments)
-            ? InvokeProcedure(session, context, procedure, call.Call.Arguments)
-            : EvaluateSyntax(session, call.Expression, context);
+        => IsWide(call) ? EvaluateStored(session, call, context)
+            : EvaluateWideConversion(session, call, context) is { } converted ? converted
+            : call.Procedure is VBTypeMemberSymbol procedure && !ReturnsToBeIndexed(procedure, null, call.Call.Arguments)
+                ? OfResultType(call, InvokeProcedure(session, context, procedure, call.Call.Arguments, boundArguments: call.BoundArguments))
+                : EvaluateLate(session, call.Expression, context);
+
+    // what a member reached late-bound returns is a Variant (BoundMember.IsLateBound): a scalar it returns is held by one. An object, an array, a record,
+    // and a Variant already, are what they are.
+    private static RuntimeSemanticsEvaluationResult AsVariant(RuntimeSemanticsEvaluationResult evaluated)
+        => evaluated is { IsSuccess: true, Result: { } value } && value is not (VBVariantValue or VBObjectValue or VBArrayValue or VBUserDefinedTypeValue or SDK.Model.Values.VBVoidValue)
+            ? RuntimeSemanticsEvaluationResult.Success(value.IsIndeterminate ? new VBVariantValue(value).AsIndeterminate() : new VBVariantValue(value))
+            : evaluated;
+
+    // a call of a declared type its procedure does not declare - Abs, Int, Fix of a number (ArgumentTypedFunctions) - returns a value of it: the Variant the
+    // procedure returns holds one, which is what an operation of the call operates on, as MS-VBA has it (oracle\s46 F10: `Fix(n) * 7000` overflows).
+    private static RuntimeSemanticsEvaluationResult OfResultType(BoundCall call, RuntimeSemanticsEvaluationResult returned)
+        => call.ResultType is { } typed && returned is { IsSuccess: true, Result: VBVariantValue { TypedValue: var held } } && held.TypeInfo.Name == typed.Name
+            ? RuntimeSemanticsEvaluationResult.Success(held)
+            : returned;
 
     private RuntimeSemanticsEvaluationResult EvaluateBoundUnary(IRuntimeSession session, BoundUnary unary, RuntimeEvaluationContext context)
     {
+        if (IsWide(unary))
+        {
+            return EvaluateStored(session, unary, context);
+        }
+
+        // Not of an extended intermediate: converted to the type it is coerced to, from its 80 bits.
+        if (PlanOf(unary) is { IsDeferred: false } plan && IsWide(unary.Operand))
+        {
+            var converted = EvaluateOperandOf(session, unary.Operand, plan.OperandDestination, context);
+            return converted.IsSuccess ? OperatorProvider.EvaluateUnaryOperator(session, unary.Operation, converted.Result!) : converted;
+        }
+
         var operandResult = EvaluateBoundNode(session, unary.Operand, context);
         return operandResult.IsSuccess
             ? OperatorProvider.EvaluateUnaryOperator(session, unary.Operation, operandResult.Result!)
             : operandResult;
     }
-
-    // a literal, and a variable or a constant of an intrinsic type, have none; nor does an operation of them, whose operands are no object with a default
-    // member to call.
-    private static bool HasNoEffect(BoundNode node) => node switch
-    {
-        BoundLiteral => true,
-        BoundVariable { IsAutoInstantiated: false, Variable: ITypedSymbol { ResolvedType: VBNumericType or VBStringType or VBBooleanType or VBDateType } } => true,
-        BoundName { Symbol: ITypedSymbol { ResolvedType: VBNumericType or VBStringType or VBBooleanType or VBDateType } and not VBTypeMemberSymbol } => true,
-        BoundName { Symbol: VBTypeMemberSymbol { Kind: SymbolKindExt.Field or SymbolKindExt.Variable or SymbolKindExt.Constant } member }
-            => member is ITypedSymbol { ResolvedType: VBNumericType or VBStringType or VBBooleanType or VBDateType },
-        BoundBinary binary => HasNoEffect(binary.Left) && HasNoEffect(binary.Right),
-        BoundUnary unary => HasNoEffect(unary.Operand),
-        _ => false,
-    };
-
-    private static string Outcome(RuntimeSemanticsEvaluationResult result)
-        => result.IsSuccess ? $"{result.Result!.TypeInfo.Name}({result.Result.RuntimeValue.BoxedValue})" : $"error {result.ErrorInfo?.ErrorId}";
 }

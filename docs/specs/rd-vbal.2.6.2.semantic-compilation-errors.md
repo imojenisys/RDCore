@@ -31,6 +31,7 @@ Semantic compilation errors are emitted by the resolver and the static semantic 
 |Code|Title|Condition|
 |---|---|---|
 |[`VBC09306`](../diagnostics/vbc09306.md)|Invalid ReDim|a `ReDim` re-dimensions a member of an object declared `As Object` (of a declared class, it is `VBC09316`)|
+|[`VBC09307`](../diagnostics/vbc09307.md)|Expected array|`LBound` or `UBound` of what never holds an array: a variable declared as a number, a `String`, a `Boolean`, a `Date`, an object, a class or a user-defined type; a project, a module or an enumeration|
 |[`VBC09309`](../diagnostics/vbc09309.md)|Label not defined|a jump names a line label or line number the procedure does not define|
 |[`VBC09310`](../diagnostics/vbc09310.md)|Type mismatch|a value is of a type that cannot be let-coerced to the type it is used as|
 |[`VBC09312`](../diagnostics/vbc09312.md)|Exit Do not within Do...Loop|an `Exit Do` statement is not lexically inside a `Do` loop|
@@ -48,7 +49,7 @@ Semantic compilation errors are emitted by the resolver and the static semantic 
 |[`VBC09324`](../diagnostics/vbc09324.md)|Invalid type for WithEvents variable|a WithEvents variable is not declared as a specific class that has an event, or is declared as the class of its own module|
 |[`VBC09325`](../diagnostics/vbc09325.md)|Invalid event name|the name of an Event declaration contains an underscore|
 |[`VBC09326`](../diagnostics/vbc09326.md)|Invalid event handler|a procedure named for a WithEvents variable and an event of its class is not a subroutine, or has a parameter list incompatible with the event's|
-|[`VBC09327`](../diagnostics/vbc09327.md)|ByVal argument not allowed here|an argument is written with ByVal in an argument list that is not that of an invocation of an external procedure|
+|[`VBC09327`](../diagnostics/vbc09327.md)|ByVal argument not allowed here|no longer raised: an argument written `ByVal` where MS-VBA refuses it is the error MS-VBA reports ([**RD-VBAL §5.6.13.1**](rd-vbal.5.6.13.index-expressions.md#56131-argument-lists))|
 |[`VBC09328`](../diagnostics/vbc09328.md)|Invalid Implements directive|an Implements directive names the class itself, a class another directive names, a class with an underscore in a public member, or an interface whose prefix begins another's|
 |[`VBC09329`](../diagnostics/vbc09329.md)|Object module needs to implement all members of its interface|a public variable or method of an interface class has no implemented name declaration|
 |[`VBC09330`](../diagnostics/vbc09330.md)|Invalid implemented member|an implemented name declaration is not the kind of declaration its member is, or its parameters or type are not equivalent|
@@ -61,8 +62,48 @@ Semantic compilation errors are emitted by the resolver and the static semantic 
 |[`VBC09337`](../diagnostics/vbc09337.md)|Constants, fixed-length strings, arrays, user-defined types and Declare statements not allowed as Public members of object modules|a class module declares one of them as a public member, or a `Global` variable|
 |[`VBC09338`](../diagnostics/vbc09338.md)|Cannot define a Public user-defined type within an object module|a class module declares a `Public Type`, or a `Type` with no modifier|
 |[`VBC09339`](../diagnostics/vbc09339.md)|Argument not optional|an object whose default member takes an argument (a `Collection`) is where a value is expected: assigned to a variable of a value type, an operand, an argument of a parameter of a value type or of a library function that reads a value; see [**RD-VBAL §5.5.1.1**](rd-vbal.5.5.1.1.static-semantics.md)|
+|[`VBC09340`](../diagnostics/vbc09340.md)|Expected Function or variable|a `Sub` where a value is expected|
+|[`VBC09341`](../diagnostics/vbc09341.md)|Can't assign to read-only property|a `Let` of a property that has a `Property Get` and no `Property Let`|
+|[`VBC09342`](../diagnostics/vbc09342.md)|Wrong number of arguments or invalid property assignment|an argument no parameter takes|
+|[`VBC09343`](../diagnostics/vbc09343.md)|LSet allowed only on strings and user-defined types|the target of an `LSet` statement|
+|[`VBC09344`](../diagnostics/vbc09344.md)|RSet allowed only on strings|the target of an `RSet` statement|
+|[`VBC09345`](../diagnostics/vbc09345.md)|Invalid use of property|a `Set` of a property that has a `Property Get` and no `Property Set`, and of the default instance of an extensible class (a document module)|
+|[`VBC09346`](../diagnostics/vbc09346.md)|Assignment to constant not permitted|a `Let` or a `Set` of a constant|
+|[`VBC09347`](../diagnostics/vbc09347.md)|Object required|a `Set` of a variable that holds no object|
+|[`VBC09348`](../diagnostics/vbc09348.md)|Named argument already specified|a parameter given two arguments|
+|[`VBC09349`](../diagnostics/vbc09349.md)|Named argument not found|a named argument the procedure does not declare|
+|[`VBC09350`](../diagnostics/vbc09350.md)|Constant expression required|a constant's value reads a variable or calls a function, or names the constant itself|
+|[`VBC09351`](../diagnostics/vbc09351.md)|Invalid data type for constant|a constant's value is `Nothing`|
+|[`VBC09352`](../diagnostics/vbc09352.md)|Overflow|a constant's value does not fit its type|
+|[`VBC09353`](../diagnostics/vbc09353.md)|Division by zero|a constant's value divides by zero|
+|[`VBC09354`](../diagnostics/vbc09354.md)|Invalid qualifier|a member is accessed on a value that has no members|
+|[`VBC09355`](../diagnostics/vbc09355.md)|Function call on left-hand side of assignment must return Variant or Object|a call of a function is assigned|
+|[`VBC09356`](../diagnostics/vbc09356.md)|Wrong number of dimensions|an element of an array is selected by the wrong number of subscripts|
+|[`VBC09357`](../diagnostics/vbc09357.md)|Array already dimensioned|an array declared with fixed dimensions is given others|
+|[`VBC09358`](../diagnostics/vbc09358.md)|For control variable already in use|a loop is controlled by the variable of a loop it is nested in|
+|[`VBC09359`](../diagnostics/vbc09359.md)|Invalid Next control variable reference|a `Next` statement names a variable that is not the control variable of its loop|
+|[`VBC09360`](../diagnostics/vbc09360.md)|Can't assign to array|an array declared with fixed dimensions is assigned an array|
+|[`VBC09361`](../diagnostics/vbc09361.md)|ByRef argument type mismatch|a variable is passed to a `ByRef` parameter of another type|
+|[`VBC09362`](../diagnostics/vbc09362.md)|Type mismatch: array or user-defined type expected|an array is passed to a parameter declared as an array of another type|
+|[`VBC09363`](../diagnostics/vbc09363.md)|Expected variable or procedure, not module|the name of a standard module is used by itself, as a value or a procedure|
+|[`VBC09364`](../diagnostics/vbc09364.md)|Expected Sub, Function, or Property|a call statement names a variable or a constant of the procedure, not a procedure|
+|[`VBC09365`](../diagnostics/vbc09365.md)|Range has no values|an array is declared with an upper bound less than its lower bound|
+|[`VBC09366`](../diagnostics/vbc09366.md)|A module is not a valid type|a declaration is typed with the name of a standard module|
+|[`VBC09367`](../diagnostics/vbc09367.md)|Invalid use of AddressOf operator|an `AddressOf` expression names a method of a class module, or of an object|
+|[`VBC09368`](../diagnostics/vbc09368.md)|Invalid use of New keyword|a variable is declared `As New` of a type that is no class, of a library's class that cannot be created, or `WithEvents`|
+|[`VBC09369`](../diagnostics/vbc09369.md)|Can't change data types of array elements|a `ReDim` gives an array elements of another type than it is declared with, `As New` included|
+|[`VBC09370`](../diagnostics/vbc09370.md)|Expected procedure, not variable|a call statement names a variable or a constant of a module, not a procedure|
+|[`VBC09371`](../diagnostics/vbc09371.md)|Array argument must be ByRef|an argument of an array parameter is written `ByVal`|
+|[`VBC09372`](../diagnostics/vbc09372.md)|Member already exists in an object module from which this object module derives|the code of a form declares something with the name of one of its controls|
+|[`VBC09373`](../diagnostics/vbc09373.md)|Automation type not supported in Visual Basic|a type is written with the name of a library's module, `Strings`|
+|[`VBC09374`](../diagnostics/vbc09374.md)|Expected user-defined type, not project|a type is written with the name of a project or a library, `VBA`|
+|[`VBC09375`](../diagnostics/vbc09375.md)|Invalid length for fixed-length string|a `String * n` is declared with a length under 1 or past 65526|
+|[`VBC09376`](../diagnostics/vbc09376.md)|Expected variable or procedure, not project|a project, `VBA`, is written where a value is|
+|[`VBC09377`](../diagnostics/vbc09377.md)|Expected variable or procedure, not enum type|an enumeration, `Color`, is written where a value is|
+|[`VBC09378`](../diagnostics/vbc09378.md)|With object must be user-defined type, Object, or Variant|a `With` block is about a value that has no members|
+|[`VBC09379`](../diagnostics/vbc09379.md)|For Each may only iterate over a collection object or an array|a `For Each` loop iterates a value that has no elements|
 
-Instruction-list lowering reports `VBC09309` for a `Jump`/`JumpTable` label operand that does not resolve, and `VBC09319` for a repeated label definition; see [**RD-VBAL §3.5.3** Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md). `VBC09320` and `VBC09321` are raised by [ScopeTreeSymbolResolver](../api/RDCore.SDK.Model.Symbols.ScopeTreeSymbolResolver.html); see [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md). `VBC09322` and `VBC09323` are raised by [StatementStaticSemanticsEvaluator](../api/RDCore.SDK.Semantics.Static.StatementStaticSemanticsEvaluator.html); see [**RD-VBAL §5.4.2.20** RaiseEvent Statement](rd-vbal.5.4.2.20.raiseevent-statement.md). `VBC09324`, `VBC09325` and `VBC09326`, and a repeated event name as `VBC09303`, are raised by [ClassModuleEventSemantics](../api/RDCore.SDK.Semantics.Static.ClassModuleEventSemantics.html), which checks what a class module declares about events; see [**RD-VBAL §5.2.4.3**](rd-vbal.5.2.4.class-module-declarations.md), [**§5.2.3.1.2**](rd-vbal.5.2.3.module-declarations.md) and [**§5.3.1.8**](rd-vbal.5.3.1.8.event-handler-declarations.md). `VBC09327` is raised by [ExpressionStaticSemanticsEvaluator](../api/RDCore.SDK.Semantics.Static.ExpressionStaticSemanticsEvaluator.html); see [**RD-VBAL §5.6.13.1** Argument Lists](rd-vbal.5.6.13.index-expressions.md). `VBC09328`, `VBC09329` and `VBC09330`, and `VBC09311` for an interface class that does not exist, are raised by [ImplementsSemantics](../api/RDCore.SDK.Semantics.Static.ImplementsSemantics.html); see [**RD-VBAL §5.2.4.2**](rd-vbal.5.2.4.class-module-declarations.md) and [**§5.3.1.9**](rd-vbal.5.3.1.9.implemented-name-declarations.md).
+Instruction-list lowering reports `VBC09309` for a `Jump`/`JumpTable` label operand that does not resolve, and `VBC09319` for a repeated label definition; see [**RD-VBAL §3.5.3** Lowering Block Statements](rd-vbal.3.5.3.lowering-block-statements.md). `VBC09320` and `VBC09321` are raised by [ScopeTreeSymbolResolver](../api/RDCore.SDK.Model.Symbols.ScopeTreeSymbolResolver.html); see [**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md). `VBC09322` and `VBC09323` are raised by [StatementStaticSemanticsEvaluator](../api/RDCore.SDK.Semantics.Static.StatementStaticSemanticsEvaluator.html); see [**RD-VBAL §5.4.2.20** RaiseEvent Statement](rd-vbal.5.4.2.20.raiseevent-statement.md). `VBC09324`, `VBC09325` and `VBC09326`, and a repeated event name as `VBC09303`, are raised by [ClassModuleEventSemantics](../api/RDCore.SDK.Semantics.Static.ClassModuleEventSemantics.html), which checks what a class module declares about events; see [**RD-VBAL §5.2.4.3**](rd-vbal.5.2.4.class-module-declarations.md), [**§5.2.3.1.2**](rd-vbal.5.2.3.module-declarations.md) and [**§5.3.1.8**](rd-vbal.5.3.1.8.event-handler-declarations.md). An argument written `ByVal` where MS-VBA refuses it (`VBC09310`, `VBC09371`, or `VBC00001`) is reported by [ByValArgumentStaticSemantics](../api/RDCore.SDK.Semantics.Static.ByValArgumentStaticSemantics.html); see [**RD-VBAL §5.6.13.1** Argument Lists](rd-vbal.5.6.13.index-expressions.md). `VBC09328`, `VBC09329` and `VBC09330`, and `VBC09311` for an interface class that does not exist, are raised by [ImplementsSemantics](../api/RDCore.SDK.Semantics.Static.ImplementsSemantics.html); see [**RD-VBAL §5.2.4.2**](rd-vbal.5.2.4.class-module-declarations.md) and [**§5.3.1.9**](rd-vbal.5.3.1.9.implemented-name-declarations.md).
 
 ## Other Compilation Errors
 
@@ -73,9 +114,9 @@ This specification refers to the following semantic compilation errors on other 
 |`VBC09301`|`AmbiguousName`|Within one tier of the project or global scope, a name resolves to more than one symbol of the highest rank: members of two modules of the workspace (of a class module, only a public Enum or user-defined type and that Enum's members), or of two modules of one library, the `VBA` library included. The symbols of two libraries never share a rank. The reference must qualify the name. A declared type whose name ties this way is `VBC09311` instead.|[**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)|
 |`VBC09302`|`VariableNotDefined`|An unresolved simple name. The static-semantics layer consumes the module's `ModuleDirectives` to decide whether such a name is a deferred `VBUnknownType` or this error.|[**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)|
 |`VBC09303`|`DuplicateDeclaration`|A name is declared more than once within one module or procedure.|[**RD-VBAL §2.3.1.3** Name Resolution](rd-vbal.2.3.1.3.name-resolution.md)|
-|`VBC09304`|`InvalidUseOfObject`|`Set Widget = New Widget` or `Set Widget = Nothing`, for a predeclared class `Widget`.|[**RD-VBAL §3.1.1** Attributes](rd-vbal.3.1.1.attributes.md)|
+|`VBC09304`|`InvalidUseOfObject`|The `Nothing` literal where a value is expected (`n = Nothing`), and a conditional-compilation expression that is an object.|[**RD-VBAL §5.5.1.1** Static Semantics](rd-vbal.5.5.1.1.static-semantics.md)|
 |`VBC09305`|`InvalidParamArrayUse`|A `ParamArray` parameter, bare or parenthesized, is the argument of a `ByRef` parameter of a procedure of the workspace's own.|[**RD-VBAL §5.3.1.11** Procedure Invocation Argument Processing](rd-vbal.5.3.1.11.procedure-invocation-argument-processing.md)|
-|`VBC09311`|`UserDefinedTypeNotDefined`|An unknown type should raise this error, and so does a declared type that names a procedural module; verbose diagnostic messages should help clarify its meaning.|[**RD-VBAL §2.4.2** Non-intrinsic Types](rd-vbal.2.4.2.non-intrinsic-types.md), [**RD-VBAL §5.6.16.7** Type Expressions](rd-vbal.5.6.16.constrained-expressions.md#56167-type-expressions)|
+|`VBC09311`|`UserDefinedTypeNotDefined`|An unknown type should raise this error, and so does a `TypeOf ... Is` whose type is a name that binds no type (a variable's, a procedure's); a module or a project is `VBC09366`, `VBC09373` or `VBC09374` instead. Verbose diagnostic messages should help clarify its meaning.|[**RD-VBAL §2.4.2** Non-intrinsic Types](rd-vbal.2.4.2.non-intrinsic-types.md), [**RD-VBAL §5.6.16.7** Type Expressions](rd-vbal.5.6.16.constrained-expressions.md#56167-type-expressions)|
 
 An appropriate compile-time error should be issued for a duplicate declaration and for an ambiguous name. The symbol resolver reports the error kind; the caller, which knows where the reference is, builds the located diagnostic.
 

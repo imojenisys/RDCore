@@ -25,6 +25,15 @@ public interface IRuntimeSession
     IRuntimeEnvironmentProfile Environment { get; }
 
     /// <summary>
+    /// The descriptions of the libraries the environment has, whether the project references them or not; <see langword="null"/> when it was given none.
+    /// </summary>
+    /// <remarks>
+    /// The libraries the project references are its symbols already (<see cref="Symbols"/>). This is what the facts for tooling read of a library it does
+    /// not reference - the class of an object a program creates by name (<see cref="SDK.Semantics.ObjectCreationFact"/>) - and it is never a name the code can use.
+    /// </remarks>
+    SDK.Runtime.Libraries.ILibrarySource? Libraries => null;
+
+    /// <summary>
     /// The session's memory allocator — tracks allocation size and fragmentation, MSVBVM-style.
     /// </summary>
     ISessionMemoryAllocator Memory { get; }
@@ -278,6 +287,20 @@ public interface ISessionSymbols
     /// bound in a tree is therefore true for as long as the session's tree is that same instance, and is to be resolved again when it is not.
     /// </remarks>
     ScopeTree Scopes { get; }
+
+    /// <summary>
+    /// Finds the module named <paramref name="moduleName"/>, a standard module or a class module: the project's, or a library's when the project has none of
+    /// that name.
+    /// </summary>
+    /// <remarks>
+    /// The modules are looked up as modules, not by binding the name as code does: in code, the name of a class with a default instance is the instance
+    /// (<strong>MS-VBAL §5.2.4.1.2</strong>), and a class module's name is no value at all (<strong>§5.6.4</strong>) - neither of which says anything about
+    /// which module has the name.
+    /// </remarks>
+    /// <param name="moduleName">The name of the module, as its <c>VB_Name</c> says. Not case sensitive.</param>
+    /// <param name="module">The module symbol, when the session has one of that name.</param>
+    /// <returns><see langword="false"/> if the session has no module of that name.</returns>
+    bool TryGetModule(string moduleName, [NotNullWhen(true)] out VBModuleSymbol? module);
 
     /// <summary>
     /// Resolves <paramref name="name"/> visible from <paramref name="scope"/> in the default binding

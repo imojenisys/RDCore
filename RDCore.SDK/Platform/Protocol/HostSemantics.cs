@@ -93,6 +93,7 @@ public record class CompileErrorDto(VBCompileErrorId Id, SourceLocation Location
 /// <param name="Binding">The address of the symbol it refers to, when it resolved to one.</param>
 /// <param name="Flags">What else is the case of it.</param>
 /// <param name="Error">Its compile error, when it has one.</param>
+/// <param name="Creates">The class of the object it creates by name, when that is known (<see cref="ExpressionFact.Creates"/>): for tooling only.</param>
 public record class ExpressionFactDto(
     SyntaxNodeId Node,
     SourceLocation Location,
@@ -100,7 +101,8 @@ public record class ExpressionFactDto(
     ExpressionClassification Classification,
     Uri? Binding,
     ValueExpressionSemanticFlags Flags,
-    CompileErrorDto? Error);
+    CompileErrorDto? Error,
+    ObjectCreationFact? Creates = null);
 
 /// <summary>
 /// A run-time error that code is guaranteed to raise, as it travels.
@@ -241,13 +243,15 @@ public record class OperatorFactDto(
 /// Whether what the statement works with is known, as opposed to a value its type merely allows; <see langword="true"/> for a statement whose fact does not
 /// depend on it.
 /// </param>
+/// <param name="CaseClauseFlags">What is known about a range clause of a <c>Case</c> (<see cref="CaseClauseStatementFact"/>).</param>
 public record class StatementFactDto(
     SyntaxNodeId Node,
     SourceLocation Location,
     string Statement,
     FixedAssignmentSemanticFlags? FixedAssignmentFlags,
     WithStatementSemanticFlags? WithStatementFlags,
-    bool IsValueKnown = true)
+    bool IsValueKnown = true,
+    CaseClauseSemanticFlags? CaseClauseFlags = null)
 {
     /// <summary>
     /// Describes a statement for the wire.
@@ -259,7 +263,13 @@ public record class StatementFactDto(
         fact.Statement,
         (fact as FixedAssignmentStatementFact)?.Flags,
         (fact as WithStatementFact)?.Flags,
-        (fact as WithStatementFact)?.IsValueKnown ?? true);
+        fact switch
+        {
+            WithStatementFact with => with.IsValueKnown,
+            CaseClauseStatementFact clause => clause.IsValueKnown,
+            _ => true,
+        },
+        (fact as CaseClauseStatementFact)?.Flags);
 }
 
 /// <summary>
@@ -313,9 +323,10 @@ public record class ProcedureSemanticsDto(
 /// <param name="Location">Where it is declared.</param>
 /// <param name="References">Every reference to it, when they are known; <see langword="null"/> says they are not.</param>
 /// <param name="Role">What it is there for, when it implements an interface member or handles an event.</param>
+/// <param name="DeclaredBy">How a local variable came to be declared; <see langword="null"/> for any other declaration.</param>
 public record class DeclarationFactDto(
     Uri Symbol, string Name, DeclarationKind Kind, AccessModifier Access, bool IsImplicit, SourceLocation Location, DeclarationReferences? References,
-    DeclarationRole Role = DeclarationRole.None);
+    DeclarationRole Role = DeclarationRole.None, LocalDeclarationKind? DeclaredBy = null);
 
 /// <summary>
 /// A <see cref="ModuleSemanticModel"/>, as it travels.
@@ -326,13 +337,15 @@ public record class DeclarationFactDto(
 /// <param name="Procedures">The model of each procedure of the module.</param>
 /// <param name="Declarations">What is known of how the module's declarations are used.</param>
 /// <param name="Language">The identifier of the language the module is loaded as, when the host says.</param>
+/// <param name="Class">What the objects of the class are, for a class module (<see cref="ClassModuleSemanticFlags"/>); <see langword="null"/> for any other module.</param>
 public record class ModuleSemanticsDto(
     Uri Module,
     bool? OptionExplicit,
     ImmutableArray<CompileErrorDto> DeclarationErrors,
     ImmutableArray<ProcedureSemanticsDto> Procedures,
     ImmutableArray<DeclarationFactDto> Declarations,
-    string? Language = null)
+    string? Language = null,
+    ClassModuleSemanticFlags? Class = null)
 {
     /// <summary>
     /// Describes a model for the wire.
@@ -347,12 +360,14 @@ public record class ModuleSemanticsDto(
             procedure.IsFullyAnalyzed,
             [.. procedure.CompileErrors.Select(ErrorOf)],
             [.. procedure.Expressions.Values.Select(fact => new ExpressionFactDto(
-                fact.Node, fact.Location, fact.DeclaredType?.Name, fact.Classification, fact.Binding?.Uri, fact.Flags, fact.Error is null ? null : ErrorOf(fact.Error)))],
+                fact.Node, fact.Location, fact.DeclaredType?.Name, fact.Classification, fact.Binding?.Uri, fact.Flags, fact.Error is null ? null : ErrorOf(fact.Error), fact.Creates))],
             procedure.ReturnValue,
             procedure.Runtime is null ? null : RuntimeFactsDto.From(procedure.Runtime)))],
         [.. model.Declarations.Select(declaration => new DeclarationFactDto(
-            declaration.Symbol.Uri, declaration.Name, declaration.Kind, declaration.Access, declaration.IsImplicit, declaration.Location, declaration.References, declaration.Role))],
-        model.Language);
+            declaration.Symbol.Uri, declaration.Name, declaration.Kind, declaration.Access, declaration.IsImplicit, declaration.Location, declaration.References, declaration.Role,
+            declaration.DeclaredBy))],
+        model.Language,
+        model.Class);
 
     private static CompileErrorDto ErrorOf(VBCompileErrorInfo error) => new(error.VBCompileErrorId, error.Location, error.Verbose);
 }

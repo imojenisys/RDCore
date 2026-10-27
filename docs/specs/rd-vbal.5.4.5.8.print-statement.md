@@ -12,6 +12,9 @@
 |`Owner.Print`|[ObjectPrintExpressionNode](../api/RDCore.SDK.Model.AST.Expressions.ObjectPrintExpressionNode.html)|—|The object-qualified form.|
 |`Debug.Print`|[DebugPrintStatementNode](../api/RDCore.SDK.Model.AST.Statements.DebugPrintStatementNode.html)|`Simple`|The object-qualified form whose owner is `Debug`.|
 
+`Debug` is written only as this statement and `Debug.Assert`: any other use of the name is a syntax error, as it is in
+MS-VBA (see [**RD-VBAL §5.4.2.23** Assert Statement](rd-vbal.5.4.2.23.assert-statement.md)).
+
 An output list is a list of expressions, so in `Debug.Print x = 0` and `Owner.Print x = 0` the output list is the comparison `x = 0`: neither is a
 Let statement, whose target is never the `Print` of an object with an output list
 ([**RD-VBAL §5.4.3.8** Let Statement](rd-vbal.5.4.3.8.let-statement.md)).
@@ -54,6 +57,10 @@ A number or a date in an output list is let-coerced to `String`, as **MS-VBAL §
 settings of the session's environment ([**RD-VBAL §5.5.1.2.4** Let-coercion to and from String](rd-vbal.5.5.1.2.runtime-semantics.md#55124-let-coercion-to-and-from-string)).
 Every form of `Print` is a text channel: a `String` is written as its whole characters, and a trailing byte is not
 written ([**RD-VBAL §2.4.1.2** VBStringType](rd-vbal.2.4.1.intrinsic-types.md#2412-vbstringtype)).
+
+An object is printed as what it stands for, its default member's value, as the value it is (` 7 ` for an Excel range that
+holds 7). As in MS-VBA (recorded in Excel), for `Print #` and `Debug.Print` alike, `Nothing` is error 91 and an object
+whose default member takes an argument (a `Collection`) error 450.
 
 ## Implementation
 

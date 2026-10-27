@@ -56,6 +56,20 @@ public sealed class StdLibSymbolProvider : ISymbolProvider
     public const string DebugObjectName = "Debug";
 
     /// <summary>
+    /// Whether <paramref name="symbol"/> is the <c>Debug</c> object this provider synthesizes: the default instance of its <c>Debug</c> class, a member of
+    /// the library's <see cref="GlobalModuleName"/> module - not a variable or a class of the workspace that happens to be named <c>Debug</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>Debug</c> is somewhere between an object and a keyword: it is only ever written as the <c>Debug.Print</c> and <c>Debug.Assert</c> statements,
+    /// and MS-VBA reads any other use of the name - a value, the target of an assignment or a <c>With</c> block - as a syntax error.
+    /// </remarks>
+    /// <param name="symbol">The symbol a name resolved to.</param>
+    public static bool IsDebugObject(Symbol symbol)
+        => symbol is VBPredeclaredInstanceSymbol { ClassModule: var classModule }
+            && string.Equals(classModule.Name, DebugObjectName, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(classModule.ParentUri.Fragment.TrimStart('#'), GlobalModuleName, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// <c>Debug.Print</c>: writes an output list to the environment's own output
     /// (<strong>MS-VBAL §5.4.5.8</strong>'s rules, against no file).
     /// </summary>
@@ -76,6 +90,20 @@ public sealed class StdLibSymbolProvider : ISymbolProvider
     /// members than another, the members are what say so, not the name of the library.
     /// </remarks>
     public const string LibraryName = "VBA";
+
+    /// <summary>
+    /// Whether <paramref name="symbol"/> is a member the standard library declares: a procedure of one of its modules, or a member of one of its classes.
+    /// </summary>
+    /// <remarks>
+    /// It carries the key the library's reader stamps on what it reads (<see cref="SymbolProperties.ExternalTarget"/>), and no other library claims it as
+    /// its own: a referenced library's members carry a key of their own kind, and the name of their library (<see cref="SymbolProperties.Library"/>). A
+    /// member of a class is not stamped with the library's name, as the class is: it is carried by the class, and never provided on its own.
+    /// </remarks>
+    /// <param name="symbol">The member.</param>
+    /// <returns><see langword="true"/> for a member of the standard library's; <see langword="false"/> for the workspace's, or a referenced library's.</returns>
+    public static bool IsLibraryMember(Symbol symbol)
+        => symbol.GetProperty(SymbolProperties.ExternalTarget) is { Length: > 0 }
+        && symbol.GetProperty(SymbolProperties.Library) is null or LibraryName;
 
     private readonly Uri _workspaceRoot;
     private readonly bool _is64Bit;
@@ -98,6 +126,21 @@ public sealed class StdLibSymbolProvider : ISymbolProvider
         _workspaceRoot = workspaceRoot;
         _is64Bit = is64Bit;
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string Root, bool Is64Bit), IReadOnlyList<Symbol>> _provided = new();
+
+    /// <summary>
+    /// The symbols of the library under a workspace, read once for each workspace and pointer width: what a composition of the workspace binds names among,
+    /// every time one is composed (a completion list, a signature, a rename).
+    /// </summary>
+    /// <remarks>
+    /// The library is the platform's, and does not change while it runs; its symbols are immutable records, so the same ones serve every composition. Reading
+    /// them is not free - every member of every module of the library, described - and a composition reads them twice, once for each of its passes.
+    /// </remarks>
+    /// <param name="workspaceRoot">The workspace the symbols are addressed under.</param>
+    /// <param name="is64Bit">The pointer width of the environment the symbols are for.</param>
+    public static IReadOnlyList<Symbol> SymbolsUnder(Uri workspaceRoot, bool is64Bit = true)
+        => _provided.GetOrAdd((workspaceRoot.AbsoluteUri, is64Bit), _ => [.. new StdLibSymbolProvider(workspaceRoot, is64Bit).ProvideSymbols()]);
 
     /// <inheritdoc/>
     public IEnumerable<Symbol> ProvideSymbols()
@@ -178,7 +221,7 @@ public sealed class StdLibSymbolProvider : ISymbolProvider
             Parameters =
             [
                 new ParamArrayParameterSymbol(
-                    _workspaceRoot, print.Uri, "OutputList", SourceRange.Empty, SourceRange.Empty, ParameterKind.ExplicitByVal),
+                    _workspaceRoot, print.Uri, "OutputList", SourceRange.Empty, SourceRange.Empty, ParameterKind.ImplicitByRef),
             ],
         };
     }

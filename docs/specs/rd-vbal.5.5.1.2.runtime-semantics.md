@@ -111,6 +111,7 @@ When the source value is outside that range, it raises `Overflow`. Otherwise:
 |Narrowing to a wider-or-equal integral type|The value is copied, converted to the destination's representation.|
 |Floating-point or fixed-point value → integral type (narrowing)|The value is rounded to the nearest integer ([**RD-VBAL §5.5.1.2.1.1** Banker's rounding](#551211-bankers-rounding)) before conversion.|
 |Integral → floating-point|🎯 A plain widening copy (see the divergence note below).|
+|`Single` → `Decimal`|The value to 7 significant digits, ties to even, as **MS-VBA** has it: `CDec(CSng(0.1))` is `0.1`, a `Single` of `16777217` is `16777220` (recorded in Excel). A `Double` keeps 15 digits; a `Currency` is the exact value.|
 
 A `Date` source let-coerced to a numeric destination reports `ConversionSemanticFlags.DateSerial`
 ([ConversionSemanticFlags](../api/RDCore.SDK.Semantics.Flags.ConversionSemanticFlags.html)).
@@ -165,6 +166,10 @@ in for an operator that is not present in source
 
 `VBDateLetCoercionRuntimeSemantics` runs only when `Date` is the destination type.
 
+A number is a `Date` when it is strictly between -657435 and 2958466: a time of day from 100-01-01 to 9999-12-31
+(`VBDateType.IsValidSerial`). A number past either end, and a `Date` operation whose result is past it
+(`#12/31/9999# + 1`), is run-time error 6, _Overflow_ (MS-VBA, recorded in Excel).
+
 > 👉 A `Date` source let-coerced to a numeric or `Boolean` destination is handled by the numeric or `Boolean`
 > strategy, which reports its `DateSerial` flag
 > ([**RD-VBAL §5.5.1.2.1** Let-coercion between numeric types](#55121-let-coercion-between-numeric-types),
@@ -193,6 +198,10 @@ point, are more than its type's significant digits: `0.0123456` but `1.234567E-0
 `0.001234567890123` but `1.2345678901234E-03` for a `Double`. The exponent is written with two digits at least:
 `1.234568E+07`, `1E+100` (MS-VBA, recorded in Excel).
 
+A `Currency` or a `Decimal` is written with every digit it has, trailing zeros removed: `922337203685477.5807`,
+`0.1234567890123456789`. MS-VBAL §5.5.1.2.4 caps any number at 15 digits; MS-VBA does not cap a fixed-point
+number - through `CStr`, `&`, `Str` and `Format` alike (recorded in Excel) - and RD-VBA does what MS-VBA does.
+
 A `String` source is let-coerced to "a copy of the source string": its runtime value, every byte of its data, a
 trailing byte included ([**RD-VBAL §2.4.1.2** VBStringType](rd-vbal.2.4.1.intrinsic-types.md#2412-vbstringtype)). A
 copy of `vbNullString` is `vbNullString`. An assignment `u = s`, a `ByVal` argument, a parenthesized `(s)` and
@@ -201,31 +210,13 @@ copy of `vbNullString` is `vbNullString`. An assignment `u = s`, a `ByVal` argum
 ### Regional settings
 
 **MS-VBAL §5.5.1.2.4** writes a number "using the host-defined regional decimal symbol", and a date in the regional
-Short Date and Long Time formats. RD-VBA's regional settings are the culture of the session's environment,
-[IRuntimeEnvironmentProfile](../api/RDCore.SDK.Runtime.Abstract.Execution.IRuntimeEnvironmentProfile.html)`.Culture`,
-which its `Lcid` selects. `Lcid` is bound from `appsettings.json`, like the rest of the runtime profile
-([**RD-VBAL §2.1** Implicit Storage](rd-vbal.2.1.implicit-storage.md)). A let-coercion never reads the culture of the
-thread the interpreter runs on.
-
-|`Lcid`|A number|A date|
-|---|---|---|
-|`0` (the default)|The invariant culture: `.` is the decimal symbol.|The invariant culture: `01/30/2026 14:00:00`, wherever the interpreter runs.|
-|Any other|That culture's decimal symbol: `2,5` under `1031` (German).|That culture's Short Date and Long Time formats, in the Gregorian calendar.|
-
-A date is written in the Gregorian calendar whatever the culture's own default: under `th-TH`, the year 2020 is
-written as 2020, in `th-TH`'s patterns. A culture that offers no Gregorian calendar keeps its own.
-
-Every let-coercion to `String` writes in the session's culture: an assignment, `&`, an argument, `Print`, `LSet`,
-`RSet`, `Open`'s path, the `Mid` statement, and `CStr`
-([**RD-VBAL §6.1.2.3** Conversion Module](rd-vbal.6.1.2.3.conversion-module.md)). `Write #` writes fixed spellings
-instead ([**RD-VBAL §5.4.5.9** Write Statement](rd-vbal.5.4.5.9.write-statement.md)).
-
-### Reading a String as a number or a date
-
-A `String` let-coerced to a number, a `Boolean` or a `Date` is read by the **platform's** regional settings,
+Short Date and Long Time formats, and it reads a `String` as a number or a date "according to the host-defined regional
+settings". RD-VBA has one set of regional settings for both directions, as MS-VBA has the machine's: the **platform's**,
 [IRuntimeEnvironmentProfile](../api/RDCore.SDK.Runtime.Abstract.Execution.IRuntimeEnvironmentProfile.html)`.Regional`
-([RegionalSettings](../api/RDCore.SDK.Runtime.RegionalSettings.html)), bound from the `Environment.Regional` section of `appsettings.json`: en-US
-unless it says otherwise, whatever the machine's culture, so that a program reads `"1,000"` the same wherever it runs.
+([RegionalSettings](../api/RDCore.SDK.Runtime.RegionalSettings.html)), bound from the `Environment.Regional` section of `appsettings.json`
+([**RD-VBAL §2.1** Implicit Storage](rd-vbal.2.1.implicit-storage.md)). They are en-US unless it says otherwise, whatever the machine's culture and
+whatever the session's `Lcid`, so that a program writes `2.5` and reads `"1,000"` the same wherever it runs, and what `CStr` writes, `CDbl` and `CDate`
+read back.
 
 |Setting|en-US (the default)|
 |---|---|
@@ -233,6 +224,26 @@ unless it says otherwise, whatever the machine's culture, so that a program read
 |`DigitGroupingSymbol`|`,`|
 |`CurrencySymbol`|`$`|
 |`TwoDigitYearMax`|`2049`: `30` is 2030, `50` is 1950|
+|`ShortDatePattern`|`M/d/yyyy`|
+|`LongTimePattern`|`h:mm:ss tt`|
+|`AMDesignator`, `PMDesignator`|`AM`, `PM`|
+
+The patterns are .NET custom date and time format strings, and a date is written in the Gregorian calendar, with `/` and `:`
+for the date and time separators: `1/30/2026 2:00:00 PM` in en-US's, as MS-VBA writes it on an en-US machine.
+
+The culture the session's `Lcid` selects (`Environment.Culture`) is no regional settings: it decides how text compares
+(`Option Compare Text`, `Like`) and what `Format` writes given a format
+([**RD-VBAL §6.1.2.11** Strings Module](rd-vbal.6.1.2.11.strings.md)), never how a value is let-coerced to or from
+`String`. A let-coercion never reads the culture of the thread the interpreter runs on either.
+
+Every let-coercion to `String` writes in the regional settings: an assignment, `&`, an argument, `Print`, `LSet`,
+`RSet`, `Open`'s path, the `Mid` statement, `Join`, `Split`'s delimiter, `Format` without a format, and `CStr`
+([**RD-VBAL §6.1.2.3** Conversion Module](rd-vbal.6.1.2.3.conversion-module.md)), and `Str` for a date. `Str` writes a number
+with a `.` whatever the regional settings, and `Write #` writes fixed spellings ([**RD-VBAL §5.4.5.9** Write Statement](rd-vbal.5.4.5.9.write-statement.md)).
+
+### Reading a String as a number or a date
+
+A `String` let-coerced to a number, a `Boolean` or a `Date` is read by the same regional settings.
 
 What is read is what MS-VBA reads (recorded in Excel), which is more than §5.5.1.2.4's grammar says:
 
@@ -246,8 +257,9 @@ What is read is what MS-VBA reads (recorded in Excel), which is more than §5.5.
   is decided by which can be, a comma is a date separator, a dot a time separator (`1.5` is 1:05), and a date that says no year is in the current one.
 
 > [!NOTE]
-> **Not implemented.** Let-coercion _from_ `String` reads a number or a date invariantly, whatever the culture. Under
-> a culture whose decimal symbol is a comma, `CStr(2.5)` is `"2,5"`, which does not read back as `2.5`.
+> **Not implemented.** A date is read by the rules of `date-or-time` whatever `ShortDatePattern` says: month first, with
+> `/`, `-` or `,` between its parts. Under regional settings whose Short Date is `dd.MM.yyyy`, `CStr` writes
+> `15.01.2020`, which does not read back as a date. How MS-VBA reads a day-first date is not recorded yet.
 
 👉 What the debugger displays is not a let-coercion: it writes a number and a date the way the VBA editor writes a
 literal, whatever the culture.

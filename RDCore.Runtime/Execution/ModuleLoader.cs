@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using RDCore.Runtime.Semantics;
 using RDCore.Runtime.Semantics.Precompiler;
+using RDCore.Runtime.Semantics.Statements;
 using RDCore.SDK.Model.AST;
 using RDCore.SDK.Model.AST.Declarations;
 using RDCore.SDK.Model.AST.Statements;
@@ -12,11 +13,13 @@ using RDCore.SDK.Model.Values.Intrinsic;
 using RDCore.SDK.Runtime;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Semantics;
+using RDCore.SDK.Semantics.Flags;
 using RDCore.SDK.Semantics.Flow;
 using RDCore.SDK.Semantics.Instructions;
 using RDCore.SDK.Semantics.Static;
 using RDCore.SDK.Semantics.Static.Abstract;
 using RDCore.SDK.Services.VerboseMessages;
+using RDCore.SDK.Workspace.Forms;
 
 namespace RDCore.Runtime.Execution;
 
@@ -60,6 +63,9 @@ public sealed class ModuleLoader(IRuntimeSession session, ProgramImage image, IV
             return [];
         }
 
+        // a form is created from what its designer declares when the program first uses it, whether or not its code loads: Form1.Show shows a form with no code.
+        image.DefineForm(module.Name, parseResult.Designer is { Kind: FormDesignerKind.MSForms } designer ? designer : null);
+
         // composed before anything is lowered, because lowering needs its expression evaluator to decide
         // which #If branches are live. The invoker looks a body up at call time, so the image it holds is this same one.
         var pipeline = RuntimeExecutionPipeline.Create(session, image, messages);
@@ -71,9 +77,15 @@ public sealed class ModuleLoader(IRuntimeSession session, ProgramImage image, IV
         var deadRanges = precompiled.DeadRanges;
 
         var members = session.Symbols.MembersOf(module.Uri);
-        pipeline.Expressions.FoldConstants(session, ConstantsOf(session, syntaxTree, module, members));
+        // what a constant's value raises when it is evaluated statically is a compile error of the module (MS-VBA: Overflow, Division by zero).
+        var constantErrors = pipeline.Expressions.FoldConstants(session, ConstantsOf(session, syntaxTree, module, members));
 
         SizeFixedSizeArrays(members);
+
+        // the sizes the declarations are written with - a String * n's length, a bound that names a constant - are reduced now that the constants are.
+        var sizeErrors = DeclaredSizeStaticSemantics.Check(session, new ArrayBoundEvaluator(pipeline.Expressions, pipeline.LetCoercion), module,
+            syntaxTree.Children.Select(node => (node, node is MemberDeclarationNode declaration && FindMember(members, declaration) is { } member ? member.Uri : module.Uri)),
+            members);
 
         // the structure of the #If blocks, whatever they evaluated to: what says that a name declared in each branch of one is declared once.
         var blocks = ConditionalCompilationBlocks.Of(parseResult.PrecompilerTrivia);
@@ -97,7 +109,8 @@ public sealed class ModuleLoader(IRuntimeSession session, ProgramImage image, IV
             var scope = session.Symbols.ScopeOf(procedure.Uri);
             var model = StatementStaticSemanticsEvaluator.Analyze(
                 procedure.SemanticId, body, new StaticSemanticsOptions(deadRanges, session.Environment.Language, blocks), declaration.MemberKind,
-                scope is null ? null : new StaticEvaluationContext(session.Symbols.Resolver, scope));
+                scope is null ? null : new StaticEvaluationContext(session.Symbols.Resolver, scope,
+                    Environment: new StaticEnvironment(session.Environment.Is64Bit) { Libraries = session.Libraries }));
 
             // the code paths are those of the lowered body, which only the loader has next to what the static pass found out about it.
             procedureModels.Add(model with { ReturnValue = ReturnValueAnalysis.Of(declaration, model, lowering.InstructionList) });
@@ -113,7 +126,11 @@ public sealed class ModuleLoader(IRuntimeSession session, ProgramImage image, IV
         // a module is valid when what it declares is, as well as every procedure of it. The types it declares are asked to be names that resolve: its code is
         // only sent once everything the workspace and its references declare is defined, which is what a name that is declared after the one that uses it needs.
         var declarationErrors = precompiled.Errors
+            .AddRange(constantErrors)
+            .AddRange(sizeErrors)
             .AddRange(DeclarationStaticSemanticsEvaluator.CheckSyntax(syntaxTree, blocks))
+            .AddRange(DeclarationStaticSemanticsEvaluator.CheckDesigner(syntaxTree, parseResult.Designer))
+            .AddRange(ReservedNameStaticSemantics.CheckSyntax(syntaxTree))
             .AddRange(DeclarationStaticSemanticsEvaluator.Evaluate(module, members, session.Symbols.Resolver, DeclarationRules.DeclaredTypes));
         var moduleModel = new ModuleSemanticModel(module.Uri, declarationErrors, procedureModels.ToImmutable())
         {
@@ -122,6 +139,7 @@ public sealed class ModuleLoader(IRuntimeSession session, ProgramImage image, IV
             Declarations = DeclarationUsage.Of(
                 DeclarationUsage.DeclaredBy(members), procedureModels, module is VBClassModuleSymbol classModule ? MemberRoles.Of(classModule, session.Symbols.Resolver) : null),
             Language = session.Environment.Language?.Id,
+            Class = module is VBClassModuleSymbol declaredClass ? ClassFlagsOf(declaredClass, members) : null,
         };
 
         // kept whether or not the module loads: what is wrong with a module is what is asked after. What the language core states about the code is found out by
@@ -172,7 +190,7 @@ public sealed class ModuleLoader(IRuntimeSession session, ProgramImage image, IV
                     break;
 
                 // a record is given again the fields it starts with, when one of them is a fixed-size array: nothing has run that assigned it.
-                case VBUserDefinedType record when HasFixedSizeArrayField(record, [])
+                case VBUserDefinedType record when HasFixedSizeArrayField(session.Symbols.Resolver, record, [])
                     && defaults.DefaultValueOf(member) is VBUserDefinedTypeValue sized:
                     handle!.SetValue(session.Symbols.Resolver, SymbolAddressTable.BoxedValue(sized));
                     break;
@@ -180,12 +198,23 @@ public sealed class ModuleLoader(IRuntimeSession session, ProgramImage image, IV
         }
     }
 
-    // directly, or in a record that is a field of it. A type that holds itself is not one MS-VBA compiles, and is looked into once.
-    private static bool HasFixedSizeArrayField(VBUserDefinedType record, HashSet<VBUserDefinedType> seen)
-        => seen.Add(record) && record.Fields().Any(field => field.ResolvedType switch
+    // MS-VBAL §5.2.4.1.2, §5.2.3.1: whether the class has a default instance, and whether its objects - the default instance among them - hold state: a variable
+    // the class declares at module level, of which each object has a distinct one, or a Static local of one of its members, which MS-VBA gives each object
+    // its own of too (Excel-verified, oracle\s19 N37), where MS-VBAL gives a static local module extent.
+    private static ClassModuleSemanticFlags ClassFlagsOf(VBClassModuleSymbol classModule, IReadOnlyList<VBTypeMemberSymbol> members)
+        => (classModule.GetProperty(SymbolProperties.PredeclaredId) ? ClassModuleSemanticFlags.DefaultInstance : ClassModuleSemanticFlags.None)
+            | (members.Any(member => member is VBModuleFieldVariableMemberSymbol
+                || RuntimeProcedureInvoker.GetLocals(member).Any(local => local is VBLocalVariableSymbol { IsStatic: true }))
+                ? ClassModuleSemanticFlags.Stateful
+                : ClassModuleSemanticFlags.None);
+
+    // directly, or in a record that is a field of it. A type that holds itself is not one MS-VBA compiles, and is looked into once. The fields are the type's
+    // as the session has it now (CurrentTypes).
+    private static bool HasFixedSizeArrayField(ISymbolResolver resolver, VBUserDefinedType declared, HashSet<VBUserDefinedType> seen)
+        => CurrentTypes.Of(resolver, declared) is var record && seen.Add(record) && record.Fields().Any(field => field.ResolvedType switch
         {
             VBFixedSizeArrayType => true,
-            VBUserDefinedType nested => HasFixedSizeArrayField(nested, seen),
+            VBUserDefinedType nested => HasFixedSizeArrayField(resolver, nested, seen),
             _ => false,
         });
 

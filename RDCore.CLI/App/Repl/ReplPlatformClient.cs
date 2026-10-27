@@ -1,5 +1,6 @@
 using OmniSharp.Extensions.LanguageServer.Protocol.Models;
 using RDCore.SDK.Client;
+using RDCore.SDK.Platform.Commands;
 using RDCore.SDK.Platform.Protocol;
 using RDCore.SDK.Runtime.Abstract.Execution;
 using RDCore.SDK.Workspace;
@@ -52,6 +53,70 @@ internal sealed class ReplPlatformClient(IRDCoreClientApp client) : IReplPlatfor
         var tokens = await client.SendRequestAsync<SemanticTokensParams, SemanticTokens?>(
             new SemanticTokensParams { TextDocument = new TextDocumentIdentifier(document) }, token);
         return tokens is null ? [] : ReplSemanticToken.Decode(tokens.Data);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<Diagnostic>> PullDiagnosticsAsync(Uri document, CancellationToken token)
+    {
+        // the report is read as a record of its own: OmniSharp reads no RelatedDocumentDiagnosticReport (DocumentDiagnosticPullParams).
+        var report = await AskAgainIfModifiedAsync(() => client.SendRequestAsync<DocumentDiagnosticPullParams, DocumentDiagnosticPullReport?>(
+            new DocumentDiagnosticPullParams { TextDocument = new TextDocumentIdentifier(document) }, token));
+        return report?.Items ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<CodeAction>> GetCodeActionsAsync(Uri document, OmniSharp.Extensions.LanguageServer.Protocol.Models.Range range,
+        IReadOnlyList<Diagnostic> diagnostics, CancellationToken token)
+    {
+        var actions = await AskAgainIfModifiedAsync(() => client.SendRequestAsync<CodeActionParams, CommandOrCodeActionContainer?>(
+            new CodeActionParams
+            {
+                TextDocument = new TextDocumentIdentifier(document),
+                Range = range,
+                Context = new CodeActionContext { Diagnostics = new Container<Diagnostic>(diagnostics) },
+            }, token));
+        return actions is null ? [] : [.. actions.Where(item => item.IsCodeAction).Select(item => item.CodeAction!)];
+    }
+
+    // a request the server answers with ContentModified was overtaken by a change of the document (LSP 3.17 ErrorCodes.ContentModified), which a client asks
+    // again, of the text as it is now; a few times, and then the error is the answer.
+    private static async Task<T> AskAgainIfModifiedAsync<T>(Func<Task<T>> ask)
+    {
+        const int Attempts = 3;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await ask();
+            }
+            catch (OmniSharp.Extensions.JsonRpc.Server.ContentModifiedException) when (attempt < Attempts)
+            {
+                await Task.Delay(100 * attempt);
+            }
+        }
+    }
+
+    /// <inheritdoc/>
+    public Task<ReplRenameAnswer<PlaceholderRange>> PrepareRenameAsync(Uri document, Position position, CancellationToken token)
+        => AnswerAsync(async () => (await client.SendRequestAsync<PrepareRenameParams, RangeOrPlaceholderRange?>(
+            new PrepareRenameParams { TextDocument = new TextDocumentIdentifier(document), Position = position }, token))?.PlaceholderRange);
+
+    /// <inheritdoc/>
+    public Task<ReplRenameAnswer<WorkspaceEdit>> RenameAsync(Uri document, Position position, string newName, CancellationToken token)
+        => AnswerAsync(() => client.SendRequestAsync<RenameParams, WorkspaceEdit?>(
+            new RenameParams { TextDocument = new TextDocumentIdentifier(document), Position = position, NewName = newName }, token));
+
+    // a rename the server refuses is answered with an error, whose message says why.
+    private static async Task<ReplRenameAnswer<T>> AnswerAsync<T>(Func<Task<T?>> ask) where T : class
+    {
+        try
+        {
+            return new(await ask(), null);
+        }
+        catch (OmniSharp.Extensions.JsonRpc.Server.JsonRpcException exception)
+        {
+            return new(null, exception.Message);
+        }
     }
 
     /// <inheritdoc/>
@@ -119,9 +184,35 @@ internal sealed class ReplPlatformClient(IRDCoreClientApp client) : IReplPlatfor
             new SessionDebugExecuteParams { FrameId = frameId, Statement = statement }, token);
 
     /// <inheritdoc/>
-    public Task<AnalyzeSessionResult> AnalyzeAsync(string source, string moduleName, CancellationToken token)
-        => client.SendRequestAsync<AnalyzeSessionParams, AnalyzeSessionResult>(
-            new AnalyzeSessionParams { Source = source, ModuleName = moduleName }, token);
+    public async Task<AnalyzeSessionResult> AnalyzeAsync(string source, string moduleName, CancellationToken token)
+    {
+        // the analysis reports its progress to a token of its own, which is tracked until it is answered.
+        using var progress = client.TrackWorkDone();
+        return await client.SendRequestAsync<AnalyzeSessionParams, AnalyzeSessionResult>(
+            new AnalyzeSessionParams { Source = source, ModuleName = moduleName, WorkDoneToken = progress.Token }, token);
+    }
+
+    /// <inheritdoc/>
+    public Task<CompletionList> CompleteAsync(string source, string moduleName, int line, int character, CancellationToken token)
+        => client.SendRequestAsync<SessionCompletionParams, CompletionList>(
+            new SessionCompletionParams { Source = source, ModuleName = moduleName, Line = line, Character = character }, token);
+
+    /// <inheritdoc/>
+    public Task NotifyLiveSettingsChangedAsync(CancellationToken token) => client.NotifyLiveSettingsChangedAsync(token);
+
+    /// <inheritdoc/>
+    public Task<SignatureHelp?> SignatureHelpAsync(string source, string moduleName, int line, int character, CancellationToken token)
+        => client.SendRequestAsync<SessionSignatureHelpParams, SignatureHelp?>(
+            new SessionSignatureHelpParams { Source = source, ModuleName = moduleName, Line = line, Character = character }, token);
+
+    /// <inheritdoc/>
+    public Task<SessionCommandsResult> RegisterCommandsAsync(IReadOnlyList<VerbDescriptor> verbs, CancellationToken token)
+        => client.SendRequestAsync<SessionCommandsParams, SessionCommandsResult>(new SessionCommandsParams { Verbs = verbs }, token);
+
+    /// <inheritdoc/>
+    public Task<CompletionList> CompleteCommandAsync(string source, string moduleName, SessionCommandCompletion command, CancellationToken token)
+        => client.SendRequestAsync<SessionCompletionParams, CompletionList>(
+            new SessionCompletionParams { Source = source, ModuleName = moduleName, Command = command }, token);
 
     /// <inheritdoc/>
     public Task<PeekSessionResult> PeekAsync(int address, CancellationToken token)

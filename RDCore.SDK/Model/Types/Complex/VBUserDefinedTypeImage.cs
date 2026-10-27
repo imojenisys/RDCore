@@ -46,23 +46,157 @@ public static class VBUserDefinedTypeImage
     /// <see cref="Copy"/> instead, which is the one place the reinterpretation can be done safely.
     /// </remarks>
     /// <param name="value">The value to lay out.</param>
-    public static byte[] Of(VBUserDefinedTypeValue value)
+    public static byte[] Of(VBUserDefinedTypeValue value) => Of(value, VBUserDefinedTypeLayout.DefaultPointerWidth);
+
+    /// <summary>
+    /// The memory image of <paramref name="value"/>, laid out for a host whose pointers are <paramref name="pointerWidth"/> bytes wide: what the bytes at the
+    /// address of a record are (<c>VarPtr</c>), where a 64-bit host's pointer and <c>Variant</c> fields are wider than a 32-bit one's.
+    /// </summary>
+    /// <param name="value">The value to lay out.</param>
+    /// <param name="pointerWidth">The host's pointer width in bytes.</param>
+    public static byte[] Of(VBUserDefinedTypeValue value, int pointerWidth) => Of(value, pointerWidth, hostBytes: null);
+
+    /// <summary>
+    /// The memory image of <paramref name="value"/>, laid out for a host whose pointers are <paramref name="pointerWidth"/> bytes wide, with the bytes the host
+    /// lays out for each field that is no bytes of its own (<see cref="IsLaidOutByTheHost"/>): a variable-length <c>String</c> the address of its characters
+    /// (<c>StrPtr</c>), an object the address of its interface (<c>ObjPtr</c>), a <c>Variant</c> its <c>VARIANT</c>.
+    /// </summary>
+    /// <param name="value">The value to lay out.</param>
+    /// <param name="pointerWidth">The host's pointer width in bytes.</param>
+    /// <param name="hostBytes">
+    /// The bytes of the field the host lays out that begins at an offset of the image - in a nested record, and an element of a fixed-size array field, the
+    /// offset is from the start of the outermost record. <see langword="null"/>, or a field it gives no bytes for, leaves those bytes zero.
+    /// </param>
+    public static byte[] Of(VBUserDefinedTypeValue value, int pointerWidth, Func<int, byte[]?>? hostBytes)
     {
-        var layout = value.Layout;
+        var layout = VBUserDefinedTypeLayout.Of(value, pointerWidth);
         var image = new byte[layout.Size];
 
         for (var index = 0; index < layout.Fields.Count; index++)
         {
             var field = layout.Fields[index];
-            if (value.FieldAt(index) is { } held && field.Symbol.ResolvedType is { } type
-                && Encoded(type, held, field.Width) is { } bytes)
+            if (field.Symbol.ResolvedType is { } type
+                && ImageOf(type, value.FieldAt(index), field.Width, pointerWidth, hostBytes, field.Offset) is { } bytes)
             {
-                bytes.CopyTo(image.AsSpan(field.Offset, Math.Min(bytes.Length, field.Width)));
+                bytes.AsSpan(0, Math.Min(bytes.Length, field.Width)).CopyTo(image.AsSpan(field.Offset));
             }
         }
 
         return image;
     }
+
+    /// <summary>
+    /// Whether a value of <paramref name="type"/> is in memory what the host lays out, rather than bytes of its own: a variable-length <c>String</c>, an
+    /// object and a dynamic array are a pointer, a <c>Variant</c> a <c>VARIANT</c>. A fixed-size array is its elements, side by side.
+    /// </summary>
+    /// <param name="type">The declared type.</param>
+    public static bool IsLaidOutByTheHost(VBType type)
+        => type is VBStringType and not VBFixedStringType or VBObjectType or VBClassType or VBVariantType or VBArrayType and not VBFixedSizeArrayType;
+
+    // what a field, or an element of a fixed-size array field, is in memory at an offset of the outermost record: what the host lays out for a pointer or a
+    // VARIANT, a record its own fields, a fixed-size array its elements side by side - in the record (oracle\s24 P04) - and anything else as Encoded lays it out.
+    private static byte[]? ImageOf(VBType type, VBTypedValue? value, int width, int pointerWidth, Func<int, byte[]?>? hostBytes, int at) => type switch
+    {
+        _ when value is null => null,
+        _ when IsLaidOutByTheHost(type) => hostBytes?.Invoke(at),
+        VBUserDefinedType when value is VBUserDefinedTypeValue nested => Of(nested, pointerWidth, hostBytes is null ? null : offset => hostBytes(at + offset)),
+        _ when value is VBFixedSizeArrayValue inline => InlineImage(inline, width, pointerWidth, hostBytes, at),
+        _ => Encoded(type, value, width, pointerWidth),
+    };
+
+    private static byte[] InlineImage(VBFixedSizeArrayValue array, int width, int pointerWidth, Func<int, byte[]?>? hostBytes, int at)
+    {
+        var image = new byte[width];
+        var elementWidth = Math.Max(1, VBUserDefinedTypeLayout.WidthOf(array.ItemType, pointerWidth));
+        for (var element = 0; element < array.Length && (element + 1) * elementWidth <= width; element++)
+        {
+            if (ImageOf(array.ItemType, array.ElementAt(element), elementWidth, pointerWidth, hostBytes, at + element * elementWidth) is { } bytes)
+            {
+                bytes.AsSpan(0, Math.Min(bytes.Length, elementWidth)).CopyTo(image.AsSpan(element * elementWidth));
+            }
+        }
+
+        return image;
+    }
+
+    /// <summary>
+    /// Reads an image back into <paramref name="destination"/>, in place: each field that has bytes of its own takes what the image holds at its offset - what a
+    /// <c>POKE</c> at the address of a record changes. A field that is a pointer (a variable-length <c>String</c>, an object, a <c>Variant</c>, an array) keeps
+    /// the value it has.
+    /// </summary>
+    /// <param name="destination">The record written.</param>
+    /// <param name="image">The bytes, laid out as <see cref="Of(VBUserDefinedTypeValue, int)"/> lays them out.</param>
+    /// <param name="pointerWidth">The host's pointer width in bytes.</param>
+    public static void WriteInto(VBUserDefinedTypeValue destination, ReadOnlySpan<byte> image, int pointerWidth)
+    {
+        var layout = VBUserDefinedTypeLayout.Of(destination, pointerWidth);
+        for (var index = 0; index < layout.Fields.Count; index++)
+        {
+            var field = layout.Fields[index];
+            if (field.Symbol.ResolvedType is not { } type || field.Offset + field.Width > image.Length)
+            {
+                continue;
+            }
+
+            // a nested record, and a fixed-size array field, take the bytes of what in them has bytes of its own: they are in the record.
+            var bytes = image.Slice(field.Offset, field.Width);
+            switch (destination.FieldAt(index))
+            {
+                case VBUserDefinedTypeValue nested when type is VBUserDefinedType:
+                    WriteInto(nested, bytes, pointerWidth);
+                    continue;
+                case VBFixedSizeArrayValue inline:
+                    WriteInline(inline, bytes, pointerWidth);
+                    continue;
+            }
+
+            if (HasImage(type))
+            {
+                destination.TrySetFieldAt(index, Decoded(type, bytes));
+            }
+        }
+    }
+
+    private static void WriteInline(VBFixedSizeArrayValue array, ReadOnlySpan<byte> image, int pointerWidth)
+    {
+        var elementWidth = Math.Max(1, VBUserDefinedTypeLayout.WidthOf(array.ItemType, pointerWidth));
+        for (var element = 0; element < array.Length && (element + 1) * elementWidth <= image.Length; element++)
+        {
+            var bytes = image.Slice(element * elementWidth, elementWidth);
+            if (array.ItemType is VBUserDefinedType && array.ElementAt(element) is VBUserDefinedTypeValue record)
+            {
+                WriteInto(record, bytes, pointerWidth);
+            }
+            else if (HasImage(array.ItemType))
+            {
+                array.TrySetElementAt(element, new Values.Bindings.ValueBindingHandle(Decoded(array.ItemType, bytes).RuntimeValue));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The bytes a value of <paramref name="type"/> occupies in memory, <paramref name="width"/> of them, or <see langword="null"/> when a value of the type is a
+    /// pointer to its bytes rather than the bytes (<see cref="HasBytesOfItsOwn"/>): what an element of an array is at its address.
+    /// </summary>
+    /// <param name="type">The declared type, which says how the value is laid out.</param>
+    /// <param name="value">The value.</param>
+    /// <param name="width">How many bytes a value of the type occupies (<see cref="VBUserDefinedTypeLayout.WidthOf"/>).</param>
+    /// <param name="pointerWidth">The host's pointer width in bytes, which a record's layout depends on.</param>
+    public static byte[]? Encode(VBType type, VBTypedValue value, int width, int pointerWidth) => Encoded(type, value, width, pointerWidth);
+
+    /// <summary>
+    /// The value of <paramref name="type"/> that <paramref name="bytes"/> are the memory image of, as <see cref="Encode"/> laid it out.
+    /// </summary>
+    /// <param name="type">The declared type.</param>
+    /// <param name="bytes">The bytes.</param>
+    public static VBTypedValue Decode(VBType type, ReadOnlySpan<byte> bytes) => Decoded(type, bytes);
+
+    /// <summary>
+    /// Whether a value of <paramref name="type"/> is its bytes in memory, rather than a pointer to them: a number, a <c>Boolean</c>, a <c>Date</c>, a
+    /// fixed-length <c>String</c>, and a record of such fields are; a variable-length <c>String</c>, an object, a <c>Variant</c> and an array are not.
+    /// </summary>
+    /// <param name="type">The declared type.</param>
+    public static bool HasBytesOfItsOwn(VBType type) => HasImage(type);
 
     /// <summary>
     /// Whether <paramref name="type"/> has a variable-length <c>String</c> member, directly or in a user-defined type that it has as a member.
@@ -162,7 +296,7 @@ public static class VBUserDefinedTypeImage
     // The two directions have to agree about the width, and the declared type is the only thing that knows it.
     // A fixed-length String field is the data of its characters, two bytes each: exactly the bytes, a lone surrogate included,
     // since no text encoding is involved in laying a string out in memory.
-    private static byte[]? Encoded(VBType type, VBTypedValue value, int width) => type switch
+    private static byte[]? Encoded(VBType type, VBTypedValue value, int width, int pointerWidth = VBUserDefinedTypeLayout.DefaultPointerWidth) => type switch
     {
         VBFixedStringType => Fixed(VBRuntimeByteStringValue.BytesOf(value.Handle.Value), width),
         VBByteType => [Convert.ToByte(Boxed(value) ?? (byte)0)],
@@ -175,7 +309,7 @@ public static class VBUserDefinedTypeImage
         // a Currency is a 64-bit integer of ten-thousandths, which is what makes its arithmetic exact.
         VBCurrencyType => BitConverter.GetBytes(decimal.ToInt64(Convert.ToDecimal(Boxed(value) ?? 0m) * CurrencyScale)),
         VBDateType or VBDoubleType => BitConverter.GetBytes(Convert.ToDouble(Boxed(value) ?? 0d)),
-        VBUserDefinedType => value is VBUserDefinedTypeValue nested ? Fixed(Of(nested), width) : new byte[width],
+        VBUserDefinedType => value is VBUserDefinedTypeValue nested ? Fixed(Of(nested, pointerWidth), width) : new byte[width],
         _ => null,
     };
 
