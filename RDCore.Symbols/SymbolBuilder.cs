@@ -58,7 +58,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         var range = RangeOf(node);
         var symbol = new VBProcedureMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Procedure,
-            VBVoidType.TypeInfo, range, range, node.AccessModifier);
+            VBVoidType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with { Parameters = BuildParameters(node, symbol.Uri, includeMe: true) };
     }
 
@@ -67,7 +67,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         var range = RangeOf(node);
         var symbol = new VBFunctionMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Function,
-            VBUnknownType.TypeInfo, range, range, node.AccessModifier);
+            VBUnknownType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with
         {
             ResolvedType = ReturnType(node, symbol.Uri),
@@ -79,7 +79,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
     {
         var range = RangeOf(node);
         var symbol = new VBPropertyGetMemberSymbol(
-            workspaceRoot, moduleUri, memberScope, node.Name, range, range, node.AccessModifier);
+            workspaceRoot, moduleUri, memberScope, node.Name, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with
         {
             ResolvedType = ReturnType(node, symbol.Uri),
@@ -92,7 +92,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         var range = RangeOf(node);
         var symbol = new VBPropertyLetMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Property,
-            VBVoidType.TypeInfo, range, range, node.AccessModifier);
+            VBVoidType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with { Parameters = BuildParameters(node, symbol.Uri, includeMe: true) };
     }
 
@@ -101,7 +101,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         var range = RangeOf(node);
         var symbol = new VBPropertySetMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Property,
-            VBVoidType.TypeInfo, range, range, node.AccessModifier);
+            VBVoidType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with { Parameters = BuildParameters(node, symbol.Uri, includeMe: true) };
     }
 
@@ -112,7 +112,7 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         {
             var function = new VBExternalFunctionMemberSymbol(
                 workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Function,
-                VBUnknownType.TypeInfo, range, range, node.AccessModifier, node.IsPtrSafe, node.Library, node.Alias);
+                VBUnknownType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier, node.IsPtrSafe, node.Library, node.Alias);
             return function with
             {
                 ResolvedType = ReturnType(node, function.Uri),
@@ -122,14 +122,14 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
 
         var procedure = new VBExternalSubMemberSymbol(
             workspaceRoot, moduleUri, node.Name, memberScope, SymbolKindExt.Procedure,
-            VBVoidType.TypeInfo, range, range, node.AccessModifier, node.IsPtrSafe, node.Library, node.Alias);
+            VBVoidType.TypeInfo, range, node.NameRange ?? range, node.AccessModifier, node.IsPtrSafe, node.Library, node.Alias);
         return procedure with { Parameters = BuildParameters(node, procedure.Uri) };
     }
 
     public Symbol BuildEvent(MemberDeclarationNode node)
     {
         var range = RangeOf(node);
-        var symbol = new VBEventMemberSymbol(workspaceRoot, moduleUri, node.Name, memberScope, range, range, node.AccessModifier);
+        var symbol = new VBEventMemberSymbol(workspaceRoot, moduleUri, node.Name, memberScope, range, node.NameRange ?? range, node.AccessModifier);
         return symbol with { Parameters = BuildParameters(node, symbol.Uri) };
     }
 
@@ -363,10 +363,11 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         foreach (var parameter in parameters)
         {
             var range = RangeOf(parameter);
+            var name = parameter.NameRange ?? range;
             builder.Add(parameter.IsParamArray
-                ? new ParamArrayParameterSymbol(workspaceRoot, memberUri, parameter.Name, range, range, parameter.ParameterKind)
+                ? new ParamArrayParameterSymbol(workspaceRoot, memberUri, parameter.Name, range, name, parameter.ParameterKind)
                 : new VBParameterSymbol(
-                    workspaceRoot, memberUri, parameter.Name, range, range, parameter.ParameterKind,
+                    workspaceRoot, memberUri, parameter.Name, range, name, parameter.ParameterKind,
                     ParameterType(parameter, memberUri), parameter.IsOptional,
                     DefaultValueOf(parameter)));
         }
@@ -595,10 +596,18 @@ public sealed class SymbolBuilder(Uri workspaceRoot, Uri moduleUri, ScopeKind me
         // `Public Items() As Long` re-dimensions that array. A procedure, a module or a project is no
         // match - `ReDim Left(1)` declares an array that hides the function (MS-VBA, Excel-verified,
         // oracle\s29 R01-R11, E01-E16).
+        //
+        // where declarations are implicit, a name the procedure uses before its first ReDim was declared there, by that use (MS-VBAL §5.6.10, pass 3), and
+        // the ReDim matches that variable: it re-dimensions it as it would any Variant, as vb6.exe runs it. MS-VBA refuses it at compile time ("Invalid
+        // ReDim", Excel-verified, oracle\findings-labels R01-R10), which the author lets slip with RDC11022 (HexIDE's findings desk #9).
+        var implicitDeclarations = !directives.Explicit && withImplicitDeclarations;
+        var valueNames = implicitDeclarations ? body.SelectMany(ValueContextSimpleNames).ToArray() : [];
         foreach (var redim in body.OfType<RedimDeclarationNode>())
         {
             if (!redim.IsSimpleName || outerScopeNames.Contains(redim.Name) || declared.Contains(redim.Name)
-                || redim.Target is SimpleNameExpressionNode target && MatchesARedimTarget(target, procedureUri))
+                || redim.Target is SimpleNameExpressionNode target && MatchesARedimTarget(target, procedureUri)
+                || valueNames.Any(used => used.SourceLocation.Range.Start < redim.SourceLocation.Range.Start
+                    && string.Equals(used.IdentifierName, redim.Name, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
